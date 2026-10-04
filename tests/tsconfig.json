@@ -1,0 +1,15 @@
+{
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"types": ["node", "svelte", "vite/client"],
+		"allowImportingTsExtensions": true,
+		// Type checking only (tsx reads the root tsconfig): the types of
+		// better-sqlite3-multiple-ciphers are missing from its « exports » field
+		"paths": {
+			"$lib": ["../src/lib/index.ts"],
+			"$lib/*": ["../src/lib/*"],
+			"better-sqlite3-multiple-ciphers": ["../node_modules/better-sqlite3-multiple-ciphers/index.d.ts"]
+		}
+	},
+	"include": ["./**/*.ts"]
+}

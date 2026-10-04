@@ -1,0 +1,1250 @@
+[
+  {
+    "transaction_amount": {
+      "amount": "39.85",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-04",
+    "value_date": "2026-07-04",
+    "remittance_information": [
+      "CB DELIVEROO"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "64.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-14",
+    "value_date": "2026-06-14",
+    "remittance_information": [
+      "CB DECATHLON"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "27.60",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-18",
+    "value_date": "2026-06-18",
+    "remittance_information": [
+      "CB RESTO LA FOURCHETTE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "2850.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-27",
+    "value_date": "2026-05-27",
+    "remittance_information": [
+      "VIREMENT SALAIRE ACME SAS"
+    ],
+    "credit_debit_indicator": "CRDT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "29.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-03",
+    "value_date": "2026-06-03",
+    "remittance_information": [
+      "SFR MOBILE FACTURE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "80.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-19",
+    "value_date": "2026-07-19",
+    "remittance_information": [
+      "REMBOURSEMENT CPAM"
+    ],
+    "credit_debit_indicator": "CRDT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "6.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-18",
+    "value_date": "2026-06-18",
+    "remittance_information": [
+      "AMAZON PRIME"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "15.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-08",
+    "value_date": "2026-05-08",
+    "remittance_information": [
+      "NETFLIX.COM ABONNEMENT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "29.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-03",
+    "value_date": "2026-04-03",
+    "remittance_information": [
+      "SFR MOBILE FACTURE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "71.61",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-12",
+    "value_date": "2026-06-12",
+    "remittance_information": [
+      "PRELEVEMENT EDF FACTURE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "70.54",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-04",
+    "value_date": "2026-06-04",
+    "remittance_information": [
+      "CB PICARD SURGELES"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "6.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-18",
+    "value_date": "2026-07-18",
+    "remittance_information": [
+      "AMAZON PRIME"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "45.23",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-26",
+    "value_date": "2026-06-26",
+    "remittance_information": [
+      "CB DELIVEROO"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "11.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-14",
+    "value_date": "2026-05-14",
+    "remittance_information": [
+      "SPOTIFY ABONNEMENT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "50.76",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-24",
+    "value_date": "2026-07-24",
+    "remittance_information": [
+      "CB FNAC"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "15.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-08",
+    "value_date": "2026-06-08",
+    "remittance_information": [
+      "NETFLIX.COM ABONNEMENT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "2850.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-27",
+    "value_date": "2026-04-27",
+    "remittance_information": [
+      "VIREMENT SALAIRE ACME SAS"
+    ],
+    "credit_debit_indicator": "CRDT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "12.50",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-03",
+    "value_date": "2026-07-03",
+    "remittance_information": [
+      "CB PRESSE MAISON DE LA PRESSE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "84.10",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-06",
+    "value_date": "2026-06-06",
+    "remittance_information": [
+      "NAVIGO RATP FORFAIT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "25.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-28",
+    "value_date": "2026-05-28",
+    "remittance_information": [
+      "DOCTEUR MARTIN CONSULTATION"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "59.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-22",
+    "value_date": "2026-06-22",
+    "remittance_information": [
+      "CB COIFFURE STUDIO M"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "120.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-21",
+    "value_date": "2026-04-21",
+    "remittance_information": [
+      "REMBOURSEMENT CPAM"
+    ],
+    "credit_debit_indicator": "CRDT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "67.56",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-16",
+    "value_date": "2026-04-16",
+    "remittance_information": [
+      "CB CARREFOUR CITY"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "31.80",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-09",
+    "value_date": "2026-05-09",
+    "remittance_information": [
+      "BLABLACAR RESERVATION"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "29.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-03",
+    "value_date": "2026-05-03",
+    "remittance_information": [
+      "SFR MOBILE FACTURE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "890.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-05",
+    "value_date": "2026-06-05",
+    "remittance_information": [
+      "PRELEVEMENT LOYER FONCIA"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "46.09",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-17",
+    "value_date": "2026-06-17",
+    "remittance_information": [
+      "CB PICARD SURGELES"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "35.60",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-20",
+    "value_date": "2026-07-20",
+    "remittance_information": [
+      "CHARGES COPRO TRIMESTRE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "41.20",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-11",
+    "value_date": "2026-07-11",
+    "remittance_information": [
+      "TOTAL STATION ESSENCE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "2850.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-27",
+    "value_date": "2026-07-27",
+    "remittance_information": [
+      "VIREMENT SALAIRE ACME SAS"
+    ],
+    "credit_debit_indicator": "CRDT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "84.10",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-06",
+    "value_date": "2026-04-06",
+    "remittance_information": [
+      "NAVIGO RATP FORFAIT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "50.90",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-28",
+    "value_date": "2026-07-28",
+    "remittance_information": [
+      "CB RESTO LE PETIT MARCHE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "82.21",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-12",
+    "value_date": "2026-07-12",
+    "remittance_information": [
+      "PRELEVEMENT EDF FACTURE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "84.10",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-06",
+    "value_date": "2026-07-06",
+    "remittance_information": [
+      "NAVIGO RATP FORFAIT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "83.73",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-12",
+    "value_date": "2026-05-12",
+    "remittance_information": [
+      "PRELEVEMENT EDF FACTURE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "61.07",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-18",
+    "value_date": "2026-07-18",
+    "remittance_information": [
+      "CB CARREFOUR CITY"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "89.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-08",
+    "value_date": "2026-07-08",
+    "remittance_information": [
+      "OPTICIEN OPTIC 2000"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "33.28",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-10",
+    "value_date": "2026-05-10",
+    "remittance_information": [
+      "CB LIDL"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "84.10",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-06",
+    "value_date": "2026-05-06",
+    "remittance_information": [
+      "NAVIGO RATP FORFAIT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "42.82",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-05",
+    "value_date": "2026-04-05",
+    "remittance_information": [
+      "CB STEAM GAMES"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "52.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-19",
+    "value_date": "2026-04-19",
+    "remittance_information": [
+      "SNCF CONNECT BILLET"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "26.81",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-14",
+    "value_date": "2026-07-14",
+    "remittance_information": [
+      "CB STEAM GAMES"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "23.50",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-07",
+    "value_date": "2026-06-07",
+    "remittance_information": [
+      "UBER TRIP"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "56.70",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-15",
+    "value_date": "2026-07-15",
+    "remittance_information": [
+      "CB MONOPRIX"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "46.43",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-04",
+    "value_date": "2026-04-04",
+    "remittance_information": [
+      "CB MONOPRIX"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "890.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-05",
+    "value_date": "2026-05-05",
+    "remittance_information": [
+      "PRELEVEMENT LOYER FONCIA"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "6.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-18",
+    "value_date": "2026-05-18",
+    "remittance_information": [
+      "AMAZON PRIME"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "150.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-10",
+    "value_date": "2026-06-10",
+    "remittance_information": [
+      "VIREMENT RECU L DUPONT"
+    ],
+    "credit_debit_indicator": "CRDT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "43.20",
+      "currency": "EUR"
+    },
+    "booking_date": "",
+    "value_date": "",
+    "remittance_information": [
+      "CB MONOPRIX"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "35.60",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-20",
+    "value_date": "2026-05-20",
+    "remittance_information": [
+      "CHARGES COPRO TRIMESTRE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "38.40",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-07",
+    "value_date": "2026-05-07",
+    "remittance_information": [
+      "CB TOTALENERGIES"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "56.28",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-30",
+    "value_date": "2026-07-30",
+    "remittance_information": [
+      "CB CARREFOUR CITY"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "58.78",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-04",
+    "value_date": "2026-05-04",
+    "remittance_information": [
+      "CB CARREFOUR CITY"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "29.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-03",
+    "value_date": "2026-07-03",
+    "remittance_information": [
+      "SFR MOBILE FACTURE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "40.88",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-25",
+    "value_date": "2026-05-25",
+    "remittance_information": [
+      "CB CARREFOUR CITY"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "51.44",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-28",
+    "value_date": "2026-05-28",
+    "remittance_information": [
+      "CB UBER EATS"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "86.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-11",
+    "value_date": "2026-04-11",
+    "remittance_information": [
+      "CB UGC CINE CITE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "29.24",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-03",
+    "value_date": "2026-06-03",
+    "remittance_information": [
+      "CB UBER EATS"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "38.24",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-23",
+    "value_date": "2026-07-23",
+    "remittance_information": [
+      "CB MONOPRIX"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "2.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-23",
+    "value_date": "2026-07-23",
+    "remittance_information": [
+      "APPLE.COM BILL"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "890.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-05",
+    "value_date": "2026-07-05",
+    "remittance_information": [
+      "PRELEVEMENT LOYER FONCIA"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "34.10",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-09",
+    "value_date": "2026-04-09",
+    "remittance_information": [
+      "CB AUCHAN RETAIL"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "44.40",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-11",
+    "value_date": "2026-06-11",
+    "remittance_information": [
+      "CB FRANPRIX"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "45.61",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-15",
+    "value_date": "2026-05-15",
+    "remittance_information": [
+      "CB FNAC"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "85.02",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-12",
+    "value_date": "2026-04-12",
+    "remittance_information": [
+      "PRELEVEMENT EDF FACTURE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "2.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-23",
+    "value_date": "2026-05-23",
+    "remittance_information": [
+      "APPLE.COM BILL"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "2.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-23",
+    "value_date": "2026-04-23",
+    "remittance_information": [
+      "APPLE.COM BILL"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "67.17",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-04",
+    "value_date": "2026-07-04",
+    "remittance_information": [
+      "CB PICARD SURGELES"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "39.13",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-25",
+    "value_date": "2026-05-25",
+    "remittance_information": [
+      "CB DELIVEROO"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "45.30",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-16",
+    "value_date": "2026-05-16",
+    "remittance_information": [
+      "REMBOURSEMENT MUTUELLE"
+    ],
+    "credit_debit_indicator": "CRDT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "28.50",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-15",
+    "value_date": "2026-07-15",
+    "remittance_information": [
+      "CB DELIVEROO"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "52.25",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-10",
+    "value_date": "2026-07-10",
+    "remittance_information": [
+      "CB MONOPRIX"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "12.48",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-14",
+    "value_date": "2026-04-14",
+    "remittance_information": [
+      "CB PHARMACIE CENTRALE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "15.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-08",
+    "value_date": "2026-04-08",
+    "remittance_information": [
+      "NETFLIX.COM ABONNEMENT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "77.34",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-09",
+    "value_date": "2026-04-09",
+    "remittance_information": [
+      "CB PICARD SURGELES"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "73.87",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-23",
+    "value_date": "2026-06-23",
+    "remittance_information": [
+      "CB CARREFOUR CITY"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "15.20",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-27",
+    "value_date": "2026-04-27",
+    "remittance_information": [
+      "CB PHARMACIE CENTRALE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "2.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-23",
+    "value_date": "2026-06-23",
+    "remittance_information": [
+      "APPLE.COM BILL"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "22.38",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-19",
+    "value_date": "2026-04-19",
+    "remittance_information": [
+      "CB DELIVEROO"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "33.88",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-16",
+    "value_date": "2026-06-16",
+    "remittance_information": [
+      "CB DECATHLON"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "11.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-14",
+    "value_date": "2026-07-14",
+    "remittance_information": [
+      "SPOTIFY ABONNEMENT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "22.30",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-03",
+    "value_date": "2026-06-03",
+    "remittance_information": [
+      "CB CARREFOUR CITY"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "71.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-27",
+    "value_date": "2026-07-27",
+    "remittance_information": [
+      "SNCF CONNECT BILLET"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "44.76",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-01",
+    "value_date": "2026-04-01",
+    "remittance_information": [
+      "CB UBER EATS"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "200.00",
+      "currency": "EUR"
+    },
+    "booking_date": "",
+    "value_date": "",
+    "remittance_information": [
+      "VIREMENT RECU M BERNARD"
+    ],
+    "credit_debit_indicator": "CRDT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "15.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-08",
+    "value_date": "2026-07-08",
+    "remittance_information": [
+      "NETFLIX.COM ABONNEMENT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "80.93",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-21",
+    "value_date": "2026-06-21",
+    "remittance_information": [
+      "CB DECATHLON"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "21.79",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-24",
+    "value_date": "2026-05-24",
+    "remittance_information": [
+      "CB PHARMACIE CENTRALE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "11.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-14",
+    "value_date": "2026-06-14",
+    "remittance_information": [
+      "SPOTIFY ABONNEMENT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "47.85",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-02",
+    "value_date": "2026-05-02",
+    "remittance_information": [
+      "CB LECLERC DRIVE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "68.40",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-23",
+    "value_date": "2026-05-23",
+    "remittance_information": [
+      "SNCF CONNECT BILLET"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "890.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-05",
+    "value_date": "2026-04-05",
+    "remittance_information": [
+      "PRELEVEMENT LOYER FONCIA"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "69.44",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-05-18",
+    "value_date": "2026-05-18",
+    "remittance_information": [
+      "CB LIDL"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "36.88",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-18",
+    "value_date": "2026-04-18",
+    "remittance_information": [
+      "CB UBER EATS"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "96.30",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-07-25",
+    "value_date": "2026-07-25",
+    "remittance_information": [
+      "CB AUCHAN RETAIL"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "2850.00",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-27",
+    "value_date": "2026-06-27",
+    "remittance_information": [
+      "VIREMENT SALAIRE ACME SAS"
+    ],
+    "credit_debit_indicator": "CRDT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "34.28",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-23",
+    "value_date": "2026-04-23",
+    "remittance_information": [
+      "CB MONOPRIX"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "14.03",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-06-26",
+    "value_date": "2026-06-26",
+    "remittance_information": [
+      "CB PHARMACIE CENTRALE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "18.90",
+      "currency": "EUR"
+    },
+    "booking_date": "",
+    "value_date": "",
+    "remittance_information": [
+      "CB UBER EATS"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "24.90",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-15",
+    "value_date": "2026-04-15",
+    "remittance_information": [
+      "CB FLEURISTE ATELIER ROSE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "41.21",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-23",
+    "value_date": "2026-04-23",
+    "remittance_information": [
+      "CB BRASSERIE DU PORT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "6.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-18",
+    "value_date": "2026-04-18",
+    "remittance_information": [
+      "AMAZON PRIME"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "9.90",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-11",
+    "value_date": "2026-04-11",
+    "remittance_information": [
+      "CB CINEMA PATHE"
+    ],
+    "credit_debit_indicator": "DBIT"
+  },
+  {
+    "transaction_amount": {
+      "amount": "11.99",
+      "currency": "EUR"
+    },
+    "booking_date": "2026-04-14",
+    "value_date": "2026-04-14",
+    "remittance_information": [
+      "SPOTIFY ABONNEMENT"
+    ],
+    "credit_debit_indicator": "DBIT"
+  }
+]

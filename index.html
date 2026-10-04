@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta name="theme-color" content="#1c1c1c" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<title>Budget — Suivi personnel</title>
+		<!-- Anti-FOUC : Encre (dark) par défaut ; data-theme posé avant le CSS bundlé.
+		     Migration des anciennes valeurs : dark → encre, light → papier.
+		     La classe .light reste le switch structurel (Papier ET Sable). -->
+		<script>
+			try {
+				var raw = localStorage.getItem('budget:theme');
+				if (raw === 'dark') raw = 'encre';
+				else if (raw === 'light') raw = 'papier';
+				var t = ['encre', 'papier', 'ardoise', 'foret', 'sable'].indexOf(raw) >= 0 ? raw : 'encre';
+				document.documentElement.dataset.theme = t;
+				document.documentElement.classList.toggle('light', t === 'papier' || t === 'sable');
+			} catch (e) {
+				/* localStorage indisponible : on reste en Encre (défaut) */
+			}
+		</script>
+		<style>
+			/* Fond posé avant le CSS bundlé pour éviter tout flash */
+			html {
+				background-color: #1c1c1c;
+			}
+			html.light {
+				background-color: #f7f5f0;
+			}
+			html[data-theme='ardoise'] {
+				background-color: #1a1d20;
+			}
+			html[data-theme='foret'] {
+				background-color: #171c18;
+			}
+			html[data-theme='sable'] {
+				background-color: #f2ede4;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="app"></div>
+		<script type="module" src="/src/main.ts"></script>
+	</body>
+</html>

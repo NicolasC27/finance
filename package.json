@@ -1,0 +1,41 @@
+{
+	"name": "budget-v3",
+	"private": true,
+	"version": "3.0.0",
+	"license": "MIT",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"preview": "vite preview",
+		"check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tests/tsconfig.json && tsc -p tsconfig.node.json",
+		"postbuild": "for f in budget analyse trier transactions patrimoine crypto rapport ia portage voiture 404; do cp dist/index.html dist/$f.html; done",
+		"test": "tsx --test tests/*.test.ts",
+		"base": "tsx scripts/base.ts",
+		"demo": "tsx scripts/demo.ts",
+		"publier": "node scripts/publier.mjs",
+		"ia": "tsx scripts/ia-relay.ts",
+		"ia:install": "bash scripts/ia-service.sh install",
+		"ia:uninstall": "bash scripts/ia-service.sh uninstall",
+		"ia:status": "bash scripts/ia-service.sh status"
+	},
+	"devDependencies": {
+		"@sveltejs/vite-plugin-svelte": "^7.2.0",
+		"@tailwindcss/vite": "^4.0.0",
+		"@tsconfig/svelte": "^5.0.8",
+		"@types/node": "^24.13.3",
+		"better-sqlite3-multiple-ciphers": "^13.0.3",
+		"svelte": "^5.56.8",
+		"svelte-check": "^4.7.3",
+		"tailwindcss": "^4.0.0",
+		"tsx": "^4.23.12",
+		"typescript": "~6.0.2",
+		"vite": "^8.2.0"
+	},
+	"dependencies": {
+		"@fontsource-variable/inter": "^5.2.5",
+		"@fontsource/dm-serif-display": "^5.3.0",
+		"fflate": "^0.8.3",
+		"pdfjs-dist": "^6.3.289"
+	}
+}

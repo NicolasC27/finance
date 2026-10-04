@@ -1,0 +1,1182 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource/dm-serif-display/latin-400.css';
+@import '@fontsource/dm-serif-display/latin-ext-400.css';
+@import '@fontsource/dm-serif-display/latin-400-italic.css';
+@import '@fontsource/dm-serif-display/latin-ext-400-italic.css';
+
+/* ---- Global density ('finesse'): the Tailwind scale is reduced by about 15 % (like the 80-85 %
+   zoom users liked): spacing and text-xs/sm/base. Design-system px sizes are aligned below. */
+@theme {
+	--spacing: 0.215rem; /* 3.44 px instead of 4: p-4 = 13.8 px */
+	--text-xs: 0.6875rem; /* 11 px */
+	--text-xs--line-height: 1.4;
+	--text-sm: 0.8125rem; /* 13 px */
+	--text-sm--line-height: 1.45;
+	--text-base: 0.875rem; /* 14 px */
+	--text-base--line-height: 1.5;
+	--text-lg: 0.9375rem;
+	--text-xl: 1.0625rem;
+	--text-2xl: 1.25rem;
+	--text-3xl: 1.5rem;
+}
+
+/* ---- Design system 'Private bank / High edition' ---- 5 themes: Encre (default, :root tokens
+   avoid FOUC), Papier (html.light is the structural switch for component overrides), Ardoise,
+   Forêt, Sable. Editorial language: 1px rules, space, serif/sans pairing, never teal. */
+:root {
+	color-scheme: dark;
+	/* Encre: warm palette */
+	--bg: #1c1c1c; /* ink */
+	--surface: #242422; /* subtle warm elevation */
+	--surface-2: #2c2c28;
+	--hairline: rgba(200, 199, 187, 0.13); /* rules */
+	--text: #f2f0e9; /* paper */
+	--text-2: #8e8e8e; /* metadata only, never essential content */
+	--text-3: #6b6b66;
+	--accent: #c9a86c; /* champagne: credits, active elements, curves */
+	/* Terracotta: alerts, deficits, downward moves (NEVER red). The old amber #cd9b1f had the
+	   champagne hue (ΔE 6): '+28 %' and '−41 %' looked the same */
+	--accent-2: #d4724a;
+	--debit: #a8a69c; /* warm neutral: debits */
+	--beige: #c8c7bb; /* accent sections */
+	--olive: #4b4f40;
+	/* Legacy aliases (v6 components) mapped to the new scale */
+	--surface-hover: var(--surface-2);
+	--border: var(--hairline);
+	--border-subtle: rgba(200, 199, 187, 0.08);
+	--text-secondary: var(--text-2);
+	--accent-soft: rgba(201, 168, 108, 0.13);
+	--amber: var(--accent-2);
+	--amber-soft: rgba(212, 114, 74, 0.13);
+	--amber-dark: var(--accent-2);
+	/* Depth comes from rules and space: shadows almost removed */
+	--shadow: none;
+	--shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.25);
+	/* Signature easing: repositioning (tooltip, nav indicator) */
+	--ease-signature: cubic-bezier(1, 0, 0.3, 0.93);
+}
+
+html.light {
+	color-scheme: light;
+	/* Papier: redone properly, not a simple inversion */
+	--bg: #f7f5f0; /* paper */
+	--surface: #fffdf8;
+	--surface-2: #efece3;
+	--hairline: rgba(28, 28, 28, 0.12);
+	--text: #1c1c1c;
+	--text-2: #6b6b66;
+	--text-3: #8e8e8e;
+	--accent: #8a6d3b; /* darkened champagne (contrast) */
+	--accent-2: #9c4a28; /* dark terracotta: 6:1 on the surface (ochre was 4.2:1) */
+	--debit: #66645b; /* 5.8:1 (was 4.36:1: 46 amount rows were below the AA threshold) */
+	--beige: #5c5747;
+	--olive: #7c8266;
+	--border-subtle: rgba(28, 28, 28, 0.07);
+	--accent-soft: rgba(138, 109, 59, 0.11);
+	--amber-soft: rgba(156, 74, 40, 0.1);
+	--shadow-soft: 0 1px 2px rgba(28, 28, 28, 0.08);
+}
+
+/* ---- Additional themes (same token scale as :root) ---- */
+
+/* Row under the keyboard cursor (Transactions page: J/K) */
+.row-cursor {
+	box-shadow: inset 2px 0 0 var(--accent);
+	background-color: color-mix(in srgb, var(--surface) 70%, var(--surface-2));
+}
+
+/* Density (⌘K › Density): overrides the Tailwind v4 @theme variables; compact = 100 % Chrome ≈ the
+   old 80 %; comfortable = more air. */
+html[data-density='compact'] {
+	--spacing: 0.185rem;
+	--text-xs: 0.625rem;
+	--text-sm: 0.75rem;
+	--text-base: 0.8125rem;
+}
+html[data-density='confort'] {
+	--spacing: 0.25rem;
+	--text-xs: 0.75rem;
+	--text-sm: 0.875rem;
+	--text-base: 0.9375rem;
+}
+
+html[data-theme='ardoise'] {
+	color-scheme: dark;
+	--bg: #1a1d20;
+	--surface: #22262a;
+	--surface-2: #2a3034;
+	--hairline: rgba(190, 200, 205, 0.12);
+	--text: #eceeed;
+	--text-2: #8d9499;
+	--text-3: #6e767b;
+	--accent: #9db4b8; /* desaturated glacier, NOT a fintech blue */
+	--accent-2: #c99b45; /* muted amber (alerts, never red) */
+	--debit: #9aa0a3;
+	--beige: #b9bfc2;
+	--olive: #4a5254;
+	--border-subtle: rgba(190, 200, 205, 0.08);
+	--accent-soft: rgba(157, 180, 184, 0.13);
+	--amber-soft: rgba(201, 155, 69, 0.12);
+	--shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+html[data-theme='foret'] {
+	color-scheme: dark;
+	--bg: #171c18;
+	--surface: #1f2620;
+	--surface-2: #273029;
+	--hairline: rgba(185, 200, 180, 0.12);
+	--text: #eef0e8;
+	--text-2: #8a948a;
+	--text-3: #6b746b;
+	--accent: #9caf88; /* sage */
+	--accent-2: #c9a227; /* moss gold */
+	--debit: #9aa295;
+	--beige: #b8bfae;
+	--olive: #44503f;
+	--border-subtle: rgba(185, 200, 180, 0.08);
+	--accent-soft: rgba(156, 175, 136, 0.13);
+	--amber-soft: rgba(201, 162, 39, 0.12);
+	--shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+/* Sable: light theme; the structural `html.light` overrides apply too */
+html[data-theme='sable'] {
+	color-scheme: light;
+	--bg: #f2ede4;
+	--surface: #faf7ef;
+	--surface-2: #e9e2d3;
+	--hairline: rgba(60, 50, 35, 0.12);
+	--text: #2b2620;
+	--text-2: #71685a;
+	--text-3: #948a7a;
+	--accent: #9a6b3f; /* cognac */
+	--accent-2: #94452a; /* terracotta (ochre was confused with cognac) */
+	--debit: #686156; /* 5.7:1 (was 4.2:1) */
+	--beige: #6b5f4b;
+	--olive: #8a8266;
+	--border-subtle: rgba(60, 50, 35, 0.07);
+	--accent-soft: rgba(154, 107, 63, 0.11);
+	--amber-soft: rgba(148, 69, 42, 0.1);
+	--shadow-soft: 0 1px 2px rgba(60, 50, 35, 0.08);
+}
+
+html {
+	background-color: var(--bg);
+}
+
+body {
+	background-color: var(--bg);
+	color: var(--text);
+	font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	transition:
+		background-color 200ms ease,
+		color 200ms ease;
+}
+
+/* Tabular amounts: aligned digits (tabular data) */
+.tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+/* Display serif: page titles, large amounts, primary buttons */
+.serif {
+	font-family: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+	font-weight: 400;
+}
+
+/* Editorial page title (40-54 px, leading 1.1, tracking -0.01em) */
+.page-title {
+	font-family: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+	font-weight: 400;
+	font-size: clamp(22px, 2.2vw, 27px);
+	line-height: 1.1;
+	letter-spacing: -0.01em;
+}
+
+/* Italic serif section label above the title ('overview') */
+.kicker {
+	font-family: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+	font-style: italic;
+	font-size: 13px;
+	line-height: 1.2;
+	color: var(--text-2);
+}
+
+/* ---- Split-text reveal of page titles ---- Each word is wrapped in an overflow:hidden container
+   and rises (translateY 110% → 0), 40 ms stagger, 300 ms cubic-bezier(0.2,0.6,0.2,1). Replayed on
+   every page change (remount through the custom router). */
+.split-wrap {
+	display: inline-block;
+	overflow: hidden;
+	vertical-align: bottom;
+	padding-bottom: 0.08em; /* serif descenders are not clipped */
+	margin-bottom: -0.08em;
+}
+
+.split-word {
+	display: inline-block;
+	animation: split-rise 300ms cubic-bezier(0.2, 0.6, 0.2, 1) backwards;
+	animation-delay: var(--i, 0ms);
+	will-change: transform;
+}
+
+@keyframes split-rise {
+	from {
+		transform: translateY(110%);
+	}
+	to {
+		transform: translateY(0);
+	}
+}
+
+/* ---- Editorial entrances: fade + translateY 8px, 150/250/350 ms cadence ---- */
+@keyframes hero-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.hero-in-1,
+.hero-in-2,
+.hero-in-3 {
+	animation: hero-in 450ms cubic-bezier(0.2, 0.6, 0.2, 1) backwards;
+}
+
+.hero-in-1 {
+	animation-delay: 150ms;
+}
+
+.hero-in-2 {
+	animation-delay: 250ms;
+}
+
+.hero-in-3 {
+	animation-delay: 350ms;
+}
+
+/* Card: 8 px radius, a single 1 px rule, subtle background; depth comes from space */
+.card {
+	background-color: var(--surface);
+	border: 1px solid var(--hairline);
+	border-radius: 8px;
+	transition:
+		background-color 200ms ease,
+		border-color 200ms ease;
+}
+
+/* Subtle hover on interactive cards: stronger rule, raised background */
+.card-lift:hover,
+.card-hover:hover {
+	background-color: color-mix(in srgb, var(--surface) 70%, var(--surface-2));
+	border-color: color-mix(in srgb, var(--hairline) 60%, var(--text-2));
+}
+
+.card-lift,
+.card-hover {
+	transition:
+		background-color 200ms ease,
+		border-color 200ms ease;
+}
+
+.text-secondary {
+	color: var(--text-2);
+}
+
+.text-accent {
+	color: var(--accent);
+}
+
+.text-debit {
+	color: var(--debit);
+}
+
+.text-amber {
+	color: var(--accent-2);
+}
+
+/* Label hierarchy: uppercase 11 px, tracking 0.14em, text-2, accent ● prefix */
+.label-xs {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	font-weight: 500;
+	color: var(--text-2);
+}
+
+/* Section header pattern: '● DÉPENSES DU MOIS' (6 px accent dot) */
+.label-xs::before {
+	content: '';
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	border-radius: 9999px;
+	background-color: var(--accent);
+	margin-right: 0.6em;
+	vertical-align: 0.12em;
+}
+
+/* Uppercase micro-label WITHOUT a dot (table headers, groups, special cases) */
+.label-plain {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	font-weight: 500;
+	color: var(--text-2);
+}
+
+.meta-xs {
+	font-size: 11px;
+	color: var(--text-2);
+}
+
+/* ---- Pill buttons ---- Primary: text/paper background with bg-coloured serif text. Secondary:
+   rule + text. Hover 0.2 s ease, press scale(0.98) kept. */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	border-radius: 9999px;
+	font-size: 12px;
+	cursor: pointer;
+	transition:
+		background-color 0.2s ease,
+		border-color 0.2s ease,
+		color 0.2s ease,
+		transform 100ms ease,
+		opacity 0.2s ease;
+}
+
+.btn:active {
+	transform: scale(0.98);
+}
+
+.btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.btn-primary {
+	font-family: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+	font-size: 12px;
+	letter-spacing: 0.01em;
+	background-color: var(--text);
+	color: var(--bg);
+	border: 1px solid var(--text);
+	padding: 0.32rem 0.8rem;
+}
+
+.btn-primary:hover:not(:disabled) {
+	background-color: color-mix(in srgb, var(--text) 86%, transparent);
+	border-color: color-mix(in srgb, var(--text) 86%, transparent);
+}
+
+.btn-secondary {
+	font-family: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+	font-weight: 400;
+	font-size: 12px;
+	letter-spacing: 0.01em;
+	background-color: transparent;
+	color: var(--text);
+	border: 1px solid var(--hairline);
+	padding: 0.38rem 0.9rem;
+}
+
+.btn-secondary:hover:not(:disabled) {
+	border-color: color-mix(in srgb, var(--hairline) 40%, var(--text-2));
+	background-color: var(--surface-2);
+}
+
+/* Accent button: rule + champagne text (replaces inline border/color styles) */
+.btn-accent {
+	font-family: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+	font-weight: 400;
+	font-size: 12px;
+	letter-spacing: 0.01em;
+	background-color: transparent;
+	color: var(--accent);
+	border: 1px solid var(--accent);
+	padding: 0.38rem 0.9rem;
+}
+
+.btn-accent:hover:not(:disabled) {
+	background-color: var(--accent-soft);
+}
+
+/* Small button (lists, row actions): 26 px, Inter 12 px, no serif */
+.btn-sm {
+	font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: 0;
+	min-height: 24px;
+	padding: 0.15rem 0.6rem;
+}
+
+/* Left-aligned label, for stacked action lists (a module's ⚙ panel); .btn is unlayered, so justify-start cannot override it */
+.btn-start {
+	justify-content: flex-start;
+}
+
+/* ---- Chips: a single family (status, badge, counter) ---- */
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3em;
+	border-radius: 9999px;
+	padding: 1px 7px;
+	font-size: 10px;
+	font-weight: 500;
+	line-height: 1.5;
+	white-space: nowrap;
+	vertical-align: middle;
+}
+
+.chip-accent {
+	background-color: var(--accent-soft);
+	color: var(--accent);
+}
+
+.chip-amber {
+	background-color: var(--amber-soft);
+	color: var(--amber);
+}
+
+/* Light themes: chip text in ink (champagne/amber on a tinted background is below 4.5:1) */
+html.light .chip-accent {
+	color: var(--text);
+}
+
+.chip-muted {
+	background-color: var(--surface-hover);
+	color: var(--text-secondary);
+}
+
+.chip-outline {
+	border: 1px solid var(--hairline);
+	color: var(--text-2);
+}
+
+/* Keyboard key (sidebar, shortcuts cheat sheet) */
+.kbd {
+	font-family: inherit;
+	font-size: 9px;
+	line-height: 1;
+	padding: 3px 5px;
+	border: 1px solid var(--hairline);
+	border-radius: 5px;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+/* Second-rank amount (inside a card): Inter 600 18 px tabular. Only two steps: .stat-amount (24 px
+   serif, KPI) and .amount-md. */
+.amount-md {
+	font-size: 16px;
+	font-weight: 600;
+	line-height: 1;
+	letter-spacing: -0.01em;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Soft appearance of lists / cards (v6 retention, internal cadence) */
+@keyframes fade-slide-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+/* `backwards` fill mode: the final state is NOT frozen once finished, otherwise the final keyframe
+   transform would override hover transforms. */
+.fade-slide {
+	animation: fade-slide-in 400ms ease-out backwards;
+	animation-delay: var(--stagger, 0ms);
+}
+
+/* Glow matching the theme accent on the balance curve stroke (the 'champagne' curve follows
+   --accent whatever the theme) */
+.balance-line {
+	filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 40%, transparent));
+}
+
+/* Progressive drawing of the balance curve (pathLength normalised to 1) */
+@keyframes trace-line {
+	from {
+		stroke-dashoffset: 1;
+	}
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+/* Fade-in (chart area) */
+@keyframes fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/* Progressive drawing of the donut arcs (animated stroke-dashoffset) */
+@keyframes donut-trace {
+	from {
+		stroke-dashoffset: var(--trace-len, 0px);
+	}
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+/* Harmonised selects / inputs: rule, subtle background */
+.input-surface {
+	background-color: transparent;
+	border: 1px solid var(--hairline);
+	border-radius: 8px;
+	color: var(--text);
+	font-size: 12px;
+	padding: 2px 8px;
+	outline: none;
+	transition: border-color 200ms ease;
+}
+
+.input-surface:focus {
+	border-color: var(--accent);
+}
+
+.input-surface {
+	min-height: 26px;
+}
+
+select.input-surface {
+	appearance: none;
+	-webkit-appearance: none;
+	padding-right: 22px;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238e8e8e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 8px center;
+	background-size: 10px 10px;
+}
+
+/* Subtle hover on transaction rows */
+.row-hover {
+	transition: background-color 150ms ease;
+}
+
+.row-hover:hover {
+	background-color: color-mix(in srgb, var(--surface-2) 55%, transparent);
+}
+
+/* ---- View Transitions (custom router): cross-fade + slight slide ---- */
+@keyframes vt-fade-slide-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes vt-fade-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+::view-transition-old(root) {
+	animation: vt-fade-out 250ms ease both;
+}
+
+::view-transition-new(root) {
+	animation: vt-fade-slide-in 250ms ease both;
+}
+
+/* File drop overlay (CSV drag & drop) */
+.drop-overlay {
+	background-color: color-mix(in srgb, var(--bg) 72%, transparent);
+	backdrop-filter: blur(4px);
+}
+
+/* Import feedback toast */
+@keyframes toast-in {
+	from {
+		opacity: 0;
+		transform: translateY(-8px) scale(0.98);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+.toast-in {
+	animation: toast-in 250ms ease-out backwards;
+}
+
+/* Sticky header of the transactions table (separation = rule) */
+.sticky-th {
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	background-color: var(--surface);
+	box-shadow: 0 1px 0 var(--hairline);
+}
+
+/* Main content offset by the sidebar (desktop), margin animated when collapsing */
+@media (min-width: 1024px) {
+	.app-main {
+		margin-left: var(--sidebar-w, 196px);
+		transition: margin-left 250ms ease;
+	}
+}
+
+/* Chart area: fades in after the line is drawn */
+.balance-area {
+	animation: fade-in 900ms ease-out 350ms backwards;
+}
+
+/* ---- Texture ---- */
+
+/* Editorial grain: SVG feTurbulence noise, opacity 0.025 (dark) / 0.015 (light), soft-light blend,
+   fixed and non-interactive. */
+.grain {
+	position: fixed;
+	inset: 0;
+	z-index: 80;
+	pointer-events: none;
+	opacity: 0.025;
+	mix-blend-mode: soft-light;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+html.light .grain {
+	opacity: 0.015;
+}
+
+/* Glow behind the net worth: very diffuse accent-tinted radial gradient (0.06). inset: 0 +
+   blur(60px): purely visual diffusion (paint-only, no scrollable overflow at 360 px). */
+.networth-glow {
+	position: relative;
+}
+
+.networth-glow::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background: radial-gradient(
+		ellipse 75% 80% at 40% 45%,
+		color-mix(in srgb, var(--accent) 6%, transparent),
+		transparent 70%
+	);
+	filter: blur(60px);
+}
+
+/* Display typography: a single oversized amount per page (net worth). Serif is the signature:
+   digits are serif (NO tabular-nums). */
+.display-amount {
+	font-family: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+	font-weight: 400;
+	font-size: clamp(26px, 3vw, 36px);
+	letter-spacing: -0.01em;
+	line-height: 1.05;
+	font-variant-numeric: normal;
+}
+
+/* Isolated 'k€' suffix: the number keeps the display tracking, the suffix returns to normal kerning
+   with a slight optical offset, proportional (em). */
+.display-amount .tabular {
+	font-variant-numeric: normal;
+}
+
+/* Main StatCard amounts (Dashboard KPIs + Budget summary): ~32 px display serif, weight 400,
+   proportional digits as an editorial statement (NO tabular-nums, reserved for table/list data). */
+.stat-amount {
+	font-family: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+	font-weight: 400;
+	font-size: clamp(17px, 1.6vw, 20px);
+	line-height: 1.2;
+	letter-spacing: -0.005em;
+	font-variant-numeric: normal;
+}
+
+.stat-amount .tabular {
+	font-variant-numeric: normal;
+}
+
+.amount-suffix {
+	font-size: 0.5em;
+	letter-spacing: normal;
+	margin-left: 0.16em;
+}
+
+/* Element shared between the sidebar and the Valeur totale card (View Transitions morphing). No
+   effect without the View Transitions API (graceful fallback). */
+.vt-net-worth {
+	view-transition-name: net-worth;
+}
+
+/* Crypto tickers: 400 ms flash through an overlay whose opacity alone is animated. Up = champagne,
+   down = golden amber (never red, never blinking). */
+.price-ticker {
+	position: relative;
+	border-radius: 6px;
+}
+
+.price-ticker::before {
+	content: '';
+	position: absolute;
+	inset: -2px -6px;
+	border-radius: 6px;
+	opacity: 0;
+	pointer-events: none;
+}
+
+@keyframes price-flash {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+.price-ticker.flash-up::before {
+	background-color: color-mix(in srgb, var(--accent) 28%, transparent);
+	animation: price-flash 400ms ease-out;
+}
+
+.price-ticker.flash-down::before {
+	background-color: color-mix(in srgb, var(--accent-2) 26%, transparent);
+	animation: price-flash 400ms ease-out;
+}
+
+/* Skeleton loaders: shimmer blocks (gradient swept in 1.2 s), no spinner */
+@keyframes shimmer {
+	from {
+		background-position: 200% 0;
+	}
+	to {
+		background-position: -200% 0;
+	}
+}
+
+.skeleton {
+	background: linear-gradient(100deg, var(--surface-2) 35%, var(--hairline) 50%, var(--surface-2) 65%);
+	background-size: 200% 100%;
+	animation: shimmer 1.2s linear infinite;
+}
+
+/* Press states: 100 ms push on clickable elements. The transition also covers the usual transitions
+   of the targeted components. */
+.press {
+	transition:
+		transform 100ms ease,
+		background-color 200ms ease,
+		border-color 200ms ease,
+		color 200ms ease,
+		box-shadow 200ms ease,
+		opacity 200ms ease;
+}
+
+.press:active {
+	transform: scale(0.98);
+}
+
+/* ---- Craft: focus, selection, scrollbar ---- */
+
+/* Visible focus: 1 px accent outline, 2 px offset */
+:focus-visible {
+	outline: 1px solid var(--accent);
+	outline-offset: 2px;
+}
+
+/* Text selection: accent background at 25 % */
+::selection {
+	background-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* ---- Custom scrollbar (SPEC v12 §3) ---- Tinted by the theme variables (--text-2): page AND inner
+   scroll areas (Transactions table…). 8 px, transparent track, rounded thumb, no arrow buttons.
+   Invisible by design without overflow. */
+* {
+	/* Firefox */
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in srgb, var(--text-2) 30%, transparent) transparent;
+}
+
+/* Chromium / WebKit */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background-color: color-mix(in srgb, var(--text-2) 30%, transparent);
+	border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background-color: color-mix(in srgb, var(--text-2) 50%, transparent);
+}
+
+::-webkit-scrollbar-button {
+	display: none;
+}
+
+/* ---- Rolling-digit odometer (SPEC v12 §1) ---- 1 em overflow:hidden columns; the strip (0–9 ×2)
+   moves with translateY and a single transition per column (inline duration, staggered right →
+   left). Landing easing: slight mechanical overshoot. */
+.odometer {
+	display: inline-block;
+	line-height: 1;
+}
+
+.odometer-visual {
+	display: inline-flex;
+	align-items: flex-start;
+	white-space: nowrap;
+}
+
+.odo-col {
+	display: inline-block;
+	overflow: hidden;
+	height: 1em;
+	width: 1ch; /* tabular digits: no horizontal jitter */
+	font-variant-numeric: tabular-nums;
+}
+
+.odo-strip {
+	display: block;
+	transition-property: transform;
+	transition-timing-function: cubic-bezier(0.16, 1.1, 0.3, 1);
+	will-change: transform;
+}
+
+.odo-digit {
+	display: block;
+	height: 1em;
+	line-height: 1;
+	text-align: center;
+}
+
+.odo-sep {
+	white-space: pre;
+	line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.odo-strip {
+		transition: none !important;
+	}
+}
+
+/* ---- Dashboard editorial summary (SPEC v12 §4) ---- */
+.sommaire-month {
+	font-size: clamp(17px, 1.7vw, 20px);
+	line-height: 1.1;
+	letter-spacing: -0.01em;
+}
+
+.sommaire-rule {
+	border: 0;
+	border-top: 1px solid var(--hairline);
+	margin: 8px 0;
+}
+
+.sommaire-phrase {
+	font-size: 12px;
+	line-height: 1.6;
+	color: var(--text-2);
+	max-width: 70ch;
+}
+
+.sommaire-var {
+	font-weight: 500;
+}
+
+/* ---- Monthly edition report (SPEC v12 §2) ---- */
+
+/* Edition kicker: wide tracking, text-2 */
+.edition-kicker {
+	font-size: 12px;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.22em;
+	color: var(--text-2);
+}
+
+/* Month in very large serif */
+.edition-month {
+	font-size: clamp(28px, 3.5vw, 40px);
+	line-height: 1.05;
+	letter-spacing: -0.01em;
+}
+
+/* Double rule: 1 px + 1 px, 3 px apart */
+.edition-rule {
+	height: 5px;
+	margin-top: 18px;
+	border-top: 1px solid var(--hairline);
+	border-bottom: 1px solid var(--hairline);
+}
+
+/* Numbered sections: automatic CSS counter (never hard-coded), serif accent number '01' in the left
+   margin, label + rule. */
+.report {
+	counter-reset: rep;
+}
+
+.report-section {
+	display: grid;
+	grid-template-columns: 2.75rem 1fr;
+	column-gap: 1rem;
+	counter-increment: rep;
+}
+
+@media (max-width: 640px) {
+	.report-section {
+		grid-template-columns: 2.1rem 1fr;
+		column-gap: 0.75rem;
+	}
+}
+
+.report-num::before {
+	content: counter(rep, decimal-leading-zero);
+	font-family: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+	font-size: 20px;
+	line-height: 1.2;
+	color: var(--accent);
+}
+
+.report-section-head {
+	border-bottom: 1px solid var(--hairline);
+	padding-bottom: 8px;
+	margin-bottom: 16px;
+}
+
+.report-label {
+	font-size: 11px;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	color: var(--text-2);
+}
+
+/* Colophon: discreet end-of-edition line */
+.colophon {
+	margin-top: 3.5rem;
+	border-top: 1px solid var(--hairline);
+	padding-top: 12px;
+	font-size: 12px;
+	color: var(--text-2);
+}
+
+/* Plain header repeated on every printed page (print only) */
+.print-header {
+	display: none;
+}
+
+/* ---- Printing (Rapport page): a single light column, chrome hidden ---- */
+@page {
+	margin: 2cm; /* generous A4 margins (SPEC v12 §2) */
+}
+
+@media print {
+	.sidebar,
+	.tabbar,
+	.grain,
+	.no-print {
+		display: none !important;
+	}
+
+	.app-main {
+		margin-left: 0 !important;
+		padding-bottom: 0 !important;
+	}
+
+	/* Light canvas: otherwise Chromium paints the @page margins with the dark canvas colour
+	   (color-scheme: dark) */
+	:root {
+		color-scheme: light;
+	}
+
+	/* Forced paper background: never a dark background when printing (transition disabled for an
+	   immediate print rendering) */
+	html,
+	body {
+		background-color: #ffffff !important;
+		color: #1c1c1c !important;
+		transition: none !important;
+	}
+
+	.card {
+		border-color: #e2ded4 !important;
+		background-color: #ffffff !important;
+	}
+
+	/* Edition rules in neutral grey when printing */
+	.edition-rule,
+	.report-section-head,
+	.colophon,
+	.sommaire-rule {
+		border-color: #e2ded4 !important;
+	}
+
+	/* Bar tracks in neutral grey when printing (Rapport) */
+	.bar-track {
+		background-color: #e5e2da !important;
+	}
+
+	/* No awkward breaks inside report sections */
+	.report section,
+	.report .report-section {
+		break-inside: avoid;
+	}
+
+	/* Entrance animations (backwards fill) must not freeze printing in an intermediate state */
+	.hero-in-1,
+	.hero-in-2,
+	.hero-in-3,
+	.fade-slide {
+		animation: none !important;
+	}
+
+	/* Plain header repeated on every page (position fixed = repeated in print, at the top of the
+	   content area). Opaque background so content does not show through; the spacing below prevents
+	   any overlap. */
+	.print-header {
+		display: block;
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		font-size: 10px;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.14em;
+		color: #6b6b66;
+		border-bottom: 1px solid #e2ded4;
+		padding-bottom: 4px;
+		background-color: #ffffff;
+	}
+
+	/* Spacing under the repeated header: sections are unbreakable (break-inside: avoid), so each one
+	   starts below the header line when it opens a page. */
+	.report {
+		padding-top: 0.9cm;
+	}
+
+	.report .report-section,
+	.report .colophon {
+		padding-top: 0.9cm;
+	}
+}
+
+/* ---- Persisted collapsible sections (SPEC v13 §B) ---- Height animated WITHOUT JS measurement:
+   the grid track goes from 1fr to 0fr (the browser interpolates grid-template-rows) and the inner
+   content is clipped by overflow:hidden. */
+.collapse-grid {
+	display: grid;
+	grid-template-rows: 1fr;
+	transition: grid-template-rows 250ms var(--ease-signature);
+}
+
+.collapse-grid.closed {
+	grid-template-rows: 0fr;
+}
+
+.collapse-inner {
+	overflow: hidden;
+	min-height: 0;
+}
+
+/* Clickable section header: title kept, 1.5 stroke chevron rotating 90° (200 ms); on hover, slight
+   accent shift on the chevron. */
+.collapse-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	cursor: pointer;
+	text-align: left;
+}
+
+.collapse-chevron {
+	flex-shrink: 0;
+	color: var(--text-2);
+	transform: rotate(0deg);
+	transition:
+		transform 200ms ease,
+		color 150ms ease;
+}
+
+.collapse-chevron.open {
+	transform: rotate(90deg);
+}
+
+.collapse-toggle:hover .collapse-chevron,
+.collapse-toggle:focus-visible .collapse-chevron {
+	color: var(--accent);
+	transform: translateX(2px) rotate(0deg);
+}
+
+.collapse-toggle:hover .collapse-chevron.open,
+.collapse-toggle:focus-visible .collapse-chevron.open {
+	transform: translateX(2px) rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.collapse-grid,
+	.collapse-chevron {
+		transition: none !important;
+	}
+}
+
+/* Reduced motion (system preference): all animations/transitions and view transitions disabled.
+   Before, only the odometer and the section collapse honoured it (~1.4 s of motion on every page). */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		animation-delay: 0ms !important;
+		transition-duration: 0.01ms !important;
+		transition-delay: 0ms !important;
+		scroll-behavior: auto !important;
+	}
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none !important;
+	}
+}
+
+/* Native controls (checkboxes, radios, sliders) in theme colours: no more system blue */
+:root {
+	accent-color: var(--accent);
+}
