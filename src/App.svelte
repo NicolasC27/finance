@@ -1,4 +1,5 @@
 <script lang="ts">
+	import QuickEntryDialog from '$lib/components/QuickEntryDialog.svelte';
 	import { onMount } from 'svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
@@ -31,7 +32,7 @@
 	import '$lib/vacations.svelte'; // hooks the 'Vacances' reclassification into categorize()
 	import '$lib/amazon.svelte'; // hooks the subcategory derived from Amazon orders
 	import { initKraken } from '$lib/wealth.svelte';
-	import { uiState, showToast } from '$lib/ui.svelte';
+	import { uiState, showToast, togglePrivacy } from '$lib/ui.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 
 	/** Root: sidebar layout + custom router outlet, Cmd+K palette, Kraken modal. */
@@ -66,7 +67,7 @@
 	/**
 	 * Global shortcuts: Cmd/Ctrl+K toggles the palette (even inside an input); Cmd/Ctrl+, toggles
 	 * Settings but never on top of another dialog (only the palette gives way); '?' toggles the
-	 * shortcuts cheat sheet and Escape closes it.
+	 * shortcuts cheat sheet and Escape closes it; '+' opens the quick expense entry.
 	 */
 	function onGlobalKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -87,6 +88,16 @@
 		const target = e.target as HTMLElement | null;
 		if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
 
+		if (e.key === '+') {
+			e.preventDefault();
+			uiState.quickEntryOpen = true;
+			return;
+		}
+		if (e.key === 'h' || e.key === 'H') {
+			e.preventDefault();
+			togglePrivacy();
+			return;
+		}
 		if (e.key === '?') {
 			e.preventDefault();
 			uiState.shortcutsOpen = !uiState.shortcutsOpen;
@@ -112,7 +123,7 @@
 	}
 
 	/** Display preferences: a change in another tab never threatens data. */
-	const PREF_KEYS = new Set(['budget:theme', 'budget:sidebar', 'budget:ui-collapse', 'budget:analyse-ui', 'budget:layout', 'budget:modules', 'budget:car-options']);
+	const PREF_KEYS = new Set(['budget:theme', 'budget:sidebar', 'budget:ui-collapse', 'budget:analyse-ui', 'budget:layout', 'budget:modules', 'budget:car-options', 'budget:privacy']);
 
 	/**
 	 * Another tab open on the app: each tab rewrites its full in-memory copy and the last writer wins,
@@ -216,6 +227,7 @@
 	</main>
 	<CommandPalette onSelectTheme={selectTheme} />
 	<ShortcutsDialog />
+	<QuickEntryDialog />
 	<AutoBackupDialog />
 	<SettingsPanel {theme} onSelectTheme={selectTheme} />
 	<AiOrganizeDialog />

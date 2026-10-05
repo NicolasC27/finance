@@ -23,7 +23,7 @@
 	import { orderedIds, isFullscreen, storeByDefault } from '$lib/layout.svelte';
 	import { isSectionCollapsed, toggleSectionCollapse } from '$lib/ui.svelte';
 	import type { AccountKind } from '$lib/csvCore';
-	import { formatMonth, monthKeyOf, formatEUR, formatEURCompact, formatDate, truncateLabel } from '$lib/format';
+	import { formatMonth, monthKeyOf, formatEUR, formatEURCompact, formatDate, truncateLabel, sensitiveEUR } from '$lib/format';
 	import { merchantLabel } from '$lib/merchant';
 	import { buildEditorialSummary } from '$lib/report';
 	import StatCard from '$lib/components/StatCard.svelte';
@@ -636,6 +636,7 @@
 						<div style={box ? `height: ${box.h}px;` : ''}>
 							<StatCard
 								fill={!!box}
+								sensitive
 								label={isLatestMonth ? 'Solde actuel' : 'Solde fin de mois'}
 								value={monthStats?.balanceEnd ?? balance}
 								variation={show('variation') ? monthStats?.balanceVar : undefined}
@@ -653,6 +654,7 @@
 						<div style={box ? `height: ${box.h}px;` : ''}>
 							<StatCard
 								fill={!!box}
+								sensitive
 								label={cutoffDay ? `Entrées au ${cutoffDay}` : 'Entrées du mois'}
 								value={monthStats?.income ?? 0}
 								variation={show('variation') ? monthStats?.incomeVar : undefined}
@@ -741,7 +743,7 @@
 							{/if}
 						</div>
 						<div class="min-h-0 flex-1" bind:clientHeight={balanceArea}>
-							<BalanceChart points={chartPoints} annotations={show('reperes') ? chartAnnotations : []} projection={show('projection') ? projection : []} height={box ? Math.max(120, balanceArea - 4) : isFullscreen('dashboard', 'balance') ? 520 : 360} />
+							<BalanceChart sensitive points={chartPoints} annotations={show('reperes') ? chartAnnotations : []} projection={show('projection') ? projection : []} height={box ? Math.max(120, balanceArea - 4) : isFullscreen('dashboard', 'balance') ? 520 : 360} />
 						</div>
 						</div>
 					{/snippet}
@@ -847,7 +849,7 @@
 									</p>
 									<p class="meta-xs mt-1">
 										{#if cashback.eur !== undefined}
-											≈ {formatEUR(cashback.eur)} au prix du jour ·
+											≈ {sensitiveEUR(cashback.eur)} au prix du jour ·
 										{/if}
 										{cashbackCount} dépense{cashbackCount > 1 ? 's' : ''} récompensée{cashbackCount > 1 ? 's' : ''}
 									</p>
@@ -864,7 +866,7 @@
 									</p>
 									<p class="meta-xs mt-1">{accountsBreakdown}</p>
 									<p class="meta-xs mt-1">
-										Total net : <span class="tabular" style="color: var(--text);">{formatEUR(accountsTotal)}</span>
+										Total net : <span class="tabular" style="color: var(--text);">{sensitiveEUR(accountsTotal)}</span>
 									</p>
 								</div>
 							{/if}

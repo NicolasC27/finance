@@ -639,6 +639,25 @@ select.input-surface {
 	background-size: 10px 10px;
 }
 
+/* Quick entries waiting for the next statement: greyed and italic, with a dashed accent edge, so
+   what was typed by hand never looks like a bank operation */
+.quick-pending {
+	opacity: 0.62;
+	font-style: italic;
+	box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+	background-image: repeating-linear-gradient(-45deg, transparent 0 7px, color-mix(in srgb, var(--text) 3%, transparent) 7px 8px);
+	transition: opacity var(--motion-base) ease;
+}
+
+.quick-pending:hover,
+.quick-pending:focus-visible {
+	opacity: 0.9;
+}
+
+.quick-pending .chip {
+	font-style: normal;
+}
+
 /* Subtle hover on transaction rows */
 .row-hover {
 	transition: background-color 150ms ease;

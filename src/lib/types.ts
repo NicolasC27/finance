@@ -21,12 +21,19 @@ export interface Transaction {
 	tags?: string[];
 	analysis_date?: string; // Analysis date (CM export)
 	// 'ofx' | 'qif' | 'camt': standard statements (statements.ts)
-	source?: 'demo' | 'cm-csv' | 'cm-xlsx' | 'natixis-csv' | 'kraken' | 'kraken-csv' | 'krak-pdf' | 'portage' | 'ofx' | 'qif' | 'camt';
+	source?: 'demo' | 'cm-csv' | 'cm-xlsx' | 'natixis-csv' | 'kraken' | 'kraken-csv' | 'krak-pdf' | 'portage' | 'ofx' | 'qif' | 'camt' | 'manual';
+	/**
+	 * Quick entry (source 'manual') the user split from the bank operation it was paired with: never
+	 * paired automatically again.
+	 */
+	quick_keep?: boolean;
 	/**
 	 * Computed entry outside the bank (source 'portage': meal vouchers, culture vouchers, reimbursed
 	 * expenses): imposed category, never in the balances.
 	 */
 	virtual_category?: CategoryId;
+	/** Subcategory of a computed entry (Swile meal, culture voucher purchase), checked against its category. */
+	virtual_subcategory?: string;
 	/**
 	 * Originating account: 'cm' (implicit demo), 'cm-XXXXXXXXXXX' (identified Crédit Mutuel account),
 	 * 'natixis', 'kraken'…

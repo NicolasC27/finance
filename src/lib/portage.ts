@@ -95,6 +95,7 @@ export interface VoucherCredit {
 
 export interface VoucherSpend extends VoucherCredit {
 	categoryId: CategoryId;
+	subId?: string;
 }
 
 export interface PortageData {
@@ -105,6 +106,10 @@ export interface PortageData {
 	/** Manual choices: expense line id → operation key, 'aucune' or 'indemnite'. */
 	choix: Record<string, string>;
 	cheques: { credits: VoucherCredit[]; depenses: VoucherSpend[] };
+	/** Meals paid with the Swile card, typed one by one (quick entry): they lower the month's lump. */
+	swile?: VoucherSpend[];
+	/** Daily Swile cap (€), 25 by default. */
+	swilePlafond?: number;
 	/** Tax provision in the budget (absent = active, neutral rate of the last salary). */
 	impot?: TaxSetting;
 }
@@ -116,7 +121,15 @@ export interface TaxSetting {
 	taux?: number;
 }
 
-export const emptyPortage = (): PortageData => ({ paies: [], notes: [], choix: {}, cheques: { credits: [], depenses: [] } });
+export const emptyPortage = (): PortageData => ({ paies: [], notes: [], choix: {}, cheques: { credits: [], depenses: [] }, swile: [] });
+
+/** Default daily cap of the Swile meal card (€). */
+export const SWILE_DAILY_CAP = 25;
+
+/** Lump of a month's meal vouchers not typed meal by meal: payslip value minus the detailed meals, never below 0. */
+export function swileLump(value: number, detailed: number): number {
+	return Math.max(0, r2(value - detailed));
+}
 
 /* ---------- Reading: helpers ---------- */
 
@@ -460,7 +473,7 @@ export function salaryTransfer(payslip: Payslip, txs: Transaction[]): Transactio
 
 export const PORTAGE_ACCOUNT = 'portage';
 
-function entry(date: string, signedAmount: number, label: string, category: CategoryId, note: string): Transaction {
+function entry(date: string, signedAmount: number, label: string, category: CategoryId, note: string, subId?: string): Transaction {
 	return {
 		transaction_amount: { amount: Math.abs(signedAmount).toFixed(2), currency: 'EUR' },
 		booking_date: date,
@@ -470,6 +483,7 @@ function entry(date: string, signedAmount: number, label: string, category: Cate
 		source: 'portage',
 		account: PORTAGE_ACCOUNT,
 		virtual_category: category,
+		...(subId ? { virtual_subcategory: subId } : {}),
 		note
 	};
 }
@@ -489,9 +503,12 @@ export function portageEntries(data: PortageData, txs: Transaction[], txKey: (tx
 			const value = r2(tr.partSalariale + tr.partPatronale);
 			const date = endOfMonth(p.mois);
 			out.push(entry(date, value, `Titres-restaurant Swile · ${monthName(p.mois)}`, 'revenus', `${tr.nombre} tickets de ${r2(value / tr.nombre)} € (moitié retenue sur ton salaire, moitié payée par l'employeur)`));
-			out.push(entry(date, -value, `Repas en titres-restaurant (Swile) · ${monthName(p.mois)}`, 'alimentation', 'Compté comme dépensé dans le mois : l’historique Swile n’est pas importable'));
+			const detailed = r2((data.swile ?? []).filter((s) => s.date.startsWith(p.mois)).reduce((s, x) => s + x.montant, 0));
+			const lump = swileLump(value, detailed);
+			if (lump > 0) out.push(entry(date, -lump, `Repas en titres-restaurant (Swile) · ${monthName(p.mois)}`, 'alimentation', detailed > 0 ? `Le reste du mois : ${eur(detailed)} de repas sont saisis un par un` : 'Compté comme dépensé dans le mois : l’historique Swile n’est pas importable'));
 		}
 	}
+	for (const s of data.swile ?? []) out.push(entry(s.date, -s.montant, `Payé en Swile : ${s.libelle}`, s.categoryId, 'Repas payé avec la carte Swile (saisie rapide)', s.subId));
 	for (const pr of portageTaxProvisions(data)) {
 		const payslip = data.paies.find((p) => p.mois === pr.mois)!;
 		const date = salaryTransfer(payslip, txs)?.booking_date ?? payslip.datePaiement ?? endOfMonth(pr.mois);
@@ -499,7 +516,7 @@ export function portageEntries(data: PortageData, txs: Transaction[], txKey: (tx
 		out.push(entry(date, -pr.montant, `Provision impôt · ${monthName(pr.mois)}`, 'impots', `Prélevé à ${pct(pr.tauxPreleve)} au lieu de ≈ ${pct(pr.tauxVise)} sur ${eur(pr.base)} imposables : mis de côté pour la régularisation de ${adjustmentMonth}. Quand elle sera prélevée, exclus-la du budget pour ne pas la compter deux fois.`));
 	}
 	for (const c of data.cheques.credits) out.push(entry(c.date, c.montant, `Chèques culture · ${c.libelle}`, 'revenus', 'Porte-monnaie chèques culture (onglet Portage)'));
-	for (const d of data.cheques.depenses) out.push(entry(d.date, -d.montant, `Payé en chèques culture : ${d.libelle}`, d.categoryId, 'Dépense en chèques culture (onglet Portage)'));
+	for (const d of data.cheques.depenses) out.push(entry(d.date, -d.montant, `Payé en chèques culture : ${d.libelle}`, d.categoryId, 'Dépense en chèques culture (onglet Portage)', d.subId));
 
 	const matches = matchAllReports(data, txs, txKey);
 	for (const report of data.notes) {

@@ -9,21 +9,7 @@ import { persistJson } from './storage';
 import { categorize, txKey } from './categories';
 import { budgetState } from './budget.svelte';
 import { getMerchantCategoryMap, getTransactions } from './store.svelte';
-import {
-	taxAlerts,
-	pendingMoney,
-	portageEntries,
-	mergePortageDocument,
-	readPortageDocument,
-	emptyPortage,
-	portageTaxProvisions,
-	matchAllReports,
-	targetRate,
-	type ExpenseLine,
-	type ExpenseReport,
-	type PortageData,
-	type TaxSetting
-} from './portage';
+import { taxAlerts, pendingMoney, portageEntries, mergePortageDocument, readPortageDocument, emptyPortage, portageTaxProvisions, matchAllReports, targetRate, type ExpenseLine, type ExpenseReport, type PortageData, type TaxSetting, SWILE_DAILY_CAP } from './portage';
 
 export const PORTAGE_KEY = 'budget:portage';
 
@@ -47,7 +33,9 @@ function load(): PortageData {
 			cheques: {
 				credits: Array.isArray(p.cheques?.credits) ? p.cheques.credits : [],
 				depenses: Array.isArray(p.cheques?.depenses) ? p.cheques.depenses : []
-			}
+			},
+			swile: Array.isArray(p.swile) ? p.swile : [],
+			...(typeof p.swilePlafond === 'number' && p.swilePlafond > 0 ? { swilePlafond: p.swilePlafond } : {})
 		};
 	} catch {
 		return emptyPortage();
@@ -155,10 +143,48 @@ export function addCultureVouchers(c: { date: string; montant: number; libelle: 
 	persist();
 }
 
-export function addVoucherSpend(d: { date: string; montant: number; libelle: string; categoryId: CategoryId }): void {
+export function addVoucherSpend(d: { date: string; montant: number; libelle: string; categoryId: CategoryId; subId?: string }): string {
 	const vouchers = portageState.data.cheques;
-	portageState.data = { ...portageState.data, cheques: { ...vouchers, depenses: [...vouchers.depenses, { id: uid('cd'), ...d }] } };
+	const id = uid('cd');
+	portageState.data = { ...portageState.data, cheques: { ...vouchers, depenses: [...vouchers.depenses, { id, ...d }] } };
 	persist();
+	return id;
+}
+
+/** Meal paid with the Swile card (quick entry). Returns its id. */
+export function addSwileSpend(d: { date: string; montant: number; libelle: string; categoryId: CategoryId; subId?: string }): string {
+	const id = uid('sw');
+	portageState.data = { ...portageState.data, swile: [...(portageState.data.swile ?? []), { id, ...d }] };
+	persist();
+	return id;
+}
+
+export function removeSwileSpend(id: string): void {
+	portageState.data = { ...portageState.data, swile: (portageState.data.swile ?? []).filter((x) => x.id !== id) };
+	persist();
+}
+
+/** Daily Swile cap (€). */
+export function swileCap(): number {
+	return portageState.data.swilePlafond ?? SWILE_DAILY_CAP;
+}
+
+export function setSwileCap(v: number | null): void {
+	const next = { ...portageState.data };
+	if (v === null || !(v > 0)) delete next.swilePlafond;
+	else next.swilePlafond = Math.round(v * 100) / 100;
+	portageState.data = next;
+	persist();
+}
+
+/** Already paid in Swile on a given day (detailed meals). */
+export function swileSpentOn(date: string): number {
+	return Math.round((portageState.data.swile ?? []).filter((s) => s.date === date).reduce((s, x) => s + x.montant, 0) * 100) / 100;
+}
+
+/** Meal vouchers on the payslips (Swile choice offered in the quick entry). */
+export function hasSwile(): boolean {
+	return portageState.data.paies.some((p) => (p.titresRestaurant?.nombre ?? 0) > 0);
 }
 
 export function removeVoucher(id: string): void {

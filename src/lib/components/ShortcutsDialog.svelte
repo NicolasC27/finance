@@ -32,7 +32,9 @@
 				{ keys: ['G', 'R'], label: 'Rapport du mois' },
 				{ keys: ['G', 'J'], label: 'Analyse IA' },
 				{ keys: ['G', 'O'], label: 'Portage' },
-				{ keys: ['G', 'V'], label: 'Voiture' }
+				{ keys: ['G', 'V'], label: 'Voiture' },
+				{ keys: ['+'], label: 'Saisir une dépense' },
+				{ keys: ['H'], label: 'Mode discret : masquer / afficher les montants' }
 			]
 		},
 		{

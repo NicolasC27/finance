@@ -137,6 +137,11 @@ export function subcategorize(
 		if (s && s.categoryId === categorize(tx, overrides, rules, merchantMap)) return forced ?? null;
 	}
 
+	if (tx.virtual_subcategory) {
+		const s = SUB_BY_ID.get(tx.virtual_subcategory);
+		if (s && s.categoryId === categorize(tx, overrides, rules, merchantMap)) return tx.virtual_subcategory;
+	}
+
 	if (subcategoryHook) {
 		const hooked = subcategoryHook(tx);
 		if (hooked !== undefined) {

@@ -4,6 +4,8 @@ import { merchantKey } from './merchant';
 import { loadDemoTransactions } from './data';
 import { persistJson } from './storage';
 import { isStatementSource, skipKnownMovements } from './duplicateGuard';
+import { matchQuickEntries } from './quickEntry';
+import { budgetState, clearOverride, setOverride } from './budget.svelte';
 
 /**
  * Global transaction store: demo (JSON) ∪ imported (CSV/XLSX), deduplicated by txKey. Imported
@@ -36,6 +38,8 @@ export interface ImportFeedback {
 	maskedTransfers?: number;
 	/** OFX/QIF/CAMT statement: movements already known through another export (same account, date, amount), not added. */
 	knownElsewhere?: number;
+	/** Quick entries replaced by the matching bank operation of this import (undo: undoQuickMatches). */
+	quickMatched?: number;
 	at: number; // Date.now()
 }
 
@@ -68,7 +72,9 @@ export const txState = $state({
 	deletedKeys: loadDeleted(),
 	loaded: false,
 	loadError: '',
-	feedback: null as ImportFeedback | null
+	feedback: null as ImportFeedback | null,
+	/** Quick entries replaced by the latest import, with the category moved to the bank operation (undo). */
+	lastQuickMatches: [] as { manual: Transaction; bankKey: string; category?: CategoryId }[]
 });
 
 /** Persists the imported transactions; false if the write failed (quota: reported by a toast). */
@@ -208,7 +214,33 @@ export function addImported(
 		lot = guarded.kept;
 		knownElsewhere += guarded.skipped;
 	}
-	for (const tx of assignDupIndexes(lot)) {
+	const batch = assignDupIndexes(lot);
+	const manualAt = imported.map((tx, i) => ({ tx, i })).filter((x) => x.tx.source === 'manual');
+	const matches = matchQuickEntries(manualAt.map((x) => x.tx), batch, (tx) => !!tx.quick_keep);
+	const replaced = new Set<number>();
+	const quickMatches: { manual: Transaction; bankKey: string; category?: CategoryId }[] = [];
+	for (const m of matches) {
+		const manual = manualAt[m.manual]!.tx;
+		const bank = batch[m.incoming]!;
+		if (manual.note && !bank.note) batch[m.incoming] = { ...bank, note: manual.note };
+		const bankKey = txKey(bank);
+		const manualKey = txKey(manual);
+		const category = budgetState.overrides[manualKey];
+		if (category) {
+			if (!budgetState.overrides[bankKey]) setOverride(bankKey, category);
+			clearOverride(manualKey);
+		}
+		replaced.add(manualAt[m.manual]!.i);
+		quickMatches.push({ manual, bankKey, ...(category ? { category } : {}) });
+	}
+	if (replaced.size) {
+		const kept = imported.filter((_, i) => !replaced.has(i));
+		imported.length = 0;
+		imported.push(...kept);
+		importedIdx.clear();
+		imported.forEach((tx, i) => importedIdx.set(txKey(tx), i));
+	}
+	for (const tx of batch) {
 		const key = txKey(tx);
 		if (deletedSet.has(key)) {
 			resurrectedBlocked++;
@@ -231,6 +263,7 @@ export function addImported(
 		}
 	}
 	txState.imported = [...imported, ...fresh];
+	if (quickMatches.length) txState.lastQuickMatches = quickMatches;
 	const saved = persistImported();
 	const feedback: ImportFeedback = {
 		added: fresh.length,
@@ -243,10 +276,48 @@ export function addImported(
 		accounts: meta.accounts ?? [],
 		...(meta.maskedTransfers !== undefined ? { maskedTransfers: meta.maskedTransfers } : {}),
 		...(knownElsewhere ? { knownElsewhere } : {}),
+		...(quickMatches.length ? { quickMatched: quickMatches.length } : {}),
 		at: Date.now()
 	};
 	txState.feedback = feedback;
 	return feedback;
+}
+
+/**
+ * Saves a quick entry (source 'manual'): counted at once in the budget and the balances, replaced by
+ * the bank operation when the statement is imported. Returns its key.
+ */
+export function addQuickEntry(tx: Transaction): string {
+	const entry: Transaction = { ...tx, source: 'manual' };
+	const key = txKey(entry);
+	if (!keySet.has(key)) {
+		txState.imported = [...txState.imported, entry];
+		persistImported();
+	}
+	return key;
+}
+
+/** Removes a quick entry without a tombstone (undo right after saving: typing it again still works). */
+export function removeQuickEntry(key: string): void {
+	const next = txState.imported.filter((tx) => !(tx.source === 'manual' && txKey(tx) === key));
+	if (next.length === txState.imported.length) return;
+	txState.imported = next;
+	persistImported();
+}
+
+/**
+ * Undoes the pairings of the latest import: the quick entries come back, flagged never to be paired
+ * again, with their category; the bank operations stay.
+ */
+export function undoQuickMatches(): number {
+	const list = txState.lastQuickMatches;
+	if (!list.length) return 0;
+	const back = list.map((m) => ({ ...m.manual, quick_keep: true }));
+	txState.imported = [...txState.imported, ...back];
+	for (const m of list) if (m.category) setOverride(txKey({ ...m.manual, quick_keep: true }), m.category);
+	txState.lastQuickMatches = [];
+	persistImported();
+	return back.length;
 }
 
 /** Updates an imported transaction (note, tags…) by key; false if the key is not an imported one. */

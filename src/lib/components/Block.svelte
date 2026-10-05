@@ -130,6 +130,16 @@
 		if (ctx && host && e.target === host) ctx.keyDown(e, id, host);
 	}
 
+	/** Elements whose double-click belongs to them (fields, buttons, interactive charts), never to the block. */
+	const INTERACTIVE = 'button, a, input, select, textarea, label, summary, [role="button"], [role="application"], [role="slider"], [role="switch"], [contenteditable="true"]';
+
+	/** Double-click on an empty area of the block: fullscreen on, or off when already fullscreen. */
+	function onDoubleClick(e: MouseEvent) {
+		if ((e.target as Element | null)?.closest(INTERACTIVE)) return;
+		window.getSelection()?.removeAllRanges();
+		setFullscreen(page, id, !full);
+	}
+
 	function openMenuFromButton(e: MouseEvent) {
 		const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		ctx?.openMenu(id, box.left, box.bottom + 4);
@@ -137,7 +147,8 @@
 </script>
 
 {#if !ctx}
-	<section class="{framed ? 'card p-4' : ''} {cls}" {style} data-block="{page}:{id}">
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<section class="{framed ? 'card p-4' : ''} {cls}" {style} data-block="{page}:{id}" ondblclick={onDoubleClick}>
 		{@render children(show, size, null)}
 	</section>
 {:else if !stored}
@@ -159,6 +170,7 @@
 		onpointerdown={onPointerDown}
 		oncontextmenu={onContextMenu}
 		onkeydown={onKeyDown}
+		ondblclick={onDoubleClick}
 	>
 		{#if full}
 			<div class="flex min-h-24 items-center justify-center text-sm text-secondary">{label} · affiché en plein écran</div>
@@ -169,7 +181,7 @@
 				</div>
 			</div>
 		{/if}
-		<button type="button" class="tile-more" title="Options du bloc (ou clic droit)" aria-label="Options du bloc {label}" onclick={openMenuFromButton}>
+		<button type="button" class="tile-more" title="Options du bloc (ou clic droit) · double-clic : plein écran" aria-label="Options du bloc {label}" onclick={openMenuFromButton}>
 			<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
 		</button>
 	</section>
@@ -184,7 +196,8 @@
 					Fermer <kbd class="kbd ml-1">Échap</kbd>
 				</button>
 			</div>
-			<section class="card flex-1 p-4 sm:p-5" data-fullscreen="true">
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<section class="card flex-1 p-4 sm:p-5" data-fullscreen="true" ondblclick={onDoubleClick} title="Double-clic : quitter le plein écran">
 				{@render children(show, 'XL', null)}
 			</section>
 		</div>
@@ -194,6 +207,13 @@
 <style>
 	.block-fullscreen {
 		background-color: var(--bg);
+		animation: block-fullscreen-in var(--motion-slow) var(--ease-out);
+	}
+	@keyframes block-fullscreen-in {
+		from {
+			opacity: 0;
+			transform: scale(0.985);
+		}
 	}
 
 	.tile {

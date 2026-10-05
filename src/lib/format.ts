@@ -1,5 +1,33 @@
 /** Formatting helpers (amounts, dates, labels). */
 
+/**
+ * Privacy mode (« mode discret »): the SENSITIVE amounts (wealth, balances, crypto, savings, salary,
+ * portage) come out masked through the `sensitive*` formatters (see sensitiveFormat.ts); everyday
+ * spending stays readable. The source is plugged by ui.svelte.ts (a reactive flag), so templates
+ * re-render instantly when it toggles.
+ */
+let privacySource: () => boolean = () => false;
+
+export function setPrivacySource(fn: () => boolean): void {
+	privacySource = fn;
+}
+
+/** Masked amount shown in privacy mode (no digit, same currency sign). */
+export const MASKED_AMOUNT = '••••';
+
+/** Euro amounts written inside free text (notes, AI answers, alerts): « 4 235 € », « 0,29 €/km », « 1,2 k€ ». */
+const AMOUNT_IN_TEXT = /[-−+]?\d[\d\u00a0\u202f .]*(?:,\d+)?\s?k?€/g;
+
+/** Free text with its euro amounts masked in privacy mode (unchanged otherwise). */
+export function maskAmounts(text: string): string {
+	return privacySource() ? text.replace(AMOUNT_IN_TEXT, `${MASKED_AMOUNT}\u00a0€`) : text;
+}
+
+/** Is privacy mode on (reactive when read inside a template or a derived)? */
+export function isPrivate(): boolean {
+	return privacySource();
+}
+
 const eur = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 const eurCompact = new Intl.NumberFormat('fr-FR', {
 	style: 'currency',
@@ -46,6 +74,28 @@ export function formatPct(value: number, digits = 1, signed = false): string {
 /** 1234.5 → "1 234,50 €"; −1234.5 → "−1 234,50 €" (typographic minus) */
 export function formatEUR(amount: number): string {
 	return typoMinus(eur.format(amount));
+}
+
+const MASKED = `${MASKED_AMOUNT}\u00a0€`;
+
+/** formatEUR for a sensitive amount: masked in privacy mode. */
+export function sensitiveEUR(amount: number): string {
+	return privacySource() ? MASKED : formatEUR(amount);
+}
+
+/** formatEURCompact for a sensitive amount: masked in privacy mode. */
+export function sensitiveEURCompact(amount: number): string {
+	return privacySource() ? MASKED : formatEURCompact(amount);
+}
+
+/** formatEURNarrowParts for a sensitive amount: masked in privacy mode. */
+export function sensitiveEURNarrowParts(amount: number): NarrowParts {
+	return privacySource() ? { main: MASKED, suffix: '' } : formatEURNarrowParts(amount);
+}
+
+/** formatEURNarrow for a sensitive amount: masked in privacy mode. */
+export function sensitiveEURNarrow(amount: number): string {
+	return privacySource() ? MASKED : formatEURNarrow(amount);
 }
 
 /** Compact version without decimals (chart axes). */

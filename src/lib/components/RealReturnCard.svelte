@@ -16,7 +16,7 @@
 	import { getInvestments } from '$lib/investments.svelte';
 	import { getTransactions } from '$lib/store.svelte';
 	import { signedAmount } from '$lib/data';
-	import { formatEURCompact as formatEUR } from '$lib/format';
+	import { formatEURCompact as formatEUR } from '$lib/sensitiveFormat';
 	import { priceFactor, RECENT_INFLATION, LIVRET_A_SOURCE, livretARate } from '$lib/inflation';
 	import { returnSummary, cryptoRealReturn } from '$lib/realReturn';
 	import { setInvestmentRate } from '$lib/financeSettings.svelte';

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { formatEUR, formatEURNarrowParts } from '$lib/format';
+	import { formatEUR, formatEURNarrowParts, sensitiveEUR, sensitiveEURNarrowParts } from '$lib/format';
 
 	/**
 	 * Rolling-digit odometer (SPEC v12 §1), a mechanical counter: each digit is a one-line
@@ -32,9 +32,12 @@
 		value,
 		compact = false,
 		flash = undefined,
+		sensitive = false,
 		class: klass = ''
 	}: {
 		value: number;
+		/** Wealth, balance, salary…: masked in privacy mode. */
+		sensitive?: boolean;
 		/** 'k€' format (formatEURNarrowParts), static suffix. */
 		compact?: boolean;
 		/**
@@ -50,11 +53,11 @@
 		let main: string;
 		let suffix = '';
 		if (compact) {
-			const parts = formatEURNarrowParts(v);
+			const parts = (sensitive ? sensitiveEURNarrowParts : formatEURNarrowParts)(v);
 			main = parts.main;
 			suffix = parts.suffix;
 		} else {
-			main = formatEUR(v);
+			main = (sensitive ? sensitiveEUR : formatEUR)(v);
 		}
 		const tokens: Token[] = [];
 		let sep = '';

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { quickEntryStale } from '$lib/quickEntry.svelte';
 	import { segmented } from '$lib/actions/segmented';
 	import { onMount } from 'svelte';
 	import type { CategoryId, Transaction } from '$lib/types';
@@ -7,24 +8,11 @@
 	import { budgetState, patchOverrides, setSubOverride } from '$lib/budget.svelte';
 	import { setOverrideAndPrompt } from '$lib/rules.svelte';
 	import RulesCard from '$lib/components/RulesCard.svelte';
-	import {
-		getTransactions,
-		getMerchantCategoryMap,
-		txState,
-		addImported,
-		resetImported,
-		restoreImported,
-		deleteTransactions,
-		restoreTransactions,
-		deletedCount,
-		resetDeletedTombstones,
-		updateImported,
-		updateImportedMany
-	} from '$lib/store.svelte';
+	import { getTransactions, getMerchantCategoryMap, txState, addImported, resetImported, restoreImported, deleteTransactions, restoreTransactions, deletedCount, resetDeletedTombstones, updateImported, updateImportedMany, undoQuickMatches } from '$lib/store.svelte';
 	import { isPending, signedAmount } from '$lib/data';
 	import { isBudgetFlow } from '$lib/totals';
 	import { flowKind } from '$lib/flow';
-	import { cleanLabel, formatDate, formatEUR, formatEURCompact, formatMonth, monthKeyOf } from '$lib/format';
+	import { cleanLabel, formatDate, formatEUR, formatEURCompact, formatMonth, monthKeyOf, maskAmounts } from '$lib/format';
 	import { addTags, hasTag, removeTags, sameTags, splitTagInput, suggestTags, tagInventory, tagKey } from '$lib/tags';
 	import { calendarMonth, purchaseDate, purchaseMonthRange, rangePurchases, weekdayAverages, WEEKDAY_LABELS, WEEKDAY_NAMES } from '$lib/spendingCalendar';
 	import { fly } from 'svelte/transition';
@@ -1318,7 +1306,8 @@
 		portage: 'Portage',
 		ofx: 'Relevé OFX',
 		qif: 'Relevé QIF',
-		camt: 'Relevé CAMT'
+		camt: 'Relevé CAMT',
+		manual: 'Saisie rapide (en attente du relevé)'
 	};
 
 	/**
@@ -1599,6 +1588,12 @@
 						<!-- Internal transfers already hidden from the budget in this batch (v13) -->
 						<p class="meta-xs mt-1" style="color: var(--text-2);">
 							{fb.maskedTransfers} virement{fb.maskedTransfers > 1 ? 's' : ''} interne{fb.maskedTransfers > 1 ? 's' : ''} masqué{fb.maskedTransfers > 1 ? 's' : ''} du budget
+						</p>
+					{/if}
+					{#if fb.quickMatched}
+						<p class="meta-xs mt-1" style="color: var(--text-2);">
+							{fb.quickMatched} saisie{fb.quickMatched > 1 ? 's' : ''} rapide{fb.quickMatched > 1 ? 's' : ''} remplacée{fb.quickMatched > 1 ? 's' : ''} par l'opération de la banque ·
+							<button type="button" class="cursor-pointer hover:underline" style="color: var(--accent);" onclick={() => { const n = undoQuickMatches(); if (txState.feedback) txState.feedback = { ...txState.feedback, quickMatched: 0 }; showToast(`${n} saisie${n > 1 ? 's' : ''} rapide${n > 1 ? 's' : ''} rétablie${n > 1 ? 's' : ''}, plus jamais rapprochée${n > 1 ? 's' : ''} automatiquement`); }}>ce n'est pas la même opération</button>
 						</p>
 					{/if}
 					{#if fb.knownElsewhere}
@@ -1947,6 +1942,7 @@
 							class="row-hover press group cursor-pointer border-t transition-colors"
 							class:row-cursor={cursor === rowIndex}
 							class:row-selected={isSelected}
+							class:quick-pending={tx.source === 'manual'}
 							style="border-color: var(--border-subtle);"
 							data-row-index={rowIndex}
 							tabindex="0"
@@ -1988,6 +1984,13 @@
 									{#if isPending(tx)}
 										<span class="chip chip-amber ml-2">En cours</span>
 									{/if}
+									{#if tx.source === 'manual'}
+										{#if quickEntryStale(tx)}
+											<span class="chip chip-amber ml-2" title="Saisie rapide absente du relevé alors qu'il couvre plus d'une semaine après : montant, compte ou date différents ?">absente du relevé</span>
+										{:else}
+											<span class="chip chip-outline ml-2" title="Saisie rapide : comptée tout de suite, remplacée par l'opération de la banque à l'import du relevé">à rapprocher</span>
+										{/if}
+									{/if}
 									{#if vacationStatus(tx) === 'check'}
 										<button type="button" class="chip chip-amber ml-2 cursor-pointer" title="Comptabilisée après la période : cliquez pour la rattacher à ces vacances" onclick={(e) => { e.stopPropagation(); onAssignVacation(tx, vacationFilter?.id ?? null); }}>à vérifier → Vacances</button>
 									{:else if vacationStatus(tx) === 'refund'}
@@ -1997,7 +2000,7 @@
 									{/if}
 								</p>
 								{#if tx.note}
-									<p class="meta-xs mt-0.5 truncate">{tx.note}</p>
+									<p class="meta-xs mt-0.5 truncate">{tx.source === 'portage' ? maskAmounts(tx.note) : tx.note}</p>
 								{/if}
 							</td>
 							<td class="px-4 py-1" onclick={(e) => e.stopPropagation()}>
@@ -2132,6 +2135,7 @@
 			<div
 				class="card press fade-slide cursor-pointer p-3"
 				class:card-selected={isSelected}
+				class:quick-pending={tx.source === 'manual'}
 				style="--stagger: {Math.min(i, 10) * 30}ms;"
 				tabindex="0"
 				role="button"
@@ -2170,13 +2174,16 @@
 							{#if isPending(tx)}
 								<span class="chip chip-amber ml-1.5">En cours</span>
 							{/if}
+							{#if tx.source === 'manual'}
+								<span class="chip {quickEntryStale(tx) ? 'chip-amber' : 'chip-outline'} ml-1.5">{quickEntryStale(tx) ? 'absente du relevé' : 'à rapprocher'}</span>
+							{/if}
 						</p>
 						<p class="meta-xs mt-0.5">
 							{tx.booking_date ? formatDate(tx.booking_date) : 'En attente'} · {getCategory(catId).label}{#if sub}&nbsp;· {sub.label}{/if}
 							{#if tx.checked}<span style="color: var(--accent);"> · ✓ pointée</span>{/if}
 						</p>
 						{#if tx.note}
-							<p class="meta-xs mt-0.5 truncate">{tx.note}</p>
+							<p class="meta-xs mt-0.5 truncate">{tx.source === 'portage' ? maskAmounts(tx.note) : tx.note}</p>
 						{/if}
 						{#if tx.tags && tx.tags.length > 0}
 							<div class="mt-1.5 flex flex-wrap gap-1">
@@ -2403,7 +2410,7 @@
 														{/if}
 														{#if item.tx.note}
 															<dt class="text-secondary">Note</dt>
-															<dd class="break-words">{item.tx.note}</dd>
+															<dd class="break-words">{item.tx.source === 'portage' ? maskAmounts(item.tx.note) : item.tx.note}</dd>
 														{/if}
 													</dl>
 													<button type="button" class="btn btn-secondary btn-sm mt-1.5" onclick={() => openInList(item.tx)}>Ouvrir dans la liste</button>

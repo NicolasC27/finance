@@ -14,7 +14,7 @@
 <script lang="ts">
 	import DateField from '$lib/components/DateField.svelte';
 	import { onMount } from 'svelte';
-	import { formatEUR, formatDate, formatPct } from '$lib/format';
+	import { formatEUR, formatDate, formatPct } from '$lib/sensitiveFormat';
 	import { lighten } from '$lib/color';
 	import { parseNatixisPdf, KNOWN_FUNDS } from '$lib/pdfNatixis';
 	import { natixisState, saveNatixisNotice, saveNatixisPerfs, addManualHolding, getNatixisPayments, getNatixisPaymentsTotal, rememberNatixisPayment, getNatixisEstimate, saveNatixisSnapshot, getNatixisProjection } from '$lib/natixisHoldings.svelte';

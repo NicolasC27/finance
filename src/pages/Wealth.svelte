@@ -7,7 +7,7 @@
 	import { orderedIds, isFullscreen } from '$lib/layout.svelte';
 	import type { BlockElement } from '$lib/layoutModel';
 	import { getTransactions, txState } from '$lib/store.svelte';
-	import { formatEUR, formatMonth, formatDate, formatPct } from '$lib/format';
+	import { formatEUR, formatMonth, formatDate, formatPct } from '$lib/sensitiveFormat';
 	import { getLoanViews, setMonthlyOverride, clearMonthlyOverride } from '$lib/loans.svelte';
 	import { navigate } from '$lib/router.svelte';
 	import { uiState, showToast } from '$lib/ui.svelte';
@@ -440,7 +440,7 @@
 					<p class="label-xs">Valeur totale du patrimoine</p>
 					<p class="display-amount mt-1">
 						<!-- 80 px net amount: rolling-digit odometer (SPEC v12 §1) -->
-						<OdometerAmount value={getNetWorth()} compact />
+						<OdometerAmount sensitive value={getNetWorth()} compact />
 					</p>
 					{#if var30 !== undefined && show('variation')}
 						<p class="tabular mt-2 text-sm font-medium" style="color: {var30 >= 0 ? 'var(--accent)' : 'var(--amber)'};">
@@ -543,7 +543,7 @@
 						{/if}
 					</div>
 					{#if history.length > 1}
-						<BalanceChart points={history} height={isFullscreen('patrimoine', 'history') ? 520 : chartHeight(box, historyTop, 0, show('grande') ? 360 : 240, 140)} />
+						<BalanceChart sensitive points={history} height={isFullscreen('patrimoine', 'history') ? 520 : chartHeight(box, historyTop, 0, show('grande') ? 360 : 240, 140)} />
 					{:else}
 						<p class="text-sm text-secondary">Historique insuffisant pour tracer la courbe.</p>
 					{/if}
@@ -720,7 +720,7 @@
 					</div>
 					{#if hasNatixis()}
 						<p class="amount-md mt-2.5">
-							<AnimatedAmount value={banks.natixis} format={formatEUR} />
+							<AnimatedAmount sensitive value={banks.natixis} format={formatEUR} />
 						</p>
 						{#if show('compteur')}
 							<p class="meta-xs mt-1.5">
@@ -760,7 +760,7 @@
 						<h2 class="label-xs">Crypto · Kraken</h2>
 						{#if show('lien')}<a href="/crypto" class="text-xs font-medium transition-colors hover:underline" style="color: var(--accent);">Voir la page Crypto</a>{/if}
 					</div>
-					<p class="amount-md mt-2.5"><AnimatedAmount value={getCryptoTotal()} format={formatEUR} /></p>
+					<p class="amount-md mt-2.5"><AnimatedAmount sensitive value={getCryptoTotal()} format={formatEUR} /></p>
 					{#if getKrakenPerformance() && show('gain')}
 						{@const perf = getKrakenPerformance()!}
 						<p class="meta-xs mt-1">

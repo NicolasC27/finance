@@ -21,7 +21,7 @@
 	import { getMerchantCategoryMap } from '$lib/store.svelte';
 	import { getBudgetTransactions } from '$lib/transfers.svelte';
 	import { monthTotals } from '$lib/totals';
-	import { formatEURCompact } from '$lib/format';
+	import { formatEURCompact } from '$lib/sensitiveFormat';
 	const formatEUR = formatEURCompact;
 	import { LONG_TERM_INFLATION } from '$lib/inflation';
 	import { averageSavings, monthsToReach, projectNetWorth, realReturn } from '$lib/realReturn';

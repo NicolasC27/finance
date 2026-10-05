@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { BalancePoint } from '$lib/data';
 	import { smoothPath } from '$lib/data';
-	import { formatEUR, formatEURCompact, formatDate } from '$lib/format';
+	import { formatEUR, formatEURCompact, formatDate, sensitiveEUR, sensitiveEURCompact } from '$lib/format';
 	import { changePct } from '$lib/chartGeometry';
 
 	/** Automatic marker on the curve (salary in teal, largest expense in amber). */
@@ -34,8 +34,10 @@
 		 */
 		formatValue = undefined,
 		/** Horizontal dashed reference line (e.g. cost basis) with a label. */
-		reference = undefined
-	}: { points: BalancePoint[]; annotations?: ChartAnnotation[]; projection?: BalancePoint[]; height?: number; formatValue?: (v: number) => string; reference?: { value: number; label: string } } = $props();
+		reference = undefined,
+		/** Balances / wealth: axis and tooltip masked in privacy mode. */
+		sensitive = false
+	}: { points: BalancePoint[]; annotations?: ChartAnnotation[]; projection?: BalancePoint[]; height?: number; formatValue?: (v: number) => string; reference?: { value: number; label: string }; sensitive?: boolean } = $props();
 
 	const uid = $props.id();
 	/** Dataset identity: a change replays the drawing (keyed block below). */
@@ -48,8 +50,8 @@
 			traceDone = false;
 		}
 	});
-	const fmtAxis = $derived(formatValue ?? formatEURCompact);
-	const fmtTip = $derived(formatValue ?? formatEUR);
+	const fmtAxis = $derived(formatValue ?? (sensitive ? sensitiveEURCompact : formatEURCompact));
+	const fmtTip = $derived(formatValue ?? (sensitive ? sensitiveEUR : formatEUR));
 
 	const HEIGHT = $derived(height);
 	const PAD = { top: 12, right: 14, bottom: 26, left: 60 }; // left: Y-axis labels ('0,4343 €' fits)

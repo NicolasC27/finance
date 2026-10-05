@@ -12,7 +12,7 @@
 	import { CATEGORIES, getCategory, txKey } from '$lib/categories';
 	import { signedAmount } from '$lib/data';
 	import { merchantLabel } from '$lib/merchant';
-	import { cleanLabel, formatDate, formatEUR, formatMonth } from '$lib/format';
+	import { cleanLabel, formatDate, formatEUR, formatMonth, maskAmounts } from '$lib/sensitiveFormat';
 	import { getTransactions } from '$lib/store.svelte';
 	import { showToast } from '$lib/ui.svelte';
 	import { purchaseDateFromLabel, shiftPortageMonth, salaryTransfer, type MatchedLine } from '$lib/portage';
@@ -29,7 +29,10 @@
 		addCultureVouchers,
 		addVoucherSpend,
 		removeVoucher,
-		cultureVoucherBalance
+		cultureVoucherBalance,
+		removeSwileSpend,
+		swileCap,
+		setSwileCap
 	} from '$lib/portage.svelte';
 
 	/**
@@ -324,8 +327,8 @@
 												role={a.niveau === 'alerte' ? 'alert' : 'status'}
 												style="border-left-color: {a.niveau === 'alerte' ? 'var(--amber)' : 'var(--accent)'};"
 											>
-												<p class="font-medium" style={a.niveau === 'alerte' ? 'color: var(--amber);' : ''}>{a.niveau === 'alerte' ? '⚠ ' : ''}{a.titre}</p>
-												{#if show('details')}<p class="meta-xs mt-0.5">{a.detail}</p>{/if}
+												<p class="font-medium" style={a.niveau === 'alerte' ? 'color: var(--amber);' : ''}>{a.niveau === 'alerte' ? '⚠ ' : ''}{maskAmounts(a.titre)}</p>
+												{#if show('details')}<p class="meta-xs mt-0.5">{maskAmounts(a.detail)}</p>{/if}
 											</div>
 										{/each}
 									</div>
@@ -604,6 +607,25 @@
 										</li>
 									{/each}
 								</ul>
+								{#if (data.swile ?? []).length}
+									<p class="label-xs mt-3">Repas saisis un par un</p>
+									<ul class="mt-1 divide-y divide-[var(--border-subtle)] text-[13px]">
+										{#each [...(data.swile ?? [])].reverse().slice(0, 8) as m (m.id)}
+											<li class="flex items-center gap-3 py-1">
+												<span class="meta-xs tabular w-20 shrink-0">{formatDate(m.date)}</span>
+												<span class="min-w-0 flex-1 truncate">{m.libelle}</span>
+												<span class="tabular">{formatEUR(m.montant)}</span>
+												<button type="button" class="cursor-pointer text-secondary hover:text-[var(--amber)]" aria-label="Supprimer le repas {m.libelle}" onclick={() => removeSwileSpend(m.id)}>×</button>
+											</li>
+										{/each}
+									</ul>
+									<p class="meta-xs mt-1">Ils réduisent d'autant le forfait « repas Swile » du mois.</p>
+								{/if}
+								<label class="meta-xs mt-2 flex items-center gap-1.5">
+									Plafond par jour
+									<input type="text" inputmode="decimal" class="input-surface tabular w-14 !px-1.5 !py-0.5 text-right text-xs" value={String(swileCap()).replace('.', ',')} aria-label="Plafond Swile par jour (€)" onchange={(e) => { const v = Number((e.target as HTMLInputElement).value.replace(',', '.')); setSwileCap(Number.isFinite(v) && v > 0 ? v : null); }} />
+									€ · au-delà, la saisie rapide met le reste sur ta carte
+								</label>
 							{/snippet}
 						</Block>
 					{/if}

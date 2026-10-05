@@ -154,14 +154,17 @@
 		</div>
 	{/if}
 
-	<table class="sr-only">
-		<caption>Dépenses par mois</caption>
-		<tbody>
-			{#each monthTotals as [m, total] (m)}
-				<tr><th scope="row">{MONTHS[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}</th><td>{formatEUR(total)}</td></tr>
-			{/each}
-		</tbody>
-	</table>
+	<!-- Monthly totals for screen readers: the wrapper hides the caption too (a table caption escapes the table's own clipping) -->
+	<div class="sr-only">
+		<table>
+			<caption>Dépenses par mois</caption>
+			<tbody>
+				{#each monthTotals as [m, total] (m)}
+					<tr><th scope="row">{MONTHS[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}</th><td>{formatEUR(total)}</td></tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
 </div>
 
 <style>
