@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { RoutePath } from '$lib/router.svelte';
 	import { route } from '$lib/router.svelte';
-	import { uiState, toggleSidebar } from '$lib/ui.svelte';
+	import { uiState, toggleSidebar, togglePrivacy } from '$lib/ui.svelte';
 	import { autoBackupState } from '$lib/autoBackup.svelte';
 	import { getNetWorth, getNetWorthSparkline } from '$lib/wealth.svelte';
 	import Sparkline from './Sparkline.svelte';
@@ -182,6 +182,18 @@
 		</svg>
 		{#if !collapsed}<span class="serif truncate text-lg">Budget</span>{/if}
 	</a>
+	<!-- Privacy mode: every amount masked (H key) -->
+	<button
+		type="button"
+		class="privacy-toggle press absolute top-[18px] flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-secondary transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {collapsed ? 'hidden' : 'right-3'}"
+		class:privacy-on={uiState.privacy}
+		onclick={togglePrivacy}
+		aria-pressed={uiState.privacy}
+		title={uiState.privacy ? 'Afficher les montants (H)' : 'Mode discret : masquer les montants (H)'}
+		aria-label={uiState.privacy ? 'Afficher les montants' : 'Masquer les montants'}
+	>
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{#if uiState.privacy}<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.1A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3.1 4.2M6.3 6.3C4.1 7.7 2.6 9.8 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.2-1" />{:else}<path d="M2 12c1-2.5 5-7 10-7s9 4.5 10 7c-1 2.5-5 7-10 7S3 14.5 2 12z" /><circle cx="12" cy="12" r="3" />{/if}</svg>
+	</button>
 
 	<!-- Palette button (replaces the search) -->
 	<div class="shrink-0 px-3 pt-4">
@@ -213,6 +225,18 @@
 		>
 			{@render importIcon(14)}
 			{#if !collapsed}<span class="flex-1 text-left">Importer</span>{/if}
+		</button>
+		<!-- Quick expense entry: counted at once, replaced by the bank operation on import -->
+		<button
+			type="button"
+			class="press mt-2 flex cursor-pointer items-center gap-2.5 rounded-full border text-[13px] text-secondary transition-colors duration-200 hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full px-3.5 py-2'}"
+			style="border-color: var(--hairline);"
+			onclick={() => (uiState.quickEntryOpen = true)}
+			title="Saisir une dépense en une phrase (touche +)"
+			aria-label="Saisir une dépense"
+		>
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+			{#if !collapsed}<span class="flex-1 text-left">Dépense</span><kbd class="kbd">+</kbd>{/if}
 		</button>
 	</div>
 
@@ -323,7 +347,7 @@
 				<p class="label-xs">Patrimoine net</p>
 				<div class="mt-2 flex items-end justify-between gap-2">
 					<p class="serif text-xl leading-none">
-						<AnimatedAmount value={getNetWorth()} narrow />
+						<AnimatedAmount value={getNetWorth()} narrow sensitive />
 					</p>
 					{#if sparkValues.length > 1}
 						<Sparkline values={sparkValues} width={72} height={24} />
@@ -479,6 +503,10 @@
 				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
 				Modules…
 			</button>
+			<button type="button" role="menuitem" class="press flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-2 text-left text-[13px] text-secondary" onclick={() => { plusMenuOpen = false; uiState.quickEntryOpen = true; }}>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+				Saisir une dépense
+			</button>
 			<button type="button" role="menuitem" class="press flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-2 text-left text-[13px] text-secondary" onclick={openImports}>
 				{@render importIcon(16)}
 				Importer des fichiers
@@ -552,6 +580,10 @@
 
 <style>
 	/* Width animated when collapsing (210 ↔ 64 px) */
+	.privacy-on {
+		color: var(--accent);
+		background-color: var(--accent-soft);
+	}
 	.sidebar {
 		transition: width 250ms ease;
 	}

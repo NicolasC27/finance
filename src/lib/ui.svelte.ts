@@ -4,9 +4,20 @@
  */
 
 import { setPersistFailureHandler } from './storage';
+import { setPrivacySource } from './format';
 
 const SIDEBAR_KEY = 'budget:sidebar';
 const COLLAPSE_KEY = 'budget:ui-collapse';
+const PRIVACY_KEY = 'budget:privacy';
+
+function loadPrivacy(): boolean {
+	if (typeof localStorage === 'undefined') return false;
+	try {
+		return localStorage.getItem(PRIVACY_KEY) === 'on';
+	} catch {
+		return false;
+	}
+}
 
 function loadSidebar(): boolean {
 	if (typeof localStorage === 'undefined') return false;
@@ -31,8 +42,12 @@ function loadCollapse(): Record<string, boolean> {
 export const uiState = $state({
 	/** Collapsed sidebar (64 px, icons only), persisted. */
 	sidebarCollapsed: loadSidebar(),
+	/** Privacy mode: every amount masked (screen sharing, public place), persisted. */
+	privacy: loadPrivacy(),
 	/** Command palette open (Cmd/Ctrl+K). */
 	paletteOpen: false,
+	/** Quick expense entry dialog (sidebar, palette, « n » shortcut). */
+	quickEntryOpen: false,
 	/** Kraken keys configuration modal. */
 	krakenModalOpen: false,
 	/** Keyboard shortcuts cheat sheet ('?' key). */
@@ -132,3 +147,18 @@ export function toggleSidebar(): void {
 	} catch {
 	}
 }
+
+setPrivacySource(() => uiState.privacy);
+
+/** Toggles privacy mode (every amount masked) and remembers it. */
+export function togglePrivacy(): void {
+	uiState.privacy = !uiState.privacy;
+	document.documentElement.classList.toggle('privacy', uiState.privacy);
+	try {
+		localStorage.setItem(PRIVACY_KEY, uiState.privacy ? 'on' : 'off');
+	} catch {
+	}
+	showToast(uiState.privacy ? 'Mode discret : montants masqués (touche H pour les afficher)' : 'Montants affichés');
+}
+
+if (typeof document !== 'undefined') document.documentElement.classList.toggle('privacy', uiState.privacy);

@@ -12,7 +12,7 @@
 </script>
 
 <script lang="ts">
-	import { formatEURCompact as formatEUR } from '$lib/format';
+	import { formatEURCompact as formatEUR } from '$lib/sensitiveFormat';
 	import { livretARate } from '$lib/inflation';
 	import { simulateEarlyRepayment } from '$lib/loanCost';
 	import { getLoanCosts, installmentMonth } from '$lib/loanCosts.svelte';

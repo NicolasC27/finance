@@ -23,6 +23,9 @@
  *   coarse hints, sizes in px, the current tree), in an empty folder, with no
  *   tool at all; it answers a JSON tree that the app validates before applying
  *   it (with undo).
+ * - POST /saisie (quick expense entry): Claude receives ONLY the typed sentence, today's date and
+ *   the list of categories, in an empty folder, with no tool; it answers a JSON draft (label,
+ *   amount, direction, date, category) that the app validates and shows before saving.
  */
 import http from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -31,6 +34,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSyn
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readLayoutAnswer } from '../src/lib/aiLayout.ts';
+import { readQuickAnswer } from '../src/lib/quickEntry.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '.ia');
 const WORKSPACE = join(ROOT, 'workspace');
@@ -71,6 +75,12 @@ const LAYOUT_TIMEOUT_MS = 20_000;
 const LAYOUT_SYSTEM_PROMPT = 'Tu es un moteur de mise en page. Tu réponds uniquement par un objet JSON valide et compact, sans texte autour.';
 /** Added to the prompt of the second attempt, after an unreadable first answer. */
 const LAYOUT_RETRY_HINT = "Ta réponse précédente était illisible : renvoie UNIQUEMENT l'objet JSON demandé, compact, sur une seule ligne, sans bloc de code ni texte autour.";
+const QUICK_DIR = join(ROOT, 'saisie');
+mkdirSync(QUICK_DIR, { recursive: true, mode: 0o700 });
+/** Model of the quick entry: one tiny JSON, Haiku answers in a few seconds. IA_MODELE_SAISIE overrides it. */
+const QUICK_MODEL = process.env.IA_MODELE_SAISIE ?? 'claude-haiku-4-5-20251001';
+const QUICK_TIMEOUT_MS = 15_000;
+const QUICK_SYSTEM_PROMPT = "Tu lis une dépense ou une rentrée d'argent écrite en français et tu réponds uniquement par un objet JSON compact, sans texte autour.";
 /** Unreadable answers of « Organiser par l'IA » (block titles and sizes only, no money data), for diagnosis. */
 const LAYOUT_FAILURES_LOG = join(LAYOUT_DIR, 'echecs.log');
 
@@ -575,6 +585,85 @@ async function handleLayout(req: http.IncomingMessage, res: http.ServerResponse,
 	run(1);
 }
 
+interface QuickRequest {
+	texte: string;
+	aujourdhui: string;
+	categories: { id: string; label: string }[];
+	sousCategories: { id: string; categoryId: string; label: string }[];
+}
+
+function parseQuickRequest(raw: string): QuickRequest | string {
+	let b: unknown;
+	try {
+		b = JSON.parse(raw);
+	} catch {
+		return 'JSON invalide.';
+	}
+	const o = (b && typeof b === 'object' ? b : {}) as Record<string, unknown>;
+	if (typeof o.texte !== 'string' || !o.texte.trim() || o.texte.length > 300) return 'Phrase manquante ou trop longue.';
+	if (typeof o.aujourdhui !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(o.aujourdhui)) return 'Date du jour invalide.';
+	const categories = Array.isArray(o.categories)
+		? o.categories.slice(0, 30).flatMap((c) => {
+				const x = c as Record<string, unknown>;
+				return typeof x?.id === 'string' && /^[a-z-]{2,30}$/.test(x.id) && typeof x.label === 'string' && x.label.length <= 60 ? [{ id: x.id, label: x.label }] : [];
+			})
+		: [];
+	const sousCategories = Array.isArray(o.sousCategories)
+		? o.sousCategories.slice(0, 80).flatMap((c) => {
+				const x = c as Record<string, unknown>;
+				return typeof x?.id === 'string' && /^[a-z-]{2,30}$/.test(x.id) && typeof x.categoryId === 'string' && categories.some((k) => k.id === x.categoryId) && typeof x.label === 'string' && x.label.length <= 60 ? [{ id: x.id, categoryId: x.categoryId, label: x.label }] : [];
+			})
+		: [];
+	return { texte: o.texte.replace(/[\r\n\t]+/g, ' ').trim(), aujourdhui: o.aujourdhui, categories, sousCategories };
+}
+
+function quickPrompt(q: QuickRequest): string {
+	const weekday = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', timeZone: 'UTC' }).format(new Date(`${q.aujourdhui}T12:00:00Z`));
+	return `Phrase écrite par l'utilisateur au moment d'une dépense ou d'une rentrée d'argent : « ${q.texte} »
+Aujourd'hui : ${weekday} ${q.aujourdhui}.
+Catégories possibles (id : libellé, puis ses sous-catégories) : ${q.categories.map((c) => `${c.id} : ${c.label}${q.sousCategories.some((s) => s.categoryId === c.id) ? ` [${q.sousCategories.filter((s) => s.categoryId === c.id).map((s) => `${s.id} : ${s.label}`).join(', ')}]` : ''}`).join(' ; ')}.
+Réponds UNIQUEMENT par un objet JSON compact sur une ligne : {"libelle": "<marchand ou objet, court, avec une majuscule>", "montant": <nombre positif en euros>, "sens": "debit" ou "credit", "date": "AAAA-MM-JJ", "categorie": "<id de la liste>", "sous_categorie": "<id d'une sous-catégorie de cette catégorie, ou null>"}.
+"hier" = la veille, un jour de semaine = le dernier passé, sans date = aujourd'hui ; jamais une date future. "credit" seulement pour de l'argent reçu (remboursement, vente, salaire).`;
+}
+
+/**
+ * Quick entry (POST /saisie): Claude, without any tool, in an empty folder, reads the sentence; the
+ * relay checks the answer with the app's own reader (readQuickAnswer) and returns { brouillon }.
+ */
+async function handleQuick(req: http.IncomingMessage, res: http.ServerResponse, mine: Slot): Promise<void> {
+	const q = parseQuickRequest(await readBody(req));
+	if (typeof q === 'string') return json(res, 400, { error: q });
+	const args = ['-p', quickPrompt(q), '--restricted', '--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence', '--tools', '', '--output-format', 'json', '--model', QUICK_MODEL, '--effort', 'low', '--system-prompt', QUICK_SYSTEM_PROMPT];
+	const child = spawn('claude', args, { cwd: QUICK_DIR, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, MAX_THINKING_TOKENS: '0' } });
+	mine.child = child;
+	res.on('close', () => {
+		if (!res.writableEnded && slot === mine) child.kill('SIGTERM');
+	});
+	let stdout = '';
+	child.stdout.setEncoding('utf8');
+	child.stdout.on('data', (c: string) => (stdout = (stdout + c).slice(-50_000)));
+	const timer = setTimeout(() => child.kill('SIGTERM'), QUICK_TIMEOUT_MS);
+	child.on('close', (code) => {
+		clearTimeout(timer);
+		freeSlot(mine);
+		if (res.writableEnded || res.destroyed) return;
+		let result = '';
+		try {
+			result = String((JSON.parse(stdout) as { result?: unknown }).result ?? '');
+		} catch {
+			result = '';
+		}
+		const draft = readQuickAnswer(result, q.categories.map((c) => c.id), q.aujourdhui, q.sousCategories);
+		if (draft) return json(res, 200, { brouillon: draft });
+		json(res, 502, { error: code === 143 ? "L'IA a mis trop longtemps." : "Réponse de l'IA illisible." });
+	});
+	child.on('error', (err) => {
+		clearTimeout(timer);
+		freeSlot(mine);
+		if (!res.writableEnded) json(res, 502, { error: `Impossible de lancer « claude » : ${err.message}` });
+	});
+}
+
 function parseAsk(raw: string): AskBody | string {
 	let b: unknown;
 	try {
@@ -798,6 +887,13 @@ const server = http.createServer((req, res) => {
 	}
 	if (req.method === 'POST' && url.pathname === '/disposition') {
 		withSlot(res, (mine) => handleLayout(req, res, mine)).catch((err: Error) => {
+			if (!res.headersSent) json(res, 400, { error: err.message });
+			else res.end();
+		});
+		return;
+	}
+	if (req.method === 'POST' && url.pathname === '/saisie') {
+		withSlot(res, (mine) => handleQuick(req, res, mine)).catch((err: Error) => {
 			if (!res.headersSent) json(res, 400, { error: err.message });
 			else res.end();
 		});

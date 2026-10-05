@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { uiState, showToast } from '$lib/ui.svelte';
-	import { formatEUR, formatDate, formatMonth, formatPct } from '$lib/format';
+	import { formatEUR, formatDate, formatMonth, formatPct } from '$lib/sensitiveFormat';
 	import { isPriceable } from '$lib/kraken';
 	import { getKrakSummary } from '$lib/krakCard.svelte';
 	import { navigate } from '$lib/router.svelte';
@@ -360,7 +360,7 @@
 				{#snippet children(show, _size, box)}
 		<div class="tuile-col @container" class:tuile-pleine={!!box} style:min-height={box ? `${box.h}px` : null}>
 		<p class="label-xs">Valeur du portefeuille</p>
-		<p class="stat-amount mt-1"><AnimatedAmount value={total} format={formatEUR} /></p>
+		<p class="stat-amount mt-1"><AnimatedAmount sensitive value={total} format={formatEUR} /></p>
 		{#if Object.keys(krakenState.hold).length > 0 && show('attente')}
 			<p class="meta-xs mt-1" title="Dépôts ou retraits pas encore crédités par Kraken : non comptés dans la valeur">
 				En attente (non compté) : {Object.entries(krakenState.hold).map(([sym, q]) => `${formatQty(q)} ${sym}`).join(' · ')}
@@ -621,7 +621,7 @@
 											{/if}
 										</div>
 										{#if chartPoints.length > 1}
-											<BalanceChart points={chartPoints} height={box ? Math.round(Math.min(480, Math.max(160, box.h * 0.45))) : 220} formatValue={formatPrice} annotations={chartTrades} reference={asset.avgCost !== undefined ? { value: asset.avgCost, label: 'PRU' } : undefined} />
+											<BalanceChart sensitive points={chartPoints} height={box ? Math.round(Math.min(480, Math.max(160, box.h * 0.45))) : 220} formatValue={formatPrice} annotations={chartTrades} reference={asset.avgCost !== undefined ? { value: asset.avgCost, label: 'PRU' } : undefined} />
 										{:else if krakenState.ohlc[asset.symbol]}
 											<p class="meta-xs">Pas assez de cours sur cette période.</p>
 										{:else}

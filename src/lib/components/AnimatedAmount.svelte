@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Tween } from 'svelte/motion';
 	import { cubicOut } from 'svelte/easing';
-	import { formatEURNarrowParts } from '$lib/format';
+	import { formatEURNarrowParts, sensitiveEURNarrowParts } from '$lib/format';
 
 	/**
 	 * Amount animated as a count-up with Svelte 5 Tween. With `flash` (crypto tickers): teal (up) /
@@ -13,8 +13,9 @@
 		value,
 		format = (v: number) => v.toFixed(0),
 		flash = false,
-		narrow = false
-	}: { value: number; format?: (v: number) => string; flash?: boolean; narrow?: boolean } = $props();
+		narrow = false,
+		sensitive = false
+	}: { value: number; format?: (v: number) => string; flash?: boolean; narrow?: boolean; sensitive?: boolean } = $props();
 
 	// Reduced motion (system preference): value shown directly
 	const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -42,6 +43,6 @@
 
 <span class="{flash ? 'price-ticker' : ''} {flashDir === 'up' ? 'flash-up' : flashDir === 'down' ? 'flash-down' : ''}">
 	<span class="tabular"
-		>{#if narrow}{@const parts = formatEURNarrowParts(displayed.current)}{parts.main}{#if parts.suffix}<span class="amount-suffix">{parts.suffix}</span>{/if}{:else}{format(displayed.current)}{/if}</span
+		>{#if narrow}{@const parts = (sensitive ? sensitiveEURNarrowParts : formatEURNarrowParts)(displayed.current)}{parts.main}{#if parts.suffix}<span class="amount-suffix">{parts.suffix}</span>{/if}{:else}{format(displayed.current)}{/if}</span
 	>
 </span>

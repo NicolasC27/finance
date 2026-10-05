@@ -19,7 +19,7 @@
 	import { txKey } from '$lib/categories';
 	import { signedAmount } from '$lib/data';
 	import { merchantLabel } from '$lib/merchant';
-	import { cleanLabel, formatDate, formatEUR } from '$lib/format';
+	import { cleanLabel, formatDate, formatEUR } from '$lib/sensitiveFormat';
 	import { showToast } from '$lib/ui.svelte';
 	import AssetForm from './AssetForm.svelte';
 	import SidePanel from './SidePanel.svelte';

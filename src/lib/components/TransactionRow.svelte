@@ -48,7 +48,7 @@
 	}
 </script>
 
-<div class="row-hover fade-slide group flex items-center gap-2.5 rounded-lg px-2 {compact ? 'py-1' : 'py-1.5'}">
+<div class="row-hover fade-slide group flex items-center gap-2.5 rounded-lg px-2 {compact ? 'py-1' : 'py-1.5'}" class:quick-pending={tx.source === 'manual'}>
 	<!-- Bare category icon: 1.5 stroke, category colour (no more tinted square) -->
 	<span class="flex h-6 w-6 shrink-0 items-center justify-center" style="color: {category.color};" aria-hidden="true">
 		<CategoryIcon id={categoryId} size={15} />
@@ -59,6 +59,9 @@
 			{displayLabel}
 			{#if pending}
 				<span class="chip chip-amber ml-2">En cours</span>
+			{/if}
+			{#if tx.source === 'manual'}
+				<span class="chip chip-outline ml-2" title="Saisie rapide : remplacée par l'opération de la banque à l'import du relevé">à rapprocher</span>
 			{/if}
 		</p>
 	</div>

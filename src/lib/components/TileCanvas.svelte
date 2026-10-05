@@ -774,10 +774,36 @@
 	<div class="tile-label tabular" style="left: {label.x}px; top: {label.y}px;" aria-hidden="true">{label.text}</div>
 {/if}
 
+{#snippet menuIcon(name: string)}
+	<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		{#if name === 'full'}<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M16 21h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+		{:else if name === 'store'}<path d="M21 8v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8M2 3h20v5H2zM10 12h4" />
+		{:else if name === 'fit'}<path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4M4 3h16M4 21h16" />
+		{:else if name === 'equal'}<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" />
+		{:else if name === 'up'}<path d="M12 19V5M6 11l6-6 6 6" />
+		{:else if name === 'down'}<path d="M12 5v14M6 13l6 6 6-6" />
+		{:else if name === 'reset'}<path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5" />
+		{:else if name === 'ai'}<path d="M12 3l1.8 4.9L19 10l-5.2 1.9L12 17l-1.8-5.1L5 10l5.2-2.1zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z" />
+		{/if}
+	</svg>
+{/snippet}
+
 {#if menu}
 	{@const id = menu.id}
 	<div bind:this={menuEl} bind:offsetHeight={menuHeight} class="tile-menu" style={menuStyle} role="menu" aria-label="Options du bloc {menuMeta?.title ?? ''}" data-tile-menu>
 		<p class="tile-menu-title">{menuMeta?.title ?? 'Bloc'}</p>
+		<!-- Most used actions as big icon buttons -->
+		<div class="tile-menu-quick">
+			<button type="button" role="menuitem" class="tile-menu-tool" title="Plein écran (Alt + Entrée, ou double-clic sur le bloc)" onclick={() => menuAction(() => setFullscreen(page, id, true))}>{@render menuIcon('full')}<span>Plein écran</span></button>
+			<button type="button" role="menuitem" class="tile-menu-tool" title="Ranger le bloc : il revient avec la puce « blocs rangés »" onclick={() => storeFromMenu(id)}>{@render menuIcon('store')}<span>Ranger</span></button>
+			{#if tiled}
+				<button type="button" role="menuitem" class="tile-menu-tool" title="Ajuster la hauteur au contenu" onclick={() => fitFromMenu(id)}>{@render menuIcon('fit')}<span>Ajuster</span></button>
+				<button type="button" role="menuitem" class="tile-menu-tool" title="Égaliser les tuiles de la page" onclick={() => menuAction(() => tree && commit(equalize(tree), 'Tuiles égalisées'))}>{@render menuIcon('equal')}<span>Égaliser</span></button>
+			{:else}
+				<button type="button" role="menuitem" class="tile-menu-tool" disabled={!orderNeighbour(tree, id, -1)} onclick={() => swapInOrder(id, -1)}>{@render menuIcon('up')}<span>Monter</span></button>
+				<button type="button" role="menuitem" class="tile-menu-tool" disabled={!orderNeighbour(tree, id, 1)} onclick={() => swapInOrder(id, 1)}>{@render menuIcon('down')}<span>Descendre</span></button>
+			{/if}
+		</div>
 		{#if menuMeta && menuMeta.elements.length > 0}
 			<p class="tile-menu-section">Éléments affichés</p>
 			<ul class="space-y-0.5">
@@ -790,32 +816,21 @@
 					</li>
 				{/each}
 			</ul>
-			<div class="tile-menu-sep" aria-hidden="true"></div>
 		{/if}
-		<button type="button" role="menuitem" class="tile-menu-item" onclick={() => menuAction(() => setFullscreen(page, id, true))}>Plein écran <kbd class="kbd">Alt ↵</kbd></button>
-		{#if !tiled}
-			<button type="button" role="menuitem" class="tile-menu-item" disabled={!orderNeighbour(tree, id, -1)} onclick={() => swapInOrder(id, -1)}>Monter</button>
-			<button type="button" role="menuitem" class="tile-menu-item" disabled={!orderNeighbour(tree, id, 1)} onclick={() => swapInOrder(id, 1)}>Descendre</button>
-		{/if}
-		<button type="button" role="menuitem" class="tile-menu-item" onclick={() => storeFromMenu(id)}>Ranger le bloc</button>
-		{#if tiled}
-			<button type="button" role="menuitem" class="tile-menu-item" onclick={() => fitFromMenu(id)}>Ajuster la hauteur au contenu</button>
-			<button type="button" role="menuitem" class="tile-menu-item" onclick={() => menuAction(() => tree && commit(equalize(tree), 'Tuiles égalisées'))}>Égaliser les tuiles</button>
-		{/if}
-		<button type="button" role="menuitem" class="tile-menu-item" onclick={() => menuAction(() => resetPage(page))}>Réinitialiser la page</button>
 		<div class="tile-menu-sep" aria-hidden="true"></div>
+		<button type="button" role="menuitem" class="tile-menu-item" onclick={() => menuAction(() => resetPage(page))}>{@render menuIcon('reset')}<span class="flex-1">Réinitialiser la page</span></button>
 		<button
 			type="button"
 			role="menuitem"
-			class="tile-menu-item"
+			class="tile-menu-item tile-menu-ai"
 			disabled={!layoutState.organiserIA || uiState.dialogDepth > 0}
 			title={layoutState.organiserIA ? 'Proposer une disposition adaptée à cette page' : 'Bientôt'}
 			onclick={() => menuAction(() => void layoutState.organiserIA?.(page))}
 		>
-			✨ Organiser par l'IA
+			{@render menuIcon('ai')}<span class="flex-1">Organiser par l'IA</span>
 		</button>
 		{#if tiled}
-			<p class="tile-menu-help">Maintenir + glisser : déplacer · clic droit + glisser : taille (vers le haut : moins haut, la page suit) · Maj + clic droit : menu du navigateur</p>
+			<p class="tile-menu-help">Double-clic : plein écran · maintenir + glisser : déplacer · clic droit + glisser : taille · Maj + clic droit : menu du navigateur</p>
 		{/if}
 	</div>
 {/if}
@@ -963,12 +978,66 @@
 	.tile-menu {
 		position: fixed;
 		z-index: 85;
-		padding: 6px;
+		min-width: 276px;
+		padding: 8px;
 		border: 1px solid var(--hairline);
-		border-radius: 10px;
-		background-color: var(--surface);
-		box-shadow: var(--shadow-soft);
+		border-radius: 14px;
+		background-color: color-mix(in srgb, var(--surface) 92%, transparent);
+		backdrop-filter: blur(14px) saturate(1.2);
+		box-shadow:
+			0 18px 44px -18px rgb(0 0 0 / 0.55),
+			0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
 		text-align: left;
+		transform-origin: top left;
+		animation: tile-menu-in var(--motion-base) var(--ease-spring);
+	}
+	@keyframes tile-menu-in {
+		from {
+			opacity: 0;
+			transform: scale(0.94) translateY(-4px);
+		}
+	}
+	.tile-menu-quick {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 4px;
+		margin-bottom: 6px;
+	}
+	.tile-menu-tool {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		padding: 9px 2px 7px;
+		border-radius: 10px;
+		background-color: var(--surface-2);
+		color: var(--text-secondary);
+		font-size: 10.5px;
+		cursor: pointer;
+		transition:
+			background-color var(--motion-fast) ease,
+			color var(--motion-fast) ease,
+			transform var(--motion-fast) var(--ease-out);
+	}
+	.tile-menu-tool:hover:not(:disabled),
+	.tile-menu-tool:focus-visible {
+		background-color: var(--accent-soft);
+		color: var(--accent);
+		transform: translateY(-1px);
+	}
+	.tile-menu-tool:active:not(:disabled) {
+		transform: scale(0.94);
+	}
+	.tile-menu-tool:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	.tile-menu-tool span {
+		color: var(--text);
+		white-space: nowrap;
+	}
+	.tile-menu-ai {
+		color: var(--accent);
 	}
 	.tile-menu-title {
 		margin: 2px 6px 6px;
@@ -1005,16 +1074,26 @@
 		display: flex;
 		width: 100%;
 		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		padding: 5px 6px;
-		border-radius: 6px;
+		gap: 9px;
+		padding: 6px 8px;
+		border-radius: 8px;
 		font-size: 12px;
 		text-align: left;
 		cursor: pointer;
+		transition:
+			background-color var(--motion-fast) ease,
+			transform var(--motion-fast) var(--ease-out);
+	}
+	.tile-menu-item :global(svg) {
+		color: var(--text-secondary);
+		flex-shrink: 0;
 	}
 	.tile-menu-item:hover:not(:disabled) {
 		background-color: var(--surface-2);
+		transform: translateX(2px);
+	}
+	.tile-menu-ai :global(svg) {
+		color: var(--accent);
 	}
 	.tile-menu-item:disabled {
 		opacity: 0.45;

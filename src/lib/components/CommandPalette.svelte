@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { uiState, showToast, showSuccess } from '$lib/ui.svelte';
+	import { uiState, showToast, showSuccess, togglePrivacy } from '$lib/ui.svelte';
 	import { navigate, type RoutePath } from '$lib/router.svelte';
 	import { getTransactions, resetImported, restoreImported } from '$lib/store.svelte';
 	import { layoutState, toggleWide, resetLayout, resetPage, setFullscreen, setDensity, DENSITY_LABELS, type Density } from '$lib/layout.svelte';
@@ -81,6 +81,22 @@
 					module: moduleOfRoute(p.href) ?? undefined
 				})
 			),
+			{
+				id: 'action-quick-entry',
+				group: 'Actions',
+				label: 'Saisir une dépense',
+				hint: 'En une phrase, comptée tout de suite (touche +)',
+				run: () => {
+					uiState.quickEntryOpen = true;
+				}
+			},
+			{
+				id: 'action-privacy',
+				group: 'Actions',
+				label: uiState.privacy ? 'Afficher les montants' : 'Mode discret : masquer les montants',
+				hint: 'Partage d’écran, lieu public (touche H)',
+				run: () => togglePrivacy()
+			},
 			{
 				id: 'action-modules',
 				group: 'Actions',

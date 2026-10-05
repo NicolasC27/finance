@@ -12,7 +12,7 @@
 </script>
 
 <script lang="ts">
-	import { formatEUR, formatDate, formatPct } from '$lib/format';
+	import { formatEUR, formatDate, formatPct } from '$lib/sensitiveFormat';
 	import { parseTaxNoticePdf } from '$lib/pdfTax';
 	import { getTaxNotices, saveTaxNotice, removeTaxNotice, getDgfipPaidByYear } from '$lib/taxes.svelte';
 	import { getTaxProvisionDetail } from '$lib/wealth.svelte';

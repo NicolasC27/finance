@@ -221,7 +221,7 @@ interface Rule {
 /** Keyword rules (normalised titles: lowercase, no accents). Order = priority. */
 const ITEM_RULES: Rule[] = [
 	{ re: /\b(piano|partition|guitare|ukulele|metronome|pupitre|clavier maitre|midi|solfege|violon)\b/, categoryId: 'loisirs', subId: 'musique-cours' },
-	{ re: /\b(livre|book|roman|manga|bande dessinee|tome|poche|edition|essai|guide|dictionnaire|cahier|agenda)\b|\bbd\b/, categoryId: 'loisirs', subId: 'culture-sorties' },
+	{ re: /\b(livre|book|roman|manga|bande dessinee|tome|poche|edition|essai|guide|dictionnaire|cahier|agenda|vinyles?|disques?|vinyl|cd|dvd|blu ray|album|platine)\b|\bbd\b/, categoryId: 'loisirs', subId: 'culture-sorties' },
 	{ re: /\b(jeu|jeux|game|lego|puzzle|playmobil|figurine|nintendo|playstation|xbox|switch oled|manette|jouet|peluche|carte a jouer|board)\b/, categoryId: 'loisirs', subId: 'culture-sorties' },
 	{ re: /\b(fitness|haltere|yoga|velo|running|raquette|ballon|gourde|tapis de sol|musculation|natation|randonnee|trek)\b/, categoryId: 'loisirs', subId: 'sport' },
 	{ re: /\b(vitamine|complement alimentaire|pharmacie|medical|thermometre|tensiometre|pansement|lunettes|orthese|omega|magnesium|melatonine)\b/, categoryId: 'sante', subId: 'soins' },
@@ -242,12 +242,19 @@ function normalizeName(name: string): string {
 		.trim();
 }
 
+/** Category of a product or object name from the keyword rules (« vinyles », « chargeur »…), null when no rule matches. */
+export function classifyItemName(name: string): { categoryId: CategoryId; subId: string | null } | null {
+	const n = ` ${normalizeName(name)} `;
+	for (const r of ITEM_RULES) if (r.re.test(n)) return { categoryId: r.categoryId, subId: r.subId };
+	return null;
+}
+
 /** Category of a set of items: that of the most expensive item matching a rule; otherwise Loisirs › Shopping. */
 export function inferCategory(items: AmazonItem[]): { categoryId: CategoryId; subId: string | null } {
 	const sorted = [...items].sort((a, b) => b.amount - a.amount);
 	for (const it of sorted) {
-		const n = ` ${normalizeName(it.name)} `;
-		for (const r of ITEM_RULES) if (r.re.test(n)) return { categoryId: r.categoryId, subId: r.subId };
+		const c = classifyItemName(it.name);
+		if (c) return c;
 	}
 	return { categoryId: 'loisirs', subId: 'shopping' };
 }

@@ -14,7 +14,8 @@
 		sparkline = undefined,
 		sparklineColor = 'var(--accent)',
 		stagger = 0,
-		fill = false
+		fill = false,
+		sensitive = false
 	}: {
 		label: string;
 		value: number;
@@ -32,6 +33,8 @@
 		stagger?: number;
 		/** Stretch to the height of its container (a tile of its own). */
 		fill?: boolean;
+		/** Wealth, balance, income: masked in privacy mode. */
+		sensitive?: boolean;
 	} = $props();
 
 	/**
@@ -48,7 +51,7 @@
 		<div class="min-w-0">
 			<p class="label-xs">{label}</p>
 			<p class="stat-amount mt-1">
-				<OdometerAmount {value} />
+				<OdometerAmount {value} {sensitive} />
 			</p>
 			{#if variation !== undefined}
 				<p
