@@ -74,6 +74,22 @@ export function onChangesElsewhere(h: { conflit: (key: string) => void; perime: 
 	onStale = h.perime;
 }
 
+/** The storage in use once the database is connected (null in browser mode). */
+let activeStore: DiskStorage | null = null;
+
+/**
+ * Runs a server task after the changes already made and before the next ones (restore points);
+ * null when the data is not in the database (browser mode).
+ */
+export function checkpoint<T>(task: () => Promise<T>): Promise<T> | null {
+	return activeStore ? activeStore.checkpoint(task) : null;
+}
+
+/** Resolves once every pending write reached the database (immediately in browser mode). */
+export function settleWrites(): Promise<void> {
+	return activeStore ? activeStore.flush() : Promise.resolve();
+}
+
 /** Channel between tabs, opened in the browser only (under Node it would keep the process alive). */
 let channel: BroadcastChannel | null = null;
 
@@ -146,6 +162,25 @@ class DiskStorage {
 		this.timer = setTimeout(() => void this.flush(), WRITE_DELAY_MS);
 	}
 
+	/**
+	 * Runs `task` (a restore point on the server) in the send queue, right after the changes made so
+	 * far and before any later one: a point taken just before an import holds the data without it.
+	 */
+	checkpoint<T>(task: () => Promise<T>): Promise<T> {
+		const pending = new Map([...this.dirty].map((k) => [k, this.mem.get(k)]));
+		this.dirty.clear();
+		if (this.timer) {
+			clearTimeout(this.timer);
+			this.timer = null;
+		}
+		const run = this.file.then(() => this.envoyer(false, pending)).then(task);
+		this.file = run.then(
+			() => undefined,
+			() => undefined
+		);
+		return run;
+	}
+
 	/** Sends the changed keys after the pending sends (when the page is leaving: immediately). */
 	flush(keepalive = false): Promise<void> {
 		if (keepalive) return this.envoyer(true);
@@ -159,18 +194,18 @@ class DiskStorage {
 	 * overwritten and the user reloads. keepalive is only used for small values
 	 * (browser limit ~64 KB).
 	 */
-	private async envoyer(keepalive: boolean): Promise<void> {
-		if (this.timer) {
+	private async envoyer(keepalive: boolean, given?: Map<string, string | undefined>): Promise<void> {
+		if (!given && this.timer) {
 			clearTimeout(this.timer);
 			this.timer = null;
 		}
-		const keys = [...this.dirty];
-		this.dirty.clear();
+		const keys = given ? [...given.keys()] : [...this.dirty];
+		if (!given) this.dirty.clear();
 		let failed = false;
 		const written: string[] = [];
 		await Promise.all(
 			keys.map(async (key) => {
-				const value = this.mem.get(key);
+				const value = given ? given.get(key) : this.mem.get(key);
 				const headers: Record<string, string> = { ...HEADERS, 'content-type': 'text/plain;charset=utf-8' };
 				if (this.versions) headers['x-budget-version'] = this.versions.get(key) ?? '';
 				try {
@@ -323,6 +358,7 @@ export async function initDiskStorage(): Promise<void> {
 	}
 
 	const store = new DiskStorage(mem, real, versions);
+	activeStore = store;
 	watchOtherTabs();
 	Object.defineProperty(window, 'localStorage', { configurable: true, get: () => store });
 	diskState.mode = 'disk';

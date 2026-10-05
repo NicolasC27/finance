@@ -248,9 +248,23 @@ export function dwindleInsert(node: TileNode | null | undefined, id: string, siz
 	return insertBeside(node, target, id, r && r.h > r.w ? 'bottom' : 'right');
 }
 
-/** Every split back to one half. */
+/** Columns side by side in a node: a leaf or a stacked (col) split counts as one, row splits add up. */
+function columnCount(node: TileNode): number {
+	return isLeaf(node) || node.dir === 'col' ? 1 : columnCount(node.a) + columnCount(node.b);
+}
+
+/**
+ * Same width for the tiles of a same row: each row split gets the share of columns on its first
+ * side (three tiles side by side → 1/3 then 1/2). Stacked (col) splits keep their ratio, so heights
+ * never change; before, every split went back to one half and the key-figure row took half the page.
+ */
 export function equalize(node: TileNode): TileNode {
-	return isLeaf(node) ? node : { ...node, ratio: 0.5, a: equalize(node.a), b: equalize(node.b) };
+	if (isLeaf(node)) return node;
+	const a = equalize(node.a);
+	const b = equalize(node.b);
+	if (node.dir === 'col') return { ...node, a, b };
+	const na = columnCount(node.a);
+	return { ...node, ratio: na / (na + columnCount(node.b)), a, b };
 }
 
 /**

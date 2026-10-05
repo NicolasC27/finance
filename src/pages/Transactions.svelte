@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { refundOf, refundedBy } from '$lib/refunds.svelte';
+	import RefundControl from '$lib/components/RefundControl.svelte';
+	import { restorePoint } from '$lib/history.svelte';
 	import { quickEntryStale } from '$lib/quickEntry.svelte';
 	import { segmented } from '$lib/actions/segmented';
 	import { onMount } from 'svelte';
@@ -607,6 +610,7 @@
 
 	/** Bulk category: overrides set at once; 'Annuler' restores the previous ones. */
 	function bulkCategory(categoryId: CategoryId) {
+		void restorePoint(`avant modification groupée : catégorie de ${selected.size} opération${selected.size > 1 ? 's' : ''}`);
 		const keys = selectedTxs.map(txKey);
 		if (keys.length === 0) return;
 		const before = Object.fromEntries(keys.map((k) => [k, budgetState.overrides[k] ?? null]));
@@ -619,6 +623,7 @@
 	 * tags.
 	 */
 	function bulkTags(mode: 'add' | 'remove', tags: string[]) {
+		void restorePoint(`avant modification groupée : étiquettes de ${selected.size} opération${selected.size > 1 ? 's' : ''}`);
 		if (tags.length === 0 || selectedTxs.length === 0) return;
 		const imported = new Set(txState.imported.map(txKey));
 		const next = new Map<string, Pick<Transaction, 'tags'>>();
@@ -651,6 +656,7 @@
 
 	/** Bulk hide from / restore to the budget (same mechanism as the detail panel). */
 	function bulkExclude(hide: boolean) {
+		void restorePoint(`avant modification groupée : ${selected.size} opération${selected.size > 1 ? 's' : ''} ${hide ? 'masquées' : 'réintégrées'}`);
 		const changed = selectedTxs.map(txKey).filter((k) => isExcluded(k) !== hide);
 		if (changed.length === 0) {
 			showToast(hide ? 'Déjà masquées du budget' : 'Déjà comptées dans le budget');
@@ -894,6 +900,7 @@
 		meta: { ignored: number; errors: string[]; fileName: string; accounts?: string[]; knownElsewhere?: number }
 	) {
 		const maskedTransfers = countExcludedAmong(txs);
+		void restorePoint(`avant import ${meta.fileName} : ${txs.length} opération${txs.length > 1 ? 's' : ''}`);
 		addImported(txs, { ...meta, maskedTransfers });
 		syncLoans();
 		reviewTransfers();
@@ -1984,6 +1991,12 @@
 									{#if isPending(tx)}
 										<span class="chip chip-amber ml-2">En cours</span>
 									{/if}
+									{#if refundOf(txKey(tx))}
+										{@const r = refundOf(txKey(tx))!}
+										<span class="chip {r.state === 'refunded' ? 'chip-accent' : r.state === 'overdue' ? 'chip-amber' : 'chip-outline'} ml-2" title="Remboursement attendu de {r.claim.who} : {formatEUR(r.refunded)} reçus sur {formatEUR(r.claim.expected)}">{r.state === 'refunded' ? 'remboursé' : r.state === 'overdue' ? 'remboursement en retard' : r.state === 'closed' ? 'soldé' : 'à rembourser'}</span>
+									{:else if refundedBy(txKey(tx)).length}
+										<span class="chip chip-accent ml-2" title="Rembourse une dépense : compté en déduction de sa catégorie">remboursement</span>
+									{/if}
 									{#if tx.source === 'manual'}
 										{#if quickEntryStale(tx)}
 											<span class="chip chip-amber ml-2" title="Saisie rapide absente du relevé alors qu'il couvre plus d'une semaine après : montant, compte ou date différents ?">absente du relevé</span>
@@ -2762,6 +2775,7 @@
 			Supprimer cette opération
 		</button>
 	</div>
+	<RefundControl {tx} />
 {/if}
 {/snippet}
 

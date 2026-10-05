@@ -1,4 +1,6 @@
 <script lang="ts">
+	import RefundsCard from '$lib/components/RefundsCard.svelte';
+	import EmergencyFundCard from '$lib/components/EmergencyFundCard.svelte';
 	import { segmented } from '$lib/actions/segmented';
 	import type { CategoryId, Transaction } from '$lib/types';
 	import { isPending, signedAmount, spendAmount, cumulativeBalance, type BalancePoint, isBankTx } from '$lib/data';
@@ -488,7 +490,7 @@
 	const projectionEnd = $derived(projection.length > 0 ? { balance: projection[projection.length - 1]!.balance, endIso: projection[projection.length - 1]!.iso } : null);
 
 	/** Customisable Dashboard blocks (default order). */
-	const DASH_BLOCKS = ['kpi-solde', 'kpi-entrees', 'kpi-sorties', 'kpi-budget', 'balance', 'donut', 'savings', 'recent', 'insights', 'upcoming', 'comptes', 'notes'] as const;
+	const DASH_BLOCKS = ['kpi-solde', 'kpi-entrees', 'kpi-sorties', 'kpi-budget', 'balance', 'donut', 'savings', 'recent', 'insights', 'upcoming', 'refunds', 'precaution', 'comptes', 'notes'] as const;
 
 	/** Height left to the balance chart under its header when its tile has a set height. */
 	let balanceArea = $state(0);
@@ -535,6 +537,8 @@
 		{ id: 'courbe', label: 'Courbe du mois vs mois précédent' },
 		{ id: 'rapport', label: 'Bouton « Rapport du mois »' }
 	];
+	const REFUNDS_ELEMENTS: BlockElement[] = [{ id: 'reglage', label: 'Délai avant alerte' }];
+	const EMERGENCY_ELEMENTS: BlockElement[] = [{ id: 'detail', label: 'Détail du calcul' }];
 	const UPCOMING_ELEMENTS: BlockElement[] = [
 		{ id: 'total', label: 'Total à 30 jours' },
 		{ id: 'liste', label: 'Prochaines échéances' },
@@ -828,6 +832,18 @@
 								<UpcomingCard showTotal={show('total')} showList={show('liste')} showConfidence={show('fiabilite')} />
 							{/await}
 						</div>
+					{/snippet}
+				</Block>
+			{:else if id === 'refunds'}
+				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="À recevoir" size="S" sizes={['S', 'M', 'L']} elements={REFUNDS_ELEMENTS}>
+					{#snippet children(show)}
+						<RefundsCard showSettings={show('reglage')} />
+					{/snippet}
+				</Block>
+			{:else if id === 'precaution' && accountsView.length > 0}
+				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Épargne de précaution" size="S" sizes={['S', 'M', 'L']} elements={EMERGENCY_ELEMENTS}>
+					{#snippet children(show)}
+						<EmergencyFundCard showDetails={show('detail')} />
 					{/snippet}
 				</Block>
 			{:else if id === 'comptes' && (cashback || accountsView.length > 0)}

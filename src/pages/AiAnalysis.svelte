@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { restorePoint } from '$lib/history.svelte';
 	import SuccessCheck from '$lib/components/SuccessCheck.svelte';
 	import { onMount, tick } from 'svelte';
 	import type { Transaction } from '$lib/types';
@@ -270,7 +271,7 @@
 											</div>
 											<div class="flex shrink-0 items-center gap-1.5">
 												{#if p.state === 'pending'}
-													<button type="button" class="btn btn-primary btn-sm" onclick={() => confirmAction(m.id, p.id)}>Confirmer</button>
+													<button type="button" class="btn btn-primary btn-sm" onclick={() => { void restorePoint(`avant action IA : ${describeAction(p.action, catLabel, assetName)}`); confirmAction(m.id, p.id); }}>Confirmer</button>
 													<button type="button" class="btn btn-secondary btn-sm" onclick={() => dismissAction(m.id, p.id)}>Ignorer</button>
 												{:else if p.state === 'applied'}
 													<span class="chip chip-accent"><SuccessCheck size={11} /> Appliqué</span>
@@ -288,7 +289,7 @@
 									<button
 										type="button"
 										class="btn btn-secondary btn-sm"
-										onclick={() => m.actions?.filter((p) => p.state === 'pending').forEach((p) => confirmAction(m.id, p.id))}>Tout confirmer</button
+										onclick={() => { const list = m.actions?.filter((p) => p.state === 'pending') ?? []; void restorePoint(`avant ${list.length} actions IA`); list.forEach((p) => confirmAction(m.id, p.id)); }}>Tout confirmer</button
 									>
 								{/if}
 							</div>

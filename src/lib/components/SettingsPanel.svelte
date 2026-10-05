@@ -208,6 +208,13 @@
 				<button type="button" class="btn btn-secondary btn-sm" onclick={() => openInstead(() => void pickAndRestoreEncrypted())}>Chiffré…</button>
 			</div>
 		</div>
+		<div class="mt-2 flex items-center justify-between gap-3">
+			<div class="min-w-0">
+				<p>Historique</p>
+				<p class="meta-xs mt-0.5">Points de restauration : revenir à un état précédent</p>
+			</div>
+			<button type="button" class="btn btn-secondary btn-sm shrink-0" title="Historique des données (G puis Y)" onclick={() => navigate('/historique')}>Ouvrir</button>
+		</div>
 	</section>
 
 	<!-- Connections -->

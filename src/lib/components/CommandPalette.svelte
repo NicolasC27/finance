@@ -65,7 +65,8 @@
 		{ href: '/rapport', label: 'Rapport mensuel', hint: 'Synthèse du mois, imprimable' },
 		{ href: '/ia', label: 'Analyse IA', hint: 'Questions, modifications et rapports par Claude (relais local)' },
 		{ href: '/portage', label: 'Portage', hint: 'Activité, salaire, notes de frais, tickets resto, chèques culture' },
-		{ href: '/voiture', label: 'Voiture', hint: 'Fiche véhicule : compteur, coût par mois, contrôle technique' }
+		{ href: '/voiture', label: 'Voiture', hint: 'Fiche véhicule : compteur, coût par mois, contrôle technique' },
+		{ href: '/historique', label: 'Historique des données', hint: 'Points de restauration : différences, revenir en arrière' }
 	];
 
 	/** Static items (Pages, Actions and one Appearance command per theme), built once. */

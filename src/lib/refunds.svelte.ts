@@ -1,0 +1,156 @@
+import type { CategoryId, Transaction } from './types';
+import { categorize, txKey } from './categories';
+import { subcategorize } from './subcategories';
+import { signedAmount } from './data';
+import { merchantLabel } from './merchant';
+import { cleanLabel } from './format';
+import { persistJson } from './storage';
+import { budgetState, setOverride } from './budget.svelte';
+import { getMerchantCategoryMap, getTransactions } from './store.svelte';
+import { autoClaims, creditsOf, matchRefunds, totalOwed, type ClaimStatus, type RefundClaim, type RefundSource } from './refunds';
+
+/**
+ * Expected refunds, app side (`budget:refunds`): claims typed by hand, automatic ones dismissed or
+ * closed, delay before an alert; statuses recomputed from the operations; credits that refund an
+ * expense are moved once into the expense's category so the budget counts the net expense.
+ */
+
+const KEY = 'budget:refunds';
+
+interface StoredRefunds {
+	claims: RefundClaim[];
+	dismissed: string[];
+	closed: string[];
+	/** Credits already moved into their expense's category (never moved again). */
+	netted: string[];
+	dueDays: number;
+}
+
+function load(): StoredRefunds {
+	const empty: StoredRefunds = { claims: [], dismissed: [], closed: [], netted: [], dueDays: 15 };
+	if (typeof localStorage === 'undefined') return empty;
+	try {
+		const v = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<StoredRefunds> | null;
+		if (!v || typeof v !== 'object') return empty;
+		const list = (x: unknown) => (Array.isArray(x) ? x.filter((k): k is string => typeof k === 'string') : []);
+		return {
+			claims: Array.isArray(v.claims) ? v.claims.filter((c) => c && typeof c.expenseKey === 'string' && typeof c.expected === 'number') : [],
+			dismissed: list(v.dismissed),
+			closed: list(v.closed),
+			netted: list(v.netted),
+			dueDays: typeof v.dueDays === 'number' && v.dueDays >= 1 && v.dueDays <= 365 ? v.dueDays : 15
+		};
+	} catch {
+		return empty;
+	}
+}
+
+export const refundsState = $state(load());
+
+function persist(): void {
+	persistJson(KEY, refundsState);
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+const labelOf = (tx: Transaction) => merchantLabel(tx.remittance_information) || cleanLabel(tx.remittance_information);
+
+/** Names of the user's mutuelle(s), read from their direct debits (subcategory « mutuelle »). */
+const mutuelleNames = $derived.by(() => {
+	const mm = getMerchantCategoryMap();
+	const names = new Set<string>();
+	for (const tx of getTransactions()) if (signedAmount(tx) < 0 && subcategorize(tx, budgetState.overrides, undefined, mm) === 'mutuelle') names.add(labelOf(tx));
+	return [...names];
+});
+
+/** Every claim: typed by hand, plus automatic ones (health visits, advances) not dismissed. */
+const claims = $derived.by((): RefundClaim[] => {
+	const mm = getMerchantCategoryMap();
+	const manual = new Map(refundsState.claims.map((c) => [c.expenseKey, c]));
+	const expenses = getTransactions()
+		.filter((tx) => signedAmount(tx) < 0 && tx.booking_date)
+		.map((tx) => ({ key: txKey(tx), date: tx.booking_date, amount: -signedAmount(tx), label: labelOf(tx), categoryId: categorize(tx, budgetState.overrides, undefined, mm), subId: subcategorize(tx, budgetState.overrides, undefined, mm) }));
+	const auto = autoClaims(expenses, today()).filter((c) => !manual.has(c.expenseKey) && !refundsState.dismissed.includes(c.expenseKey));
+	const closed = new Set(refundsState.closed);
+	return [...manual.values(), ...auto].map((c) => (closed.has(c.expenseKey) ? { ...c, closed: true } : c));
+});
+
+const statuses = $derived(matchRefunds(claims, creditsOf(getTransactions(), txKey, signedAmount), today(), refundsState.dueDays, mutuelleNames));
+const byExpense = $derived(new Map(statuses.map((s) => [s.claim.expenseKey, s])));
+const byCredit = $derived.by(() => {
+	const m = new Map<string, ClaimStatus[]>();
+	for (const s of statuses) for (const p of s.payments) m.set(p.key, [...(m.get(p.key) ?? []), s]);
+	return m;
+});
+
+export function getRefundStatuses(): ClaimStatus[] {
+	return statuses;
+}
+
+/** Claim of an expense operation, if any. */
+export function refundOf(expenseKey: string): ClaimStatus | undefined {
+	return byExpense.get(expenseKey);
+}
+
+/** Claims an incoming credit pays back (one transfer can refund several expenses). */
+export function refundedBy(creditKey: string): ClaimStatus[] {
+	return byCredit.get(creditKey) ?? [];
+}
+
+export function getTotalOwed(): number {
+	return totalOwed(statuses);
+}
+
+/** Marks an expense « to be refunded » (or updates its claim). */
+export function addClaim(tx: Transaction, c: { source: RefundSource; who: string; expected: number }): void {
+	const key = txKey(tx);
+	const claim: RefundClaim = { expenseKey: key, source: c.source, who: c.who.trim() || (c.source === 'sante' ? 'Sécu + mutuelle' : labelOf(tx)), expected: Math.round(c.expected * 100) / 100, date: tx.booking_date, categoryId: categorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap()), auto: false };
+	refundsState.claims = [...refundsState.claims.filter((x) => x.expenseKey !== key), claim];
+	refundsState.dismissed = refundsState.dismissed.filter((k) => k !== key);
+	refundsState.closed = refundsState.closed.filter((k) => k !== key);
+	persist();
+}
+
+/** Nothing to expect for this expense (an automatic claim stays dismissed). */
+export function removeClaim(expenseKey: string): void {
+	refundsState.claims = refundsState.claims.filter((x) => x.expenseKey !== expenseKey);
+	if (!refundsState.dismissed.includes(expenseKey)) refundsState.dismissed = [...refundsState.dismissed, expenseKey];
+	persist();
+}
+
+/** Closes a claim by hand (what is missing will not come), or reopens it. */
+export function setClaimClosed(expenseKey: string, closed: boolean): void {
+	refundsState.closed = closed ? [...new Set([...refundsState.closed, expenseKey])] : refundsState.closed.filter((k) => k !== expenseKey);
+	persist();
+}
+
+export function setDueDays(days: number): void {
+	if (!(days >= 1 && days <= 365)) return;
+	refundsState.dueDays = Math.round(days);
+	persist();
+}
+
+/**
+ * Moves each refund credit once into the category of the expense it pays back (Sécu refund →
+ * Santé), so the budget shows the net expense; a later manual change of the credit is kept.
+ */
+export function syncRefundCategories(): void {
+	const mm = getMerchantCategoryMap();
+	const byKey = new Map(getTransactions().map((tx) => [txKey(tx), tx]));
+	const done = new Set(refundsState.netted);
+	const fresh: string[] = [];
+	for (const s of statuses) {
+		for (const p of s.payments) {
+			if (done.has(p.key)) continue;
+			const tx = byKey.get(p.key);
+			if (!tx) continue;
+			const target: CategoryId = s.claim.categoryId;
+			if (categorize(tx, budgetState.overrides, undefined, mm) !== target) setOverride(p.key, target);
+			done.add(p.key);
+			fresh.push(p.key);
+		}
+	}
+	if (fresh.length) {
+		refundsState.netted = [...refundsState.netted, ...fresh].slice(-2000);
+		persist();
+	}
+}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { syncRefundCategories } from '$lib/refunds.svelte';
 	import QuickEntryDialog from '$lib/components/QuickEntryDialog.svelte';
 	import { onMount } from 'svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
@@ -28,7 +29,7 @@
 	import type { Component } from 'svelte';
 	import { route, navigate, initRouter, type RoutePath } from '$lib/router.svelte';
 	import { initTheme, applyTheme, type Theme } from '$lib/theme';
-	import { initTransactions } from '$lib/store.svelte';
+	import { initTransactions, txState } from '$lib/store.svelte';
 	import '$lib/vacations.svelte'; // hooks the 'Vacances' reclassification into categorize()
 	import '$lib/amazon.svelte'; // hooks the subcategory derived from Amazon orders
 	import { initKraken } from '$lib/wealth.svelte';
@@ -48,6 +49,7 @@
 		'/ia': () => import('./pages/AiAnalysis.svelte'),
 		'/portage': () => import('./pages/Portage.svelte'),
 		'/voiture': () => import('./pages/Car.svelte'),
+		'/historique': () => import('./pages/History.svelte'),
 		'/patrimoine': () => import('./pages/Wealth.svelte'),
 		'/crypto': () => import('./pages/Crypto.svelte'),
 		'/analyse': () => import('./pages/Analysis.svelte'),
@@ -113,14 +115,32 @@
 			pendingG = now;
 			return;
 		}
-		if (now - pendingG > 900) return;
-		const goTo: Record<string, RoutePath> = { d: '/', b: '/budget', a: '/analyse', i: '/trier', t: '/transactions', p: '/patrimoine', c: '/crypto', r: '/rapport', j: '/ia', o: '/portage', v: '/voiture' };
+		if (now - pendingG > 900) {
+			if (e.metaKey || e.ctrlKey || e.altKey) return;
+			if (e.key === '/') {
+				e.preventDefault();
+				uiState.paletteOpen = true;
+			} else if (e.key === 'i' || e.key === 'I') {
+				e.preventDefault();
+				uiState.importPanelOpen = true;
+			} else if ((e.key === 's' || e.key === 'S') && route.path !== '/trier') {
+				e.preventDefault();
+				uiState.settingsOpen = !uiState.settingsOpen;
+			}
+			return;
+		}
+		const goTo: Record<string, RoutePath> = { d: '/', b: '/budget', a: '/analyse', i: '/trier', t: '/transactions', p: '/patrimoine', c: '/crypto', r: '/rapport', j: '/ia', o: '/portage', v: '/voiture', y: '/historique' };
 		const to = goTo[e.key];
 		if (to && isRouteEnabled(to)) {
 			pendingG = 0;
 			navigate(to);
 		}
 	}
+
+	/** Refund credits are moved into their expense's category once they are matched (net expense in the budget). */
+	$effect(() => {
+		if (txState.loaded) syncRefundCategories();
+	});
 
 	/** Display preferences: a change in another tab never threatens data. */
 	const PREF_KEYS = new Set(['budget:theme', 'budget:sidebar', 'budget:ui-collapse', 'budget:analyse-ui', 'budget:layout', 'budget:modules', 'budget:car-options', 'budget:privacy']);
@@ -186,7 +206,8 @@
 		'/rapport': 'Budget — Rapport mensuel',
 		'/ia': 'Budget — Analyse IA',
 		'/portage': 'Budget — Portage',
-		'/voiture': 'Budget — Voiture'
+		'/voiture': 'Budget — Voiture',
+		'/historique': 'Budget — Historique des données'
 	};
 
 	// Tab title synced with the route

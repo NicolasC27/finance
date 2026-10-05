@@ -74,6 +74,17 @@ export function parseBackup(text: string): BackupFile | { error: string } {
 }
 
 /**
+ * Hooks around a restore, plugged by the app (history.svelte.ts): `before` takes a restore point
+ * (called synchronously, before the state is replaced), `settle` waits until every write reached
+ * the database, so the reload never drops a large value.
+ */
+let restoreHooks: { before?: () => Promise<unknown>; settle?: () => Promise<void> } = {};
+
+export function setRestoreHooks(h: { before?: () => Promise<unknown>; settle?: () => Promise<void> }): void {
+	restoreHooks = h;
+}
+
+/**
  * Replaces the WHOLE state with the backup (keys missing from the file are
  * erased, except secrets a plain file never contains), then reloads.
  * Transactional: if a write fails (quota, smaller browser), the original state
@@ -90,6 +101,7 @@ export function restoreBackup(backup: BackupFile): { error: string } | void {
 		if (v !== null) snapshot[k] = v;
 	}
 	const keep = (k: string) => SECRET_KEYS.has(k) && !(k in backup.data);
+	const point = restoreHooks.before?.();
 	try {
 		for (const k of Object.keys(snapshot)) if (!keep(k)) localStorage.removeItem(k);
 		for (const [k, v] of Object.entries(backup.data)) localStorage.setItem(k, v);
@@ -104,7 +116,10 @@ export function restoreBackup(backup: BackupFile): { error: string } | void {
 		}
 		return { error: `Restauration impossible (${e instanceof Error ? e.message : 'écriture refusée'}) : données d'origine conservées.` };
 	}
-	window.location.reload();
+	void Promise.resolve(point)
+		.then(() => restoreHooks.settle?.())
+		.catch(() => undefined)
+		.finally(() => window.location.reload());
 }
 
 /**

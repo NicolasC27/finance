@@ -129,6 +129,7 @@ export function generateDemo(today = '2026-10-03'): Record<string, string> {
 		if (month % 4 === 2) {
 			add(d(17), -26.5, cardLabel(month, 16, 'LYON', 'DR LAMBERT MEDECIN'), ['Santé', 'Médecin']);
 			add(d(24), 18.55, 'VIR CPAM DU RHONE REMBOURSEMENT', ['Santé', 'Remboursement']);
+			add(d(27), 5.95, 'VIR MGEN PRESTATIONS SANTE', ['Santé', 'Remboursement']);
 		}
 		if (rand() < 0.35) add(d(26), -between(39, 118), cardLabel(month, 25, 'PARIS 12', 'SNCF CONNECT'), ['Véhicule', 'Véhicule, divers']);
 		add(d(29), -300, 'VIREMENT INTERNE VERS LIVRET BLEU', ['Epargne', 'Virements internes']);

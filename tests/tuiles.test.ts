@@ -186,7 +186,20 @@ test('narrow screens: tree order is the reading order', () => {
 	assert.equal(orderNeighbour(tree, 'b', -1), 'a');
 	assert.equal(orderNeighbour(tree, 'c', 1), null);
 	assert.deepEqual(leafIds(equalize(tree)), ['a', 'b', 'c']);
-	assert.equal((equalize({ ...tree, ratio: 0.9 }) as { ratio: number }).ratio, 0.5);
+	assert.equal((equalize({ ...tree, ratio: 0.9 }) as { ratio: number }).ratio, 0.9, 'heights are kept');
+});
+
+test('equalize: same width for the tiles of a row, heights untouched', () => {
+	const kpis: TileNode = { dir: 'row', ratio: 0.6, a: { id: 'k1' }, b: { dir: 'row', ratio: 0.7, a: { id: 'k2' }, b: { dir: 'row', ratio: 0.2, a: { id: 'k3' }, b: { id: 'k4' } } } };
+	const page: TileNode = { dir: 'col', ratio: 0.18, a: kpis, b: { dir: 'row', ratio: 0.3, a: { id: 'chart' }, b: { dir: 'col', ratio: 0.4, a: { id: 'donut' }, b: { id: 'list' } } } };
+	const eq = equalize(page) as Extract<TileNode, { dir: string }>;
+	assert.equal(eq.ratio, 0.18, 'the key-figure row keeps its height');
+	const row = eq.a as Extract<TileNode, { dir: string }>;
+	assert.equal(row.ratio, 1 / 4);
+	assert.equal((row.b as Extract<TileNode, { dir: string }>).ratio, 1 / 3);
+	const bottom = eq.b as Extract<TileNode, { dir: string }>;
+	assert.equal(bottom.ratio, 0.5, 'chart | stacked column: two columns');
+	assert.equal((bottom.b as Extract<TileNode, { dir: string }>).ratio, 0.4);
 });
 
 test('neighbours: the tile touching a side, none at the border', () => {
