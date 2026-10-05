@@ -1,5 +1,10 @@
 <script lang="ts">
-	/** Mini trend curve (hand-made, no axis), ~90×28px. */
+	import { smoothPath } from '$lib/data';
+
+	/**
+	 * Mini trend curve (hand-made, no axis), ~90×28px: smoothed line drawn in on first render, soft
+	 * gradient fill and a ringed dot on the last value.
+	 */
 	let {
 		values,
 		color = 'var(--accent)',
@@ -14,11 +19,12 @@
 		class?: string;
 	} = $props();
 
-	const PAD = 2; // margin so the stroke is not clipped
+	const uid = $props.id();
+	const PAD = 3;
 
 	/** Normalised SVG points (flat line in the middle of the frame when all values are equal). */
 	const geometry = $derived.by(() => {
-		if (values.length < 2) return { line: '', area: '' };
+		if (values.length < 2) return null;
 		const min = Math.min(...values);
 		const max = Math.max(...values);
 		const span = max - min || 1;
@@ -29,22 +35,37 @@
 			const y = max === min ? height / 2 : PAD + (1 - (v - min) / span) * h;
 			return [Math.round(x * 100) / 100, Math.round(y * 100) / 100] as const;
 		});
-		const line = pts.map(([x, y]) => `${x},${y}`).join(' ');
-		const area = `M${pts[0][0]},${height - PAD} L${pts.map(([x, y]) => `${x},${y}`).join(' L')} L${pts[pts.length - 1][0]},${height - PAD} Z`;
-		return { line, area };
+		const line = smoothPath(pts, 0.16);
+		const last = pts[pts.length - 1]!;
+		const area = `${line} L${last[0]},${height} L${pts[0]![0]},${height} Z`;
+		return { line, area, last };
 	});
 </script>
 
-{#if values.length > 1}
-	<svg {width} {height} viewBox="0 0 {width} {height}" aria-hidden="true" class="shrink-0 {klass}">
-		<path d={geometry.area} fill={color} opacity="0.12"></path>
-		<polyline
-			points={geometry.line}
-			fill="none"
-			stroke={color}
-			stroke-width="1.8"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-		></polyline>
+{#if geometry}
+	<svg {width} {height} viewBox="0 0 {width} {height}" aria-hidden="true" class="shrink-0 overflow-visible {klass}">
+		<defs>
+			<linearGradient id="{uid}-spark" x1="0" y1="0" x2="0" y2="1">
+				<stop offset="0%" stop-color={color} stop-opacity="0.28" />
+				<stop offset="100%" stop-color={color} stop-opacity="0" />
+			</linearGradient>
+		</defs>
+		<path d={geometry.area} fill="url(#{uid}-spark)" class="spark-area"></path>
+		<path d={geometry.line} fill="none" stroke={color} stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" pathLength={1} class="spark-line"></path>
+		<circle cx={geometry.last[0]} cy={geometry.last[1]} r="4.5" fill={color} opacity="0.18" class="spark-dot"></circle>
+		<circle cx={geometry.last[0]} cy={geometry.last[1]} r="2.2" fill={color} class="spark-dot"></circle>
 	</svg>
 {/if}
+
+<style>
+	.spark-line {
+		stroke-dasharray: 1;
+		animation: trace-line 700ms var(--ease-out) backwards;
+	}
+	.spark-area {
+		animation: fade-in 500ms ease-out 300ms backwards;
+	}
+	.spark-dot {
+		animation: fade-in var(--motion-base) ease-out 600ms backwards;
+	}
+</style>

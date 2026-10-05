@@ -3,6 +3,7 @@
 	import type { BalancePoint } from '$lib/data';
 	import { smoothPath } from '$lib/data';
 	import { formatEUR, formatEURCompact, formatDate } from '$lib/format';
+	import { changePct } from '$lib/chartGeometry';
 
 	/** Automatic marker on the curve (salary in teal, largest expense in amber). */
 	export interface ChartAnnotation {
@@ -19,6 +20,8 @@
 	 * gradient area (defined INSIDE this svg), 3-line grid, 5 X-axis labels, crosshair tooltip on
 	 * hover, 900 ms progressive drawing (normalised pathLength) + area fade-in. v4 extensions:
 	 * annotations (salary/expense) and a dashed end-of-month projection with a light uncertainty zone.
+	 * A new dataset (other month, other asset) redraws the curve; the tooltip shows the change vs the
+	 * previous point.
 	 */
 	let {
 		points,
@@ -34,6 +37,17 @@
 		reference = undefined
 	}: { points: BalancePoint[]; annotations?: ChartAnnotation[]; projection?: BalancePoint[]; height?: number; formatValue?: (v: number) => string; reference?: { value: number; label: string } } = $props();
 
+	const uid = $props.id();
+	/** Dataset identity: a change replays the drawing (keyed block below). */
+	const datasetKey = $derived(points.length ? `${points[0]!.iso}|${points[points.length - 1]!.iso}|${points.length}` : '');
+	let firstKey = '';
+	$effect(() => {
+		if (!firstKey) firstKey = datasetKey;
+		else if (datasetKey !== firstKey) {
+			firstKey = datasetKey;
+			traceDone = false;
+		}
+	});
 	const fmtAxis = $derived(formatValue ?? formatEURCompact);
 	const fmtTip = $derived(formatValue ?? formatEUR);
 
@@ -241,7 +255,7 @@
 		>
 			<defs>
 				<!-- Gradient INSIDE the same SVG: an external url(#id) is not resolved reliably -->
-				<linearGradient id="balance-area-gradient" x1="0" y1="0" x2="0" y2="1">
+				<linearGradient id="{uid}-area" x1="0" y1="0" x2="0" y2="1">
 					<stop offset="0%" stop-color="var(--accent)" stop-opacity="0.32" />
 					<stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
 				</linearGradient>
@@ -258,16 +272,18 @@
 				<line x1={PAD.left} x2={width - PAD.right} y1={geom.zeroY} y2={geom.zeroY} stroke="var(--text-secondary)" stroke-width="1" opacity="0.45" />
 			{/if}
 
-			<!-- Area under the curve: fades in after the drawing (once, see traceDone) -->
-			<path
-				class="balance-area"
-				d={geom.area}
-				fill="url(#balance-area-gradient)"
-				style={traceDone ? 'animation: none;' : ''}
-				onanimationend={(e) => {
-					if (e.animationName === 'fade-in') traceDone = true;
-				}}
-			/>
+			<!-- Area under the curve: fades in after the drawing (replayed for a new dataset, see traceDone) -->
+			{#key datasetKey}
+				<path
+					class="balance-area"
+					d={geom.area}
+					fill="url(#{uid}-area)"
+					style={traceDone ? 'animation: none;' : ''}
+					onanimationend={(e) => {
+						if (e.animationName === 'fade-in') traceDone = true;
+					}}
+				/>
+			{/key}
 
 			<!-- End-of-month projection: light uncertainty band + dashes -->
 			{#if geom.projLine}
@@ -285,6 +301,7 @@
 			{/if}
 
 			<!-- 2px stroke, teal glow, progressive drawing via normalised pathLength -->
+			{#key datasetKey}
 			<path
 				class="balance-line"
 				d={geom.line}
@@ -295,8 +312,9 @@
 				stroke-linejoin="round"
 				pathLength={1}
 				stroke-dasharray={1}
-				style="animation: {traceDone ? 'none' : 'trace-line 900ms ease-out backwards'};"
+				style="animation: {traceDone ? 'none' : 'trace-line 900ms var(--ease-out) backwards'};"
 			/>
+			{/key}
 
 			<!-- X axis -->
 			{#each geom.xLabels as l, i (`${l.text}-${i}`)}
@@ -344,7 +362,8 @@
 						stroke-opacity="0.35"
 						stroke-dasharray="3 4"
 					/>
-					<circle cx={hoverPt.x} cy={hoverPt.y} r="4.5" fill="var(--accent)" stroke="var(--bg)" stroke-width="2.5" />
+					<circle cx={hoverPt.x} cy={hoverPt.y} r="10" fill="var(--accent)" opacity="0.16" />
+					<circle cx={hoverPt.x} cy={hoverPt.y} r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2.5" />
 				</g>
 			{/if}
 		</svg>
@@ -353,7 +372,7 @@
 		{#if hoverPt && hover !== null}
 			<div
 				class="pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg border px-3 py-2 text-xs"
-				style="left: {tooltipLeft}px; top: {Math.max(hoverPt.y - (hoverAnnotation ? 82 : 58), 0)}px; border-color: var(--border); background-color: var(--surface);"
+				style="left: {tooltipLeft}px; top: {Math.max(hoverPt.y - (hoverAnnotation ? 98 : 76), 0)}px; border-color: var(--border); background-color: var(--surface);"
 			>
 				<p class="mb-0.5 font-medium whitespace-nowrap text-secondary capitalize">
 					{formatDate(drawn[hover]!.iso)}
@@ -361,6 +380,16 @@
 				<p class="serif text-base whitespace-nowrap" style="color: var(--accent);">
 					{fmtTip(drawn[hover]!.balance)}
 				</p>
+				{#if hover > 0}
+					{@const prev = drawn[hover - 1]!.balance}
+					{@const cur = drawn[hover]!.balance}
+					{@const pct = changePct(prev, cur)}
+					{#if cur !== prev}
+						<p class="tabular whitespace-nowrap text-[11px]" style="color: {cur > prev ? 'var(--accent)' : 'var(--amber)'};">
+							{cur > prev ? '+' : '−'}{fmtTip(Math.abs(cur - prev))}{pct !== null && Math.abs(pct) >= 0.1 ? ` · ${cur > prev ? '+' : '−'}${Math.abs(pct).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %` : ''}
+						</p>
+					{/if}
+				{/if}
 				{#if hoverAnnotation}
 					<p
 						class="tabular mt-1 whitespace-nowrap"

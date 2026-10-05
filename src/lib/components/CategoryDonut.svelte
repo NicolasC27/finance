@@ -11,11 +11,14 @@
 <script lang="ts">
 	import { formatEUR } from '$lib/format';
 	import NarrowAmount from './NarrowAmount.svelte';
+	import { morphArray } from '$lib/motion.svelte';
 
 	/**
 	 * Expense donut by category (hand-made SVG arcs), total in the centre. v11 drill-down:
 	 * `isSliceClickable` + `onSliceClick` make segments interactive (click, Enter/Space, focusable
-	 * role=button); `onCenterClick` turns the centre into a back button.
+	 * role=button); `onCenterClick` turns the centre into a back button. Slices morph when the month
+	 * changes; hovering a slice (or its legend row) pops it out, thickens it, dims the others and shows
+	 * its amount and share in the centre.
 	 */
 	let {
 		slices,
@@ -69,15 +72,20 @@
 		return [CENTER + RADIUS * Math.cos(rad), CENTER + RADIUS * Math.sin(rad)];
 	}
 
+	/** Share of each slice (0..1), morphed between datasets. */
+	const shares = morphArray(() => slices.map((s) => (total > 0 ? s.value / total : 0)));
+
 	const segments = $derived.by((): DonutSegment[] => {
 		if (total <= 0) return [];
+		const f = shares.current.length === slices.length ? shares.current : slices.map((s) => s.value / total);
 		let angle = 0;
-		return slices.map((slice) => {
-			const span = Math.max((slice.value / total) * 360 - GAP_DEG, 0.5);
+		return slices.map((slice, k) => {
+			const share = f[k] ?? 0;
+			const span = Math.max(share * 360 - GAP_DEG, 0.5);
 			const start = angle + GAP_DEG / 2;
 			const end = start + span;
 			const a0 = angle;
-			angle += (slice.value / total) * 360;
+			angle += share * 360;
 			const a1 = angle;
 			const [x1, y1] = polar(start);
 			const [x2, y2] = polar(end);
@@ -112,6 +120,8 @@
 	/** Hovered segment (arc or legend): extrusion + cross highlighting. */
 	let hoveredId = $state<string | null>(null);
 	let svgEl = $state<SVGSVGElement | null>(null);
+	const hoveredSlice = $derived(slices.find((s) => s.id === hoveredId) ?? null);
+	const pctOf = (v: number) => `${(total > 0 ? (v / total) * 100 : 0).toLocaleString('fr-FR', { maximumFractionDigits: v / total < 0.1 ? 1 : 0 })} %`;
 
 	/**
 	 * Arc hover by angle (not by pointerenter on the paths): the extrusion translates the path and
@@ -161,7 +171,7 @@
 				{#each segments as seg, i (seg.slice.id)}
 					{@const hovered = hoveredId === seg.slice.id}
 					{@const isClickable = clickable(seg.slice)}
-					{@const segStyle = `--trace-len: ${seg.length}px; animation-delay: ${i * 80}ms; transform: ${
+					{@const segStyle = `--trace-len: ${seg.length}px; animation-delay: ${i * 80}ms; opacity: ${hoveredId && !hovered ? 0.38 : 1}; transform: ${
 						hovered ? `translate(${seg.dx.toFixed(2)}px, ${seg.dy.toFixed(2)}px)` : 'translate(0, 0)'
 					};`}
 					{#if isClickable}
@@ -170,7 +180,7 @@
 							d={seg.path}
 							fill="none"
 							stroke={seg.slice.color}
-							stroke-width={THICKNESS}
+							stroke-width={hovered ? THICKNESS + 4 : THICKNESS}
 							stroke-linecap="butt"
 							stroke-dasharray={seg.length}
 							class="donut-segment donut-segment-clickable"
@@ -188,7 +198,7 @@
 							d={seg.path}
 							fill="none"
 							stroke={seg.slice.color}
-							stroke-width={THICKNESS}
+							stroke-width={hovered ? THICKNESS + 4 : THICKNESS}
 							stroke-linecap="butt"
 							stroke-dasharray={seg.length}
 							class="donut-segment"
@@ -218,9 +228,14 @@
 					<span class="pointer-events-none mt-0.5 text-[14px] font-semibold"><NarrowAmount value={total} /></span>
 				</button>
 			{:else}
-				<div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-					<span class="label-plain !text-[10px]">{centerLabel}</span>
-					<span class="mt-0.5 text-[14px] font-semibold"><NarrowAmount value={total} /></span>
+				<div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+					{#key hoveredSlice?.id ?? ''}
+						<span class="donut-center flex flex-col items-center">
+							<span class="label-plain max-w-full truncate !text-[10px]" style={hoveredSlice ? `color: ${hoveredSlice.color};` : ''}>{hoveredSlice?.label ?? centerLabel}</span>
+							<span class="mt-0.5 text-[14px] font-semibold"><NarrowAmount value={hoveredSlice?.value ?? total} /></span>
+							{#if hoveredSlice}<span class="meta-xs tabular">{pctOf(hoveredSlice.value)}</span>{/if}
+						</span>
+					{/key}
 				</div>
 			{/if}
 		</div>
@@ -268,8 +283,20 @@
 <style>
 	/* Progressive drawing on load + smooth extrusion on hover */
 	.donut-segment {
-		animation: donut-trace 700ms ease-out both;
-		transition: transform 200ms ease;
+		animation: donut-trace 700ms var(--ease-out) both;
+		transition:
+			transform var(--motion-base) var(--ease-spring),
+			opacity var(--motion-base) ease,
+			stroke-width var(--motion-base) var(--ease-out);
+	}
+	.donut-center {
+		animation: donut-center-in var(--motion-base) var(--ease-out);
+	}
+	@keyframes donut-center-in {
+		from {
+			opacity: 0;
+			transform: translateY(3px) scale(0.96);
+		}
 	}
 	/* Clickable segments (drill-down): cursor + visible keyboard focus */
 	.donut-segment-clickable {

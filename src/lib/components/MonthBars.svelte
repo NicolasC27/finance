@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatEUR, formatEURCompact, formatMonth } from '$lib/format';
+	import { growArray } from '$lib/motion.svelte';
+	import { barPath, changePct } from '$lib/chartGeometry';
 
 	/**
 	 * Signed monthly bars (savings: green above zero, amber below) with an optional second series as a
-	 * thin bar (invested savings) and a dashed average line.
+	 * thin bar (invested savings) and a dashed average line. Bars grow from the zero line on first
+	 * render, morph when the data changes, have a rounded data end and the hovered month is
+	 * highlighted (others dim) with its change vs the previous month.
 	 */
 	let {
 		months,
@@ -19,6 +23,9 @@
 	let container = $state<HTMLDivElement | null>(null);
 	let width = $state(0);
 	let hover = $state<number | null>(null);
+	/** Main and secondary values, grown then morphed together. */
+	const grown = growArray(() => [...values, ...secondary]);
+	const shown = $derived(grown.current.length === values.length + secondary.length ? grown.current : [...values, ...secondary]);
 
 	onMount(() => {
 		const el = container;
@@ -44,8 +51,10 @@
 		const bars = months.map((m, i) => {
 			const v = values[i] ?? 0;
 			const sv = secondary[i] ?? 0;
+			const av = shown[i] ?? 0;
+			const asv = shown[values.length + i] ?? 0;
 			const x = PAD.left + slot * i + slot / 2;
-			return { i, m, x, v, sv, y: Math.min(zeroY, yOf(v)), h: Math.abs(zeroY - yOf(v)), sy: yOf(sv), sh: Math.abs(zeroY - yOf(sv)) };
+			return { i, m, x, v, sv, path: barPath(x - barW / 2, barW, zeroY, yOf(av), 4), spath: sv > 0 ? barPath(x + barW / 2 + 1, Math.max(2, barW * 0.3), zeroY, yOf(asv), 1.5) : '' };
 		});
 		const every = months.length <= 12 ? 1 : months.length <= 24 ? 2 : 3;
 		return { bars, barW, slot, zeroY, meanY: yOf(mean), mean, every, labelY: height - 7 };
@@ -80,9 +89,11 @@
 					onmouseenter={() => (hover = b.i)}
 					onclick={() => onPick?.(b.i)}
 				/>
-				<rect x={b.x - geom.barW / 2} y={b.y} width={geom.barW} height={Math.max(b.h, b.v === 0 ? 0 : 1.5)} rx="2" fill={b.v >= 0 ? 'var(--accent)' : 'var(--amber)'} opacity={hover === null || hover === b.i ? 0.9 : 0.55} class="pointer-events-none" />
-				{#if b.sv > 0}
-					<rect x={b.x + geom.barW / 2 + 1} y={b.sy} width={Math.max(2, geom.barW * 0.3)} height={b.sh} rx="1" fill="var(--text-secondary)" opacity="0.6" class="pointer-events-none" />
+				{#if b.path}
+					<path d={b.path} fill={b.v >= 0 ? 'var(--accent)' : 'var(--amber)'} class="bar pointer-events-none" style="opacity: {hover === null || hover === b.i ? 0.92 : 0.4};" />
+				{/if}
+				{#if b.spath}
+					<path d={b.spath} fill="var(--text-secondary)" class="bar pointer-events-none" style="opacity: {hover === null || hover === b.i ? 0.6 : 0.3};" />
 				{/if}
 				{#if b.i % geom.every === 0}
 					<text x={b.x} y={geom.labelY} text-anchor="middle" font-size="10" fill="var(--text-secondary)">{shortMonth(b.m)}</text>
@@ -91,9 +102,11 @@
 		</svg>
 		{#if hover !== null}
 			{@const b = geom.bars[hover]!}
+			{@const d = hover > 0 ? changePct(values[hover - 1]!, b.v) : null}
 			<div class="pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded-lg border px-3 py-2 text-xs" style="left: {Math.min(Math.max(b.x, 90), width - 90)}px; border-color: var(--border); background-color: var(--surface);">
 				<p class="mb-0.5 font-medium whitespace-nowrap text-secondary capitalize">{formatMonth(b.m)}</p>
 				<p class="tabular whitespace-nowrap font-medium" style="color: {b.v >= 0 ? 'var(--accent)' : 'var(--amber)'};">{b.v >= 0 ? '+' : '−'}{formatEUR(Math.abs(b.v))}</p>
+				{#if d !== null}<p class="meta-xs tabular whitespace-nowrap">{d > 0 ? '+' : d < 0 ? '−' : ''}{Math.abs(d).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} % vs mois précédent</p>{/if}
 				{#if secondaryLabel && b.sv > 0}<p class="tabular whitespace-nowrap text-secondary">{secondaryLabel} {formatEUR(b.sv)}</p>{/if}
 			</div>
 		{/if}
@@ -101,3 +114,9 @@
 		<div class="flex h-full items-center justify-center text-sm text-secondary">Aucun mois à afficher.</div>
 	{/if}
 </div>
+
+<style>
+	.bar {
+		transition: opacity var(--motion-base) ease;
+	}
+</style>

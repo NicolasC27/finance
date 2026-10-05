@@ -1,3 +1,5 @@
+import { navDirection } from './navOrder';
+
 /** Home-made router (~40 lines): History API + View Transitions (graceful fallback). */
 
 export type RoutePath = '/' | '/budget' | '/analyse' | '/trier' | '/transactions' | '/patrimoine' | '/crypto' | '/rapport' | '/ia' | '/portage' | '/voiture';
@@ -20,18 +22,26 @@ export const route = $state<{ path: RoutePath }>({
 	path: normalizePath(typeof location === 'undefined' ? '/' : location.pathname)
 });
 
-/** SPA navigation: pushState + view transition when supported (graceful fallback). */
+/**
+ * Runs a route change inside a view transition when supported, tagging <html> with the direction
+ * (data-nav-dir) so the CSS slides the page up or down; instant swap otherwise. The tag only lives
+ * during the transition: a view-transition-name makes a stacking context, which would trap the
+ * fullscreen blocks under the sidebar the rest of the time.
+ */
+function transition(to: RoutePath, update: () => void): void {
+	if (typeof document.startViewTransition !== 'function') return update();
+	const root = document.documentElement;
+	root.dataset.navDir = navDirection(route.path, to);
+	void document.startViewTransition(update).finished.finally(() => delete root.dataset.navDir);
+}
+
+/** SPA navigation: pushState + directional view transition when supported (graceful fallback). */
 export function navigate(to: RoutePath): void {
 	if (to === route.path) return;
-	const update = () => {
+	transition(to, () => {
 		history.pushState({}, '', to);
 		route.path = to;
-	};
-	if (typeof document.startViewTransition === 'function') {
-		document.startViewTransition(update);
-	} else {
-		update();
-	}
+	});
 }
 
 /**
@@ -44,7 +54,8 @@ export function initRouter(): () => void {
 		history.replaceState({}, '', '/');
 	}
 	const onPopState = () => {
-		route.path = normalizePath(location.pathname);
+		const to = normalizePath(location.pathname);
+		if (to !== route.path) transition(to, () => (route.path = to));
 	};
 
 	const onClick = (e: MouseEvent) => {

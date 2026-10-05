@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { uiState } from '$lib/ui.svelte';
+	import SuccessCheck from './SuccessCheck.svelte';
 
 	/**
 	 * Global toast (bottom of the viewport, centred): discreet rule, 999px-radius pill, 200 ms
-	 * entrance, auto-close after 5 s, optional action (e.g. 'Annuler').
+	 * entrance with a slight spring, auto-close after 5 s, optional action (e.g. 'Annuler'), animated
+	 * check for success toasts.
 	 */
 
 	let timer: ReturnType<typeof setTimeout> | null = null;
@@ -29,7 +31,9 @@
 <!-- Live region ALWAYS in the DOM: when inserted together with its content it was not announced -->
 <div class="sr-only" role="status" aria-live="polite">{uiState.toast?.message ?? ''}</div>
 {#if uiState.toast}
+	{#key uiState.toast.nonce}
 	<div class="toast-global">
+		{#if uiState.toast.success}<SuccessCheck size={16} />{/if}
 		<span class="truncate text-sm">{uiState.toast.message}</span>
 		{#if uiState.toast.actionLabel}
 			<button type="button" class="toast-action press shrink-0 cursor-pointer" onclick={runAction}>
@@ -47,6 +51,7 @@
 			</svg>
 		</button>
 	</div>
+	{/key}
 {/if}
 
 <style>
@@ -64,7 +69,7 @@
 		border-radius: 999px;
 		background-color: var(--surface-2);
 		box-shadow: var(--shadow-soft);
-		animation: toast-global-in 200ms cubic-bezier(0.2, 0.6, 0.2, 1) backwards;
+		animation: toast-global-in var(--motion-slow) var(--ease-spring) backwards;
 	}
 
 	@media (min-width: 1024px) {
@@ -88,11 +93,11 @@
 	@keyframes toast-global-in {
 		from {
 			opacity: 0;
-			transform: translate(-50%, 8px);
+			transform: translate(-50%, 12px) scale(0.96);
 		}
 		to {
 			opacity: 1;
-			transform: translate(-50%, 0);
+			transform: translate(-50%, 0) scale(1);
 		}
 	}
 

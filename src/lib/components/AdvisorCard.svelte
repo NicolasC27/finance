@@ -3,7 +3,7 @@
 	import { budgetState, setBudget } from '$lib/budget.svelte';
 	import { getMerchantCategoryMap } from '$lib/store.svelte';
 	import { getBudgetTransactions } from '$lib/transfers.svelte';
-	import { uiState, showToast } from '$lib/ui.svelte';
+	import { uiState, showToast, showSuccess } from '$lib/ui.svelte';
 	import type { CategoryId } from '$lib/types';
 	import { formatEUR } from '$lib/format';
 
@@ -45,7 +45,7 @@
 			showToast('Les budgets sont déjà sur les cibles conseillées');
 			return;
 		}
-		showToast(`${n} budget${n > 1 ? 's' : ''} mis à jour`, 'Annuler', () => {
+		showSuccess(`${n} budget${n > 1 ? 's' : ''} mis à jour`, 'Annuler', () => {
 			for (const row of advice!.advice) setBudget(row.categoryId, before[row.categoryId] ?? 0);
 		});
 	}

@@ -12,6 +12,7 @@
 </script>
 
 <script lang="ts">
+	import { segmented } from '$lib/actions/segmented';
 	import { getNetWorth, getCryptoTotal } from '$lib/wealth.svelte';
 	import { getLoanViews, loanState } from '$lib/loans.svelte';
 	import { goalsState } from '$lib/goals.svelte';
@@ -165,7 +166,7 @@
 	<div class="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
 		<h2 class="label-xs">Projection du patrimoine</h2>
 		{#if show('horizon')}
-		<div class="flex gap-1" role="group" aria-label="Horizon">
+		<div class="flex gap-1" role="group" aria-label="Horizon" use:segmented>
 			{#each [5, 10, 20] as a (a)}
 				<button type="button" class="chip cursor-pointer {years === a ? 'chip-accent' : 'chip-muted'}" aria-pressed={years === a} onclick={() => setProjectionSetting({ annees: a as 5 | 10 | 20 })}>{a} ans</button>
 			{/each}
@@ -204,12 +205,12 @@
 			{#each geo.ticks as a (a)}
 				<text x={geo.x(a * 12)} y={H - 6} text-anchor="middle" font-size="10" fill="var(--text-secondary)">{now.getFullYear() + a}</text>
 			{/each}
-			<path d={geo.bande} fill="var(--accent)" opacity="0.12" />
+			<path d={geo.bande} fill="var(--accent)" opacity="0.12" class="proj-band" />
 			{#if target}
 				<line x1={PAD.left} x2={width - PAD.right} y1={geo.y(target)} y2={geo.y(target)} stroke="var(--text-secondary)" stroke-dasharray="4 4" opacity="0.7" />
 				<text x={width - PAD.right} y={geo.y(target) - 4} text-anchor="end" font-size="10" fill="var(--text-secondary)">objectif {formatEURCompact(target)}</text>
 			{/if}
-			<path d={geo.central} fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+			{#key years}<path d={geo.central} fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" pathLength={1} class="proj-line" />{/key}
 			{#if targetReach?.central !== null && targetReach?.central !== undefined && targetReach.central <= geo.n && target}
 				<circle cx={geo.x(targetReach.central)} cy={geo.y(target)} r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" />
 			{/if}
@@ -266,3 +267,13 @@
 	{/if}
 	{/if}
 </div>
+
+<style>
+	.proj-line {
+		stroke-dasharray: 1;
+		animation: trace-line 800ms var(--ease-out) backwards;
+	}
+	.proj-band {
+		animation: fade-in 600ms ease-out 300ms backwards;
+	}
+</style>

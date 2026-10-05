@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { uiState, showToast } from '$lib/ui.svelte';
+	import { uiState, showToast, showSuccess } from '$lib/ui.svelte';
 	import { navigate, type RoutePath } from '$lib/router.svelte';
 	import { getTransactions, resetImported, restoreImported } from '$lib/store.svelte';
 	import { layoutState, toggleWide, resetLayout, resetPage, setFullscreen, setDensity, DENSITY_LABELS, type Density } from '$lib/layout.svelte';
@@ -155,7 +155,7 @@
 				hint: 'Un fichier JSON avec toutes vos données (transactions, règles, Kraken, Natixis, impôts)',
 				run: () => {
 					const r = downloadBackup();
-					showToast(`Sauvegarde ${r.fileName} : ${r.keys} enregistrement${r.keys > 1 ? 's' : ''}, ${Math.round(r.bytes / 1024)} Ko (sans les clés API)`);
+					showSuccess(`Sauvegarde ${r.fileName} : ${r.keys} enregistrement${r.keys > 1 ? 's' : ''}, ${Math.round(r.bytes / 1024)} Ko (sans les clés API)`);
 				}
 			},
 			{

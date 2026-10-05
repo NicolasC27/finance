@@ -55,6 +55,12 @@
 	--shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.25);
 	/* Signature easing: repositioning (tooltip, nav indicator) */
 	--ease-signature: cubic-bezier(1, 0, 0.3, 0.93);
+	/* Motion tokens: every transition and animation picks one of these */
+	--motion-fast: 120ms;
+	--motion-base: 200ms;
+	--motion-slow: 320ms;
+	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+	--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 html.light {
@@ -348,15 +354,25 @@ body {
 	font-size: 12px;
 	cursor: pointer;
 	transition:
-		background-color 0.2s ease,
-		border-color 0.2s ease,
-		color 0.2s ease,
-		transform 100ms ease,
-		opacity 0.2s ease;
+		background-color var(--motion-base) ease,
+		border-color var(--motion-base) ease,
+		color var(--motion-base) ease,
+		box-shadow var(--motion-base) ease,
+		transform var(--motion-fast) var(--ease-out),
+		opacity var(--motion-base) ease;
 }
 
-.btn:active {
-	transform: scale(0.98);
+.btn:hover:not(:disabled) {
+	transform: translateY(-1px);
+}
+
+.btn:active:not(:disabled) {
+	transform: translateY(0) scale(0.97);
+	transition-duration: 60ms;
+}
+
+.btn-accent:hover:not(:disabled) {
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .btn:disabled {
@@ -426,7 +442,58 @@ body {
 	justify-content: flex-start;
 }
 
-/* ---- Chips: a single family (status, badge, counter) ---- */
+/* ---- Chips: a single family (status, badge, counter) ----
+   Clickable chips (buttons) get a hover tint and a press squash. */
+button.chip {
+	transition:
+		background-color var(--motion-base) ease,
+		color var(--motion-base) ease,
+		transform var(--motion-fast) var(--ease-out);
+}
+
+button.chip.chip-muted:hover,
+button.chip.chip-outline:hover {
+	color: var(--text);
+}
+
+button.chip:active {
+	transform: scale(0.94);
+}
+
+/* Single-choice groups (use:segmented): a pill slides behind the active button */
+.seg-host {
+	position: relative;
+	isolation: isolate;
+}
+
+.seg-host > button {
+	background-color: transparent !important;
+}
+
+.seg-host > button:not([aria-pressed='true']):hover {
+	background-color: var(--surface-hover) !important;
+}
+
+.seg-pill {
+	position: absolute;
+	top: 0;
+	left: 0;
+	z-index: -1;
+	border-radius: 9999px;
+	background-color: var(--accent-soft);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+	pointer-events: none;
+	transition:
+		transform var(--motion-slow) var(--ease-spring),
+		width var(--motion-slow) var(--ease-out),
+		height var(--motion-slow) var(--ease-out),
+		opacity var(--motion-base) ease;
+}
+
+.seg-pill-instant {
+	transition: none;
+}
+
 .chip {
 	display: inline-flex;
 	align-items: center;
@@ -602,12 +669,91 @@ select.input-surface {
 	}
 }
 
-::view-transition-old(root) {
-	animation: vt-fade-out 250ms ease both;
+/* Only the page content moves (the sidebar stays still); the direction follows the sidebar order:
+   going down the list the new page rises, going up it comes down. The page title morphs on its own. */
+html[data-nav-dir] .app-main {
+	view-transition-name: page;
 }
 
+html[data-nav-dir] .page-title {
+	view-transition-name: page-title;
+}
+
+::view-transition-old(root),
 ::view-transition-new(root) {
-	animation: vt-fade-slide-in 250ms ease both;
+	animation: none;
+}
+
+::view-transition-old(page) {
+	animation: vt-page-out-up 140ms ease both;
+}
+
+::view-transition-new(page) {
+	animation: vt-page-in-up var(--motion-slow) var(--ease-out) both;
+}
+
+html[data-nav-dir='up']::view-transition-old(page) {
+	animation-name: vt-page-out-down;
+}
+
+html[data-nav-dir='up']::view-transition-new(page) {
+	animation-name: vt-page-in-down;
+}
+
+::view-transition-group(page-title) {
+	animation-duration: var(--motion-slow);
+	animation-timing-function: var(--ease-out);
+}
+
+@keyframes vt-page-in-up {
+	from {
+		opacity: 0;
+		transform: translateY(18px);
+	}
+}
+
+@keyframes vt-page-in-down {
+	from {
+		opacity: 0;
+		transform: translateY(-18px);
+	}
+}
+
+@keyframes vt-page-out-up {
+	to {
+		opacity: 0;
+		transform: translateY(-10px);
+	}
+}
+
+@keyframes vt-page-out-down {
+	to {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+}
+
+/* Tiles enter in a short cascade (≤ 300 ms in total) when a page opens */
+.tile-canvas > .tile {
+	animation: tile-in 420ms var(--ease-out) backwards;
+}
+
+.tile-canvas > .tile:nth-child(2) { animation-delay: 30ms; }
+.tile-canvas > .tile:nth-child(3) { animation-delay: 60ms; }
+.tile-canvas > .tile:nth-child(4) { animation-delay: 90ms; }
+.tile-canvas > .tile:nth-child(5) { animation-delay: 120ms; }
+.tile-canvas > .tile:nth-child(6) { animation-delay: 150ms; }
+.tile-canvas > .tile:nth-child(7) { animation-delay: 180ms; }
+.tile-canvas > .tile:nth-child(8) { animation-delay: 210ms; }
+.tile-canvas > .tile:nth-child(9) { animation-delay: 240ms; }
+.tile-canvas > .tile:nth-child(10) { animation-delay: 270ms; }
+.tile-canvas > .tile:nth-child(n + 11) { animation-delay: 300ms; }
+
+@keyframes tile-in {
+	from {
+		opacity: 0;
+		translate: 0 10px;
+	}
 }
 
 /* File drop overlay (CSV drag & drop) */
@@ -791,16 +937,17 @@ html.light .grain {
    of the targeted components. */
 .press {
 	transition:
-		transform 100ms ease,
-		background-color 200ms ease,
-		border-color 200ms ease,
-		color 200ms ease,
-		box-shadow 200ms ease,
-		opacity 200ms ease;
+		transform var(--motion-fast) var(--ease-out),
+		background-color var(--motion-base) ease,
+		border-color var(--motion-base) ease,
+		color var(--motion-base) ease,
+		box-shadow var(--motion-base) ease,
+		opacity var(--motion-base) ease;
 }
 
 .press:active {
-	transform: scale(0.98);
+	transform: scale(0.97);
+	transition-duration: 60ms;
 }
 
 /* ---- Craft: focus, selection, scrollbar ---- */
@@ -809,6 +956,15 @@ html.light .grain {
 :focus-visible {
 	outline: 1px solid var(--accent);
 	outline-offset: 2px;
+	animation: focus-ring-in var(--motion-base) var(--ease-out);
+}
+
+/* The focus ring tightens onto the element instead of popping in */
+@keyframes focus-ring-in {
+	from {
+		outline-offset: 6px;
+		outline-color: transparent;
+	}
 }
 
 /* Text selection: accent background at 25 % */

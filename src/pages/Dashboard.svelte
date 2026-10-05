@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { segmented } from '$lib/actions/segmented';
 	import type { CategoryId, Transaction } from '$lib/types';
 	import { isPending, signedAmount, spendAmount, cumulativeBalance, type BalancePoint, isBankTx } from '$lib/data';
 	import { accountOf } from '$lib/scope';
@@ -719,7 +720,7 @@
 						<div class="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
 							<h2 class="label-xs">Évolution du solde</h2>
 							{#if show('periodes')}
-								<div class="flex flex-wrap items-center gap-1" role="group" aria-label="Période de la courbe">
+								<div class="flex flex-wrap items-center gap-1" role="group" aria-label="Période de la courbe" use:segmented>
 									{#each RANGES as r (r.key)}
 										<button type="button" class="chip cursor-pointer {chartRangeKey === r.key ? 'chip-accent' : 'chip-muted'}" aria-pressed={chartRangeKey === r.key} onclick={() => setRange(r.key)}>{r.label}</button>
 									{/each}

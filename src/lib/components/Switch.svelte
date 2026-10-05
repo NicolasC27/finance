@@ -34,8 +34,8 @@
 		border: 1px solid var(--hairline);
 		background-color: var(--surface-2);
 		transition:
-			background-color 150ms ease,
-			border-color 150ms ease;
+			background-color var(--motion-base) ease,
+			border-color var(--motion-base) ease;
 	}
 
 	.switch[aria-checked='true'] {
@@ -57,8 +57,17 @@
 		border-radius: 999px;
 		background-color: var(--text-2);
 		transition:
-			transform 150ms ease,
-			background-color 150ms ease;
+			transform var(--motion-slow) var(--ease-spring),
+			width var(--motion-fast) var(--ease-out),
+			background-color var(--motion-base) ease;
+	}
+
+	.switch:active:not(:disabled) .switch-knob {
+		width: 15px;
+	}
+
+	.switch[aria-checked='true']:active:not(:disabled) .switch-knob {
+		transform: translateX(9px);
 	}
 
 	.switch[aria-checked='true'] .switch-knob {

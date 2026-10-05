@@ -6,7 +6,7 @@
 	import { getBudgetTransactions } from '$lib/transfers.svelte';
 	import { isPending, spendAmount } from '$lib/data';
 	import { formatDate, formatEUR } from '$lib/format';
-	import { showToast, uiState } from '$lib/ui.svelte';
+	import { showToast, uiState, showSuccess } from '$lib/ui.svelte';
 	import { navigate } from '$lib/router.svelte';
 	import { rangeLabel, suggestVacationLabel } from '$lib/rangeCalendar';
 	import { floating } from '$lib/actions/floating';
@@ -73,7 +73,7 @@
 			showToast('Période modifiée');
 		} else {
 			const p = addVacation(editor.label, editor.start, editor.end);
-			showToast(`Période « ${p.label} » ajoutée : les dépenses du ${formatDate(p.start)} au ${formatDate(p.end)} passent en Vacances`, 'Annuler', () => removeVacation(p.id));
+			showSuccess(`Période « ${p.label} » ajoutée : les dépenses du ${formatDate(p.start)} au ${formatDate(p.end)} passent en Vacances`, 'Annuler', () => removeVacation(p.id));
 		}
 		editor = null;
 	}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { uiState, showToast } from '$lib/ui.svelte';
+	import { uiState, showToast, showSuccess } from '$lib/ui.svelte';
 	import { autoBackupState, enableAutoBackup, disableAutoBackup, resumeAutoBackup, restorePendingEncrypted } from '$lib/autoBackup.svelte';
 	import { formatDate } from '$lib/format';
 	import { modal } from '$lib/actions/modal';
@@ -43,7 +43,7 @@
 		}
 		passphrase = '';
 		confirm = '';
-		showToast(`Sauvegarde automatique activée dans « ${autoBackupState.folderName} »`);
+		showSuccess(`Sauvegarde automatique activée dans « ${autoBackupState.folderName} »`);
 		close();
 	}
 

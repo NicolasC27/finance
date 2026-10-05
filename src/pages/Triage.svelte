@@ -13,7 +13,7 @@
 	import { formatDate, formatEUR } from '$lib/format';
 	import { merchantLabel } from '$lib/merchant';
 	import { accountLabel } from '$lib/accounts.svelte';
-	import { showToast, uiState } from '$lib/ui.svelte';
+	import { showToast, uiState, showSuccess } from '$lib/ui.svelte';
 	import { navigate } from '$lib/router.svelte';
 	import PageTitle from '$lib/components/PageTitle.svelte';
 	import CategoryIcon from '$lib/components/CategoryIcon.svelte';
@@ -133,7 +133,7 @@
 		const tx = current;
 		if (!tx) return;
 		if ((tx.note ?? '') === noteDraft) return;
-		if (updateImported(txKey(tx), { note: noteDraft })) showToast('Note enregistrée');
+		if (updateImported(txKey(tx), { note: noteDraft })) showSuccess('Note enregistrée');
 	}
 	function onSubChange(e: Event) {
 		const tx = current;

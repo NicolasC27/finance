@@ -23,7 +23,7 @@
 	import { navigate } from '$lib/router.svelte';
 	import { onMount } from 'svelte';
 	import { refreshValuation, autoState, automateVehicle, confirmValue, ignoreProposal, importCarDocuments, retainValue, acceptProposal } from '$lib/carAuto.svelte';
-	import { showToast, uiState } from '$lib/ui.svelte';
+	import { showToast, uiState, showSuccess } from '$lib/ui.svelte';
 
 	/**
 	 * Vehicle sheet: visual (illustration or photo), plate and identity; valuation (range, comparable
@@ -107,7 +107,7 @@
 		if (!url.startsWith('data:image/webp')) url = canvas.toDataURL('image/jpeg', 0.85);
 		if (url.length > 1_500_000) return showToast('Photo trop lourde, même réduite : choisis une image plus petite');
 		updateAsset(v.id, { vehicle: { ...(v.vehicle ?? { kmLog: [] }), photo: url } });
-		showToast('Photo enregistrée (sur ce PC uniquement)');
+		showSuccess('Photo enregistrée (sur ce PC uniquement)');
 	}
 	function removePhoto() {
 		if (!v?.vehicle) return;
@@ -241,7 +241,7 @@
 		const err = logKm(v.id, { date: readingDate, km: readingKm, source: readingSource });
 		if (err) return showToast(err);
 		readingKm = '';
-		showToast('Relevé ajouté');
+		showSuccess('Relevé ajouté');
 	}
 
 	const STATES: Record<Milestone['etat'], { label: string; cls: string }> = {

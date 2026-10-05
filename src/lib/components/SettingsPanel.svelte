@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { uiState, showToast } from '$lib/ui.svelte';
+	import { uiState, showToast, showSuccess } from '$lib/ui.svelte';
 	import { navigate, route } from '$lib/router.svelte';
 	import { THEMES, type Theme } from '$lib/theme';
 	import { layoutState, toggleWide, resetLayout, resetPage, setDensity, DENSITY_LABELS, type Density } from '$lib/layout.svelte';
@@ -68,7 +68,7 @@
 
 	function exportJson() {
 		const r = downloadBackup();
-		showToast(`Sauvegarde ${r.fileName} : ${r.keys} enregistrement${r.keys > 1 ? 's' : ''}, ${Math.round(r.bytes / 1024)} Ko (sans les clés API)`);
+		showSuccess(`Sauvegarde ${r.fileName} : ${r.keys} enregistrement${r.keys > 1 ? 's' : ''}, ${Math.round(r.bytes / 1024)} Ko (sans les clés API)`);
 	}
 
 	/** Auto-backup status in one line, with the colour of its dot. */
