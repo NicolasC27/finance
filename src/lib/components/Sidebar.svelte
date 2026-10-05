@@ -202,7 +202,7 @@
 			class="press flex cursor-pointer items-center gap-2.5 rounded-full border text-[13px] text-secondary transition-colors duration-200 hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full px-3.5 py-2'}"
 			style="border-color: var(--hairline);"
 			onclick={() => (uiState.paletteOpen = true)}
-			title="Palette de commandes (Cmd/Ctrl+K)"
+			title="Palette de commandes (/ ou Cmd/Ctrl+K)"
 			aria-label="Ouvrir la palette de commandes"
 		>
 			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" class="shrink-0">
@@ -220,7 +220,7 @@
 			class="press mt-2 flex cursor-pointer items-center gap-2.5 rounded-full border text-[13px] text-secondary transition-colors duration-200 hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full px-3.5 py-2'}"
 			style="border-color: var(--hairline);"
 			onclick={() => (uiState.importPanelOpen = true)}
-			title="Importer des fichiers (ou glissez-les n'importe où)"
+			title="Importer des fichiers : touche I (ou glissez-les n'importe où)"
 			aria-label="Importer des fichiers"
 		>
 			{@render importIcon(14)}
@@ -357,8 +357,8 @@
 			</a>
 		{/if}
 		{#if !collapsed}
-			<!-- Small links: monthly report (no extra nav entry) and the modules menu -->
-			<div class="-mt-0.5 flex items-center gap-3 text-[11px]">
+			<!-- Small links: monthly report and data history (no extra nav entry) and the modules menu -->
+			<div class="-mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
 				{#if isModuleActive('rapport')}
 					<a
 						href="/rapport"
@@ -369,6 +369,15 @@
 						Rapport du mois
 					</a>
 				{/if}
+				<a
+					href="/historique"
+					class="press whitespace-nowrap text-secondary transition-colors hover:text-[var(--accent)] hover:underline"
+					class:!text-[var(--accent)]={route.path === '/historique'}
+					aria-current={route.path === '/historique' ? 'page' : undefined}
+					title="Historique des données : points de restauration (G puis Y)"
+				>
+					Historique
+				</a>
 				<button
 					type="button"
 					class="press cursor-pointer whitespace-nowrap text-secondary transition-colors hover:text-[var(--accent)] hover:underline"
@@ -388,7 +397,7 @@
 				class="press relative flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-full border text-[13px] text-secondary transition-colors duration-200 hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {collapsed ? 'w-9 justify-center' : 'px-3'}"
 				style="border-color: var(--hairline);"
 				aria-label={backupAlert ? 'Réglages (sauvegarde automatique à reprendre)' : 'Réglages'}
-				title={backupAlert ? 'Réglages · la sauvegarde automatique est en pause ou en erreur' : 'Réglages (Ctrl+,)'}
+				title={backupAlert ? 'Réglages · la sauvegarde automatique est en pause ou en erreur' : 'Réglages (S ou Ctrl+,)'}
 				onclick={openSettings}
 			>
 				{@render gearIcon(15)}

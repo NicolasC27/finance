@@ -4,6 +4,7 @@ import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { writeSecret, readSecret } from './trousseau.ts';
+import { pointsToKeep, type PointInfo } from '../src/lib/restorePoints.ts';
 
 /**
  * App database: `donnees/budget.db`, encrypted twice.
@@ -24,6 +25,10 @@ import { writeSecret, readSecret } from './trousseau.ts';
  *   to back up.
  * - Backup: before the first write of the day, copy of the database (hence
  *   encrypted) in `historique/budget-YYYY-MM-DD.db`, 14 days kept.
+ * - Restore points: snapshots of every value, encrypted, in the `points` table (before an import, a
+ *   bulk edit, an AI action, a restore, once a day, or on demand); going back replaces the values in
+ *   one transaction after the snapshot was decrypted and checked, and saves the current state first.
+ *   Grandfather-father-son retention (restorePoints.ts).
  * - Permissions: folder 0700, database and backups 0600.
  */
 
@@ -65,7 +70,14 @@ CREATE TABLE IF NOT EXISTS documents (
 	octets INTEGER NOT NULL,
 	ajoute_le TEXT NOT NULL
 ) STRICT;
-PRAGMA user_version = 2;
+CREATE TABLE IF NOT EXISTS points (
+	id INTEGER PRIMARY KEY,
+	cree_le TEXT NOT NULL,
+	raison TEXT NOT NULL,
+	octets INTEGER NOT NULL,
+	contenu BLOB NOT NULL -- chiffré : { clé: valeur }
+) STRICT;
+PRAGMA user_version = 3;
 `;
 
 type Db = Database.Database;
@@ -277,6 +289,18 @@ export interface DataStore {
 	ajouterDocument(name: string, content: Buffer): void;
 	lireDocument(name: string): Buffer | null;
 	etat(): DataStoreState;
+	/** Takes a restore point of every value now (reason shown in the history); null when there is no data yet. */
+	creerPoint(raison: string): PointInfo | null;
+	/** Restore points, newest first. */
+	points(): PointInfo[];
+	/** Values of a restore point, decrypted and checked (throws when unreadable). */
+	lirePoint(id: number): Record<string, string>;
+	/**
+	 * Goes back to a restore point: decrypted and checked first (the database is untouched on any
+	 * error), the current state is saved as a new point, then every value is replaced in one
+	 * transaction. Returns the point that holds the state before going back.
+	 */
+	restaurerPoint(id: number): PointInfo;
 	fermer(): void;
 }
 
@@ -452,6 +476,40 @@ function createStore(db: Db, key: Buffer, dir: string, file: string, readOnly: b
 		if (!isAllowedKey(k)) throw new Error(`clé refusée : ${k}`);
 	};
 
+	const listPoints = (): PointInfo[] => db.prepare('SELECT id, cree_le, raison, octets FROM points ORDER BY id DESC').all() as PointInfo[];
+	const insertPoint = (reason: string, data: Record<string, string>): PointInfo => {
+		const when = new Date().toISOString();
+		const blob = encrypt(key, 'point', JSON.stringify(data));
+		const raison = reason.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 200) || 'point manuel';
+		const r = db.prepare('INSERT INTO points (cree_le, raison, octets, contenu) VALUES (?, ?, ?, ?)').run(when, raison, blob.length, blob);
+		return { id: Number(r.lastInsertRowid), cree_le: when, raison, octets: blob.length };
+	};
+	const prunePoints = () => {
+		const keep = pointsToKeep(listPoints(), Date.now());
+		for (const p of listPoints()) if (!keep.has(p.id)) db.prepare('DELETE FROM points WHERE id = ?').run(p.id);
+	};
+	const hasData = () => !!db.prepare('SELECT 1 FROM donnees LIMIT 1').get();
+	const takePoint = (reason: string): PointInfo | null => {
+		if (!hasData()) return null;
+		const p = transaction(db, () => insertPoint(reason, readAll(db, key)));
+		prunePoints();
+		return p;
+	};
+	const readPoint = (id: number): Record<string, string> => {
+		const r = db.prepare('SELECT contenu FROM points WHERE id = ?').get(id) as { contenu: Uint8Array } | undefined;
+		if (!r) throw new Error(`point de restauration ${id} introuvable`);
+		let data: unknown;
+		try {
+			data = JSON.parse(decrypt(key, 'point', r.contenu));
+		} catch {
+			throw new Error('Point de restauration illisible (altéré ou chiffré avec une autre clé) : rien n’a été modifié.');
+		}
+		if (!data || typeof data !== 'object' || Array.isArray(data) || !Object.entries(data).every(([k, v]) => isAllowedKey(k) && typeof v === 'string')) {
+			throw new Error('Point de restauration incohérent : rien n’a été modifié.');
+		}
+		return data as Record<string, string>;
+	};
+
 	let backupDay = '';
 	const backUpToday = () => {
 		const day = localDay();
@@ -473,6 +531,7 @@ function createStore(db: Db, key: Buffer, dir: string, file: string, readOnly: b
 			const allBackups = listBackups(dir);
 			for (const old of allBackups.slice(0, Math.max(0, allBackups.length - HISTORY_DAYS))) rmSync(join(hist, old), { force: true });
 		}
+		if (!(db.prepare('SELECT 1 FROM points WHERE substr(cree_le, 1, 10) = ? AND raison = ?').get(new Date().toISOString().slice(0, 10), 'quotidien'))) takePoint('quotidien');
 		backupDay = day;
 	};
 	const tryBackUpToday = () => {
@@ -513,6 +572,7 @@ function createStore(db: Db, key: Buffer, dir: string, file: string, readOnly: b
 			assertWritable();
 			const entries = Object.entries(batch).filter((e): e is [string, string] => isAllowedKey(e[0]) && typeof e[1] === 'string');
 			tryBackUpToday();
+			takePoint(`avant import : ${origin}`);
 			const when = nextTimestamp();
 			transaction(db, () => {
 				archiveBatch(origin, Object.fromEntries(entries), when);
@@ -547,6 +607,29 @@ function createStore(db: Db, key: Buffer, dir: string, file: string, readOnly: b
 				sauvegardes: listBackups(dir),
 				integrite: String(db.pragma('integrity_check', { simple: true }))
 			};
+		},
+		creerPoint(raison) {
+			assertWritable();
+			return takePoint(raison);
+		},
+		points: () => listPoints(),
+		lirePoint: (id) => readPoint(id),
+		restaurerPoint(id) {
+			assertWritable();
+			const data = readPoint(id);
+			const point = listPoints().find((p) => p.id === id)!;
+			const check = String(db.pragma('quick_check', { simple: true }));
+			if (check !== 'ok') throw new Error(`Base en mauvais état (${check}) : retour en arrière refusé, rien n’a été modifié.`);
+			const when = nextTimestamp();
+			const before = transaction(db, () => {
+				const label = new Date(point.cree_le).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+				const saved = insertPoint(`avant retour au point du ${label}`, readAll(db, key));
+				db.prepare('DELETE FROM donnees').run();
+				for (const [k, v] of Object.entries(data)) writeRow(k, v, when);
+				return saved;
+			});
+			prunePoints();
+			return before;
 		},
 		fermer() {
 			if (db.open) db.close();

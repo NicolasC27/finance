@@ -1,3 +1,4 @@
+import { restorePoint } from './history.svelte';
 import type { Transaction } from './types';
 import { getTransactions } from './store.svelte';
 import { isPending, signedAmount, cumulativeBalance, type BalancePoint } from './data';
@@ -738,7 +739,10 @@ export async function syncLedgerFromApi(
 	const entries = await kraken.fetchLedgers(sinceUnix, onProgress, (page) => {
 		fresh += mergeKrakenLedger(page);
 		const txs = page.map(entryToTransaction).filter((t): t is Transaction => t !== null);
-		if (txs.length > 0) added += addImported(txs, { ignored: 0, errors: [], fileName: 'API Kraken', accounts: ['Kraken'] }).added;
+		if (txs.length > 0) {
+			void restorePoint(`avant import API Kraken : ${txs.length} opération${txs.length > 1 ? 's' : ''}`);
+			added += addImported(txs, { ignored: 0, errors: [], fileName: 'API Kraken', accounts: ['Kraken'] }).added;
+		}
 		const internalKeys = page.filter(isInternalKrakenMovement).map(entryToTransaction).filter((t): t is Transaction => t !== null).map(txKey);
 		if (internalKeys.length > 0) excludeKeys(internalKeys);
 	});

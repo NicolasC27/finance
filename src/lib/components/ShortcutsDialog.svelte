@@ -33,6 +33,7 @@
 				{ keys: ['G', 'J'], label: 'Analyse IA' },
 				{ keys: ['G', 'O'], label: 'Portage' },
 				{ keys: ['G', 'V'], label: 'Voiture' },
+				{ keys: ['G', 'Y'], label: 'Historique des données' },
 				{ keys: ['+'], label: 'Saisir une dépense' },
 				{ keys: ['H'], label: 'Mode discret : masquer / afficher les montants' }
 			]
@@ -64,8 +65,10 @@
 		{
 			title: 'Général',
 			items: [
-				{ keys: [`${mod} K`], label: 'Palette de commandes (pages, actions, transactions, thèmes)' },
-				{ keys: [`${mod} ,`], label: 'Réglages (thème, densité, sauvegardes, Kraken)' },
+				{ keys: [`${mod} K`, '/'], sep: 'ou', label: 'Palette de commandes (pages, actions, transactions, thèmes)' },
+				{ keys: [`${mod} ,`, 'S'], sep: 'ou', label: 'Réglages (thème, densité, sauvegardes, Kraken) · S hors page « À trier »' },
+				{ keys: ['I'], label: 'Importer des fichiers' },
+				{ keys: ['[', ']'], sep: 'ou', label: 'Mois précédent / suivant (tableau de bord, budget, rapport)' },
 				{ keys: ['?'], label: 'Afficher cet aide-mémoire' },
 				{ keys: ['Échap'], label: 'Fermer la palette, un dialogue ou le détail ouvert' }
 			]

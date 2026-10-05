@@ -172,6 +172,22 @@ export function dataPlugin(dir: string, label = dir): Plugin {
 					const { data } = JSON.parse(await readBody(req)) as { data?: Record<string, unknown> };
 					return send(res, 200, { written: b.importer(data ?? {}, 'navigateur (migration)') });
 				}
+				if (path === '/__data/points' || path.startsWith('/__data/points/')) {
+					const m = /^\/__data\/points(?:\/(\d+)(\/restaurer)?)?$/.exec(path);
+					if (!m) return send(res, 404, { error: 'inconnu' });
+					try {
+						if (!m[1] && req.method === 'GET') return send(res, 200, { points: b.points() });
+						if (!m[1] && req.method === 'POST') {
+							const { raison } = JSON.parse((await readBody(req)) || '{}') as { raison?: unknown };
+							return send(res, 200, { point: b.creerPoint(typeof raison === 'string' ? raison : 'point manuel') });
+						}
+						if (m[1] && !m[2] && req.method === 'GET') return send(res, 200, { data: b.lirePoint(Number(m[1])) });
+						if (m[1] && m[2] && req.method === 'POST') return send(res, 200, { avant: b.restaurerPoint(Number(m[1])) });
+					} catch (e) {
+						return send(res, 422, { error: message(e) });
+					}
+					return send(res, 405, { error: 'méthode non gérée' });
+				}
 				const key = decodeURIComponent(path.slice('/__data/'.length));
 				if (!isAllowedKey(key)) return send(res, 400, { error: 'clé refusée' });
 				const header = req.headers['x-budget-version'];
