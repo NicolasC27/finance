@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import SidePanel from './SidePanel.svelte';
 	import Switch from './Switch.svelte';
-	import { uiState, showToast } from '$lib/ui.svelte';
+	import { uiState, showToast, showSuccess } from '$lib/ui.svelte';
 	import { navigate, route } from '$lib/router.svelte';
 	import { moduleMeta, type ModuleId } from '$lib/modules';
 	import { modulesState, setCarOptions, setModuleActive } from '$lib/modules.svelte';
@@ -73,7 +73,7 @@
 	function saveRelay(e: SubmitEvent) {
 		e.preventDefault();
 		saveConfig({ url: relayUrl, token: relayToken });
-		showToast('Relais IA enregistré');
+		showSuccess('Relais IA enregistré');
 	}
 </script>
 

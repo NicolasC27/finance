@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { segmented } from '$lib/actions/segmented';
 	import { onMount } from 'svelte';
 	import type { CategoryId, Transaction } from '$lib/types';
 	import { CATEGORIES, categorize, getCategory, isWealthMovement, txKey, VACATION_ELIGIBLE } from '$lib/categories';
@@ -58,7 +59,7 @@
 	import { importsState, recordImport, getImportReminders, SOURCE_LABELS, type ImportSource } from '$lib/importsLog.svelte';
 	import { parseXlsx } from '$lib/xlsxCore';
 	import { registerAccounts, registerCsvAccount, accountLabel, accountKind, KIND_LABELS } from '$lib/accounts.svelte';
-	import { uiState, showToast } from '$lib/ui.svelte';
+	import { uiState, showToast, showSuccess } from '$lib/ui.svelte';
 	import { assetsState, assetOfTx, attachTx, detachTx, addAsset } from '$lib/assets.svelte';
 	import { getPortageEntries, noteOfTx } from '$lib/portage.svelte';
 	import { navigate } from '$lib/router.svelte';
@@ -1397,7 +1398,7 @@
 	}
 	function saveNote(tx: Transaction) {
 		if ((tx.note ?? '') === noteDraft) return;
-		if (updateImported(txKey(tx), { note: noteDraft })) showToast('Note enregistrée');
+		if (updateImported(txKey(tx), { note: noteDraft })) showSuccess('Note enregistrée');
 	}
 	/**
 	 * List keyboard: ignored while a dialog is in front (transfers, Kraken, backup…); Escape leaves
@@ -1782,7 +1783,7 @@
 					{selectMode ? 'Terminer la sélection' : 'Sélectionner'}
 				</button>
 			{/if}
-			<div class="flex overflow-hidden rounded-full border" style="border-color: var(--hairline);" role="group" aria-label="Vue de la page">
+			<div class="flex overflow-hidden rounded-full border" style="border-color: var(--hairline);" role="group" aria-label="Vue de la page" use:segmented>
 				{#each VIEWS as opt (opt.id)}
 					<button
 						type="button"

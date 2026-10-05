@@ -6,18 +6,21 @@
 	import { uiState, showToast } from '$lib/ui.svelte';
 	import { navigate } from '$lib/router.svelte';
 	import { lighten } from '$lib/color';
+	import Sparkline from './Sparkline.svelte';
 
 	/**
 	 * Budget card: consumed percentage + draggable spent/budget slider. The spent/remaining line and the
 	 * percentage follow the « Éléments affichés » of the Budget block; the slider always shows, being
-	 * the only way to set a budget.
+	 * the only way to set a budget. `trend` (spending of the last months, oldest first) draws a small
+	 * sparkline under the percentage.
 	 */
 	let {
 		categoryId,
 		spent,
 		index = 0,
 		showDetail = true,
-		showPercent = true
+		showPercent = true,
+		trend = []
 	}: {
 		categoryId: CategoryId;
 		/** Amount spent in the selected month (positive). */
@@ -26,6 +29,8 @@
 		index?: number;
 		showDetail?: boolean;
 		showPercent?: boolean;
+		/** Spending of the last months (oldest first), drawn as a sparkline when 3+ values. */
+		trend?: number[];
 	} = $props();
 
 	const STEP = 10; // slider step in €
@@ -165,9 +170,16 @@
 		</div>
 
 		<!-- Consumed percentage as text (amber pill on overrun); the ring duplicated the slider -->
-		{#if showPercent}
-			<span class="tabular shrink-0 {over ? 'chip chip-amber' : 'meta-xs'}" title="{formatEUR(spent)} dépensés sur {formatEUR(budget)}">{percentText}</span>
-		{/if}
+		<div class="flex shrink-0 flex-col items-end gap-1.5">
+			{#if showPercent}
+				<span class="tabular shrink-0 {over ? 'chip chip-amber' : 'meta-xs'}" title="{formatEUR(spent)} dépensés sur {formatEUR(budget)}">{percentText}</span>
+			{/if}
+			{#if trend.length >= 3 && trend.some((v) => v !== 0)}
+				<span title="Dépenses des {trend.length} derniers mois : {trend.map((v) => formatEUR(v)).join(' · ')}">
+					<Sparkline values={trend} color={category.color} width={52} height={20} />
+				</span>
+			{/if}
+		</div>
 	</div>
 
 	<!-- Merged slider: fill = spent, handle = target budget -->

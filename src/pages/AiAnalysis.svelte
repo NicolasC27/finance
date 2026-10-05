@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SuccessCheck from '$lib/components/SuccessCheck.svelte';
 	import { onMount, tick } from 'svelte';
 	import type { Transaction } from '$lib/types';
 	import { txKey } from '$lib/categories';
@@ -272,7 +273,7 @@
 													<button type="button" class="btn btn-primary btn-sm" onclick={() => confirmAction(m.id, p.id)}>Confirmer</button>
 													<button type="button" class="btn btn-secondary btn-sm" onclick={() => dismissAction(m.id, p.id)}>Ignorer</button>
 												{:else if p.state === 'applied'}
-													<span class="chip chip-accent">Appliqué</span>
+													<span class="chip chip-accent"><SuccessCheck size={11} /> Appliqué</span>
 													{#if canUndo(p.id)}<button type="button" class="btn btn-secondary btn-sm" onclick={() => undoAction(m.id, p.id)}>Annuler</button>{/if}
 												{:else if p.state === 'undone'}
 													<span class="chip chip-muted">Annulé</span>

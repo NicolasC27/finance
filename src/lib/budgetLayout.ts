@@ -5,7 +5,7 @@
  */
 
 /** Blocks of the Budget page, in default order. */
-export const BUDGET_BLOCKS = ['resume', 'objectifs', 'vacances', 'categories', 'conseils', 'previsions'] as const;
+export const BUDGET_BLOCKS = ['resume', 'cascade', 'objectifs', 'vacances', 'categories', 'conseils', 'previsions'] as const;
 
 export type BudgetBlockId = (typeof BUDGET_BLOCKS)[number];
 

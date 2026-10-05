@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { segmented } from '$lib/actions/segmented';
 	import type { CategoryId } from '$lib/types';
 	import { getCategory, CATEGORIES } from '$lib/categories';
 	import { isExpenseCategory } from '$lib/flow';
 	import { budgetState } from '$lib/budget.svelte';
 	import { formatEURCompact as formatEUR, formatDate } from '$lib/format';
-	import { showToast } from '$lib/ui.svelte';
+	import { showToast, showSuccess } from '$lib/ui.svelte';
 	import { RECENT_INFLATION, SECTOR_INFLATION } from '$lib/inflation';
 	import { inflationByCategory } from '$lib/personalInflation';
 	import { undoableIndexation, indexationToSuggest, indexBudgets, type Indexation } from '$lib/indexation';
@@ -51,7 +52,7 @@
 		const message = `Enveloppes indexées : ${formatEUR(totalBefore)} → ${formatEUR(totalAfter)} par mois`;
 		applyIndexation(ix);
 		open = false;
-		showToast(message, 'Annuler', undo);
+		showSuccess(message, 'Annuler', undo);
 	}
 	function undo() {
 		undoIndexation();
@@ -78,7 +79,7 @@
 	<div class="mb-3 rounded-lg border p-3 text-[13px]" style="border-color: var(--border);">
 		<div class="flex flex-wrap items-center gap-2">
 			<span class="font-medium">Indexer les enveloppes</span>
-			<div class="flex gap-1" role="group" aria-label="Taux d'indexation">
+			<div class="flex gap-1" role="group" aria-label="Taux d'indexation" use:segmented>
 				<button type="button" class="chip cursor-pointer {mode === 'global' ? 'chip-accent' : 'chip-muted'}" aria-pressed={mode === 'global'} onclick={() => (mode = 'global')}>{pct(globalRate)} partout</button>
 				<button type="button" class="chip cursor-pointer {mode === 'postes' ? 'chip-accent' : 'chip-muted'}" aria-pressed={mode === 'postes'} onclick={() => (mode = 'postes')}>poste par poste</button>
 			</div>

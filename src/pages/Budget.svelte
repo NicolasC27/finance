@@ -1,4 +1,6 @@
 <script lang="ts">
+	import MonthWaterfall from '$lib/components/MonthWaterfall.svelte';
+	import { monthsEndingAt } from '$lib/spendCharts';
 	import { onMount } from 'svelte';
 	import type { CategoryId } from '$lib/types';
 	import { isPending } from '$lib/data';
@@ -56,8 +58,10 @@
 		{ id: 'indexation', label: "Indexation sur l'inflation" },
 		{ id: 'detail', label: 'Dépensé et reste' },
 		{ id: 'pourcentage', label: 'Pourcentage consommé' },
-		{ id: 'vides', label: 'Catégories sans budget ni dépense' }
+		{ id: 'vides', label: 'Catégories sans budget ni dépense' },
+		{ id: 'tendance', label: 'Tendance sur 6 mois' }
 	];
+	const CASCADE_ELEMENTS: BlockElement[] = [{ id: 'montants', label: 'Montants sur les barres' }];
 	const ADVICE_ELEMENTS: BlockElement[] = [
 		{ id: 'base', label: 'Base de calcul' },
 		{ id: 'liste', label: 'Cibles par catégorie' },
@@ -127,6 +131,15 @@
 		monthTotals(getBudgetTransactions(), budgetState.selectedMonth, (tx): CategoryId => categorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap())).byCategory
 	);
 
+	/** Spending per category over the 6 months ending with the selected one (envelope sparklines). */
+	const trendByCategory = $derived.by(() => {
+		const mm = getMerchantCategoryMap();
+		const txs = getBudgetTransactions();
+		const catOf = (tx: Parameters<typeof categorize>[0]): CategoryId => categorize(tx, budgetState.overrides, undefined, mm);
+		const per = monthsEndingAt(budgetState.selectedMonth || new Date().toISOString().slice(0, 7), 6).map((m) => monthTotals(txs, m, catOf).byCategory);
+		return new Map(expenseCategories.map((c) => [c.id, per.map((b) => Math.max(0, b.get(c.id) ?? 0))]));
+	});
+
 	const totalBudgeted = $derived(expenseCategories.reduce((sum, c) => sum + (budgetState.budgets[c.id] ?? 0), 0));
 	const totalSpent = $derived(expenseCategories.reduce((sum, c) => sum + (spentByCategory.get(c.id) ?? 0), 0));
 	const remaining = $derived(totalBudgeted - totalSpent);
@@ -188,6 +201,13 @@
 						{/if}
 					{/snippet}
 				</Block>
+			{:else if id === 'cascade'}
+				<Block page="budget" {id} defaults={BUDGET_BLOCKS} title="Le mois en cascade" size="XL" sizes={WIDE} elements={CASCADE_ELEMENTS}>
+					{#snippet children(show, _size, box)}
+						<h2 class="label-xs mb-2">Le mois en cascade</h2>
+						<MonthWaterfall month={budgetState.selectedMonth} showAmounts={show('montants')} height={box ? Math.max(160, Math.min(420, box.h - 36)) : 220} />
+					{/snippet}
+				</Block>
 			{:else if id === 'objectifs'}
 				<!-- Savings goals (under the summary, before the categories) -->
 				<Block page="budget" {id} defaults={BUDGET_BLOCKS} title="Objectifs d'épargne" size="XL" sizes={WIDE} elements={GOALS_ELEMENTS} bare>
@@ -220,7 +240,7 @@
 							{#if shown.length > 0}
 								<div class="grid gap-3 {LIST_COLUMNS}">
 									{#each shown as cat, i (cat.id)}
-										<CategoryBudgetCard categoryId={cat.id} spent={spentByCategory.get(cat.id) ?? 0} index={i} showDetail={show('detail')} showPercent={show('pourcentage')} />
+										<CategoryBudgetCard categoryId={cat.id} spent={spentByCategory.get(cat.id) ?? 0} index={i} showDetail={show('detail')} showPercent={show('pourcentage')} trend={show('tendance') ? (trendByCategory.get(cat.id) ?? []) : []} />
 									{/each}
 								</div>
 							{/if}

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { BUDGET_BLOCKS, SECTION_BLOCKS, categoriesToShow, sectionsToMigrate } from '../src/lib/budgetLayout';
 
 test('Budget blocks: default order = the former page, every former section has its block', () => {
-	assert.deepEqual([...BUDGET_BLOCKS], ['resume', 'objectifs', 'vacances', 'categories', 'conseils', 'previsions']);
+	assert.deepEqual([...BUDGET_BLOCKS], ['resume', 'cascade', 'objectifs', 'vacances', 'categories', 'conseils', 'previsions']);
 	for (const s of SECTION_BLOCKS) assert.ok((BUDGET_BLOCKS as readonly string[]).includes(s.block), s.block);
 	assert.equal(new Set(SECTION_BLOCKS.map((s) => s.section)).size, SECTION_BLOCKS.length);
 });

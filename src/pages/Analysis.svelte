@@ -1,4 +1,6 @@
 <script lang="ts">
+	import SpendingCalendar from '$lib/components/SpendingCalendar.svelte';
+	import { segmented } from '$lib/actions/segmented';
 	import type { CategoryId, Transaction } from '$lib/types';
 	import { CATEGORIES, categorize, getCategory, isWealthMovement } from '$lib/categories';
 	import { SUBCATEGORIES, subcategorize } from '$lib/subcategories';
@@ -28,7 +30,7 @@
 	import { isElementShown, type BlockElement, type BlockSize } from '$lib/layoutModel';
 	import { chartHeight, figureColumns } from '$lib/tileGrid';
 
-	const BLOCKS = ['savings', 'curves', 'inflation', 'merchants', 'subscriptions'] as const;
+	const BLOCKS = ['savings', 'calendar', 'curves', 'inflation', 'merchants', 'subscriptions'] as const;
 
 	/** Optional elements of each Analyse block (the user can hide them; every block is full width by default). */
 	const SAVINGS_ELEMENTS: BlockElement[] = [
@@ -56,6 +58,10 @@
 		{ id: 'moyenne', label: 'Colonne « Moy. »' },
 		{ id: 'tendance', label: 'Colonne « Tendance »' },
 		{ id: 'dernier', label: 'Colonne « Dernier »' }
+	];
+	const CALENDAR_ELEMENTS: BlockElement[] = [
+		{ id: 'resume', label: 'Résumé (total, jour le plus dépensier)' },
+		{ id: 'legende', label: 'Légende' }
 	];
 	const SUBSCRIPTIONS_ELEMENTS: BlockElement[] = [
 		{ id: 'resume', label: 'Résumé (total, alertes)' },
@@ -287,7 +293,7 @@
 <header class="mb-4 flex flex-wrap items-end justify-between gap-3">
 	<PageTitle title="Analyse" />
 	<div class="flex flex-wrap items-center gap-2">
-		<div class="flex items-center gap-1" role="group" aria-label="Période">
+		<div class="flex items-center gap-1" role="group" aria-label="Période" use:segmented>
 			{#each [[6, '6 mois'], [12, '12 mois'], [24, '24 mois'], [0, 'Tout']] as [p, label] (p)}
 				<button type="button" class="chip cursor-pointer {period === p ? 'chip-accent' : 'chip-muted'}" aria-pressed={period === p} onclick={() => (period = p as Period)}>{label}</button>
 			{/each}
@@ -408,6 +414,13 @@
 								<button type="button" class="btn btn-secondary btn-sm mt-2" onclick={() => (merchantsShown += 25)}>Voir plus ({merchants.length - merchantsShown} restants)</button>
 							{/if}
 						{/if}
+					{/snippet}
+				</Block>
+			{:else if id === 'calendar'}
+				<Block page="analyse" {id} defaults={BLOCKS} title="Calendrier des dépenses" size="XL" sizes={WIDE} elements={CALENDAR_ELEMENTS}>
+					{#snippet children(show)}
+						<h2 class="label-xs mb-2">Calendrier des dépenses</h2>
+						<SpendingCalendar showSummary={show('resume')} showLegend={show('legende')} />
 					{/snippet}
 				</Block>
 			{:else if id === 'subscriptions'}

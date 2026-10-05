@@ -74,7 +74,7 @@ export const uiState = $state({
 	/** Goal form prefill (link from the Advice card). */
 	goalPrefill: null as { name: string; targetAmount: number } | null,
 	/** Global toast (e.g. 'Opération supprimée — Annuler'), auto-closes after 5 s. */
-	toast: null as { message: string; actionLabel?: string; onAction?: () => void; nonce: number } | null,
+	toast: null as { message: string; actionLabel?: string; onAction?: () => void; success?: boolean; nonce: number } | null,
 	/** Collapsed page sections (persisted in `budget:ui-collapse`, true = collapsed). */
 	sectionCollapse: loadCollapse(),
 	/**
@@ -108,6 +108,11 @@ export function toggleSectionCollapse(id: string): void {
 /** Shows the global toast (replaces any current toast). */
 export function showToast(message: string, actionLabel?: string, onAction?: () => void): void {
 	uiState.toast = { message, actionLabel, onAction, nonce: Date.now() };
+}
+
+/** Shows the global toast with an animated success check (something was saved or applied). */
+export function showSuccess(message: string, actionLabel?: string, onAction?: () => void): void {
+	uiState.toast = { message, actionLabel, onAction, success: true, nonce: Date.now() };
 }
 
 // localStorage write failure (quota full…): reported instead of swallowed
