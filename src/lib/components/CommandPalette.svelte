@@ -57,6 +57,7 @@
 	const pages: { href: RoutePath; label: string; hint: string }[] = [
 		{ href: '/', label: 'Accueil', hint: 'Tableau de bord du mois' },
 		{ href: '/budget', label: 'Budget', hint: 'Suivi par catégorie' },
+		{ href: '/echeancier', label: 'Échéancier', hint: 'Prélèvements, crédits, impôts, voiture, épargne salariale : tout ce qui arrive' },
 		{ href: '/analyse', label: 'Analyse', hint: 'Épargne par mois, courbes par catégorie' },
 		{ href: '/trier', label: 'À trier', hint: 'Catégoriser les opérations en « Autre », au clavier' },
 		{ href: '/transactions', label: 'Transactions', hint: 'Liste complète et imports' },

@@ -134,6 +134,7 @@
 	const links: Link[] = [
 		{ href: '/', label: 'Accueil', short: 'Accueil', key: 'D' },
 		{ href: '/budget', label: 'Budget', short: 'Budget', key: 'B' },
+		{ href: '/echeancier', label: 'Échéancier', short: 'Échéances', key: 'E' },
 		{ href: '/analyse', label: 'Analyse', short: 'Analyse', key: 'A' },
 		{ href: '/transactions', label: 'Transactions', short: 'Transac.', key: 'T' },
 		{ href: '/trier', label: 'À trier', short: 'Trier', key: 'I' },
@@ -279,6 +280,11 @@
 						<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<circle cx="12" cy="12" r="9" />
 							<path d="M12 3a9 9 0 0 1 9 9" stroke-width="3.5" />
+						</svg>
+					{:else if link.href === '/echeancier'}
+						<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<rect x="3.5" y="5" width="17" height="15" rx="2" />
+							<path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2" />
 						</svg>
 					{:else if link.href === '/trier'}
 						<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -552,6 +558,9 @@
 		{:else if href === '/transactions'}
 			<path d="M8 6h13M8 12h13M8 18h13" />
 			<path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01" stroke-width="3" />
+		{:else if href === '/echeancier'}
+			<rect x="3.5" y="5" width="17" height="15" rx="2" />
+			<path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2" />
 		{:else if href === '/trier'}
 			<path d="M4 7h16M4 12h10M4 17h6" />
 			<path d="m15 16 2 2 4-4" />
