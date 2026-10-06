@@ -87,9 +87,9 @@ export interface RecurringSource {
 	loan?: boolean;
 }
 
-const LOAN_LABEL = /\b(PRET|ECH(EANCE)?S?( DE)? (PRET|CREDIT)|CREDIT (AUTO|CONSO|IMMO)|CAP ?IN|PASSEPORT CREDIT|COFIDIS|CETELEM|SOFINCO|FRANFINANCE|ONEY|YOUNITED|FLOA|CREDIPAR|DIAC|MENSUALITE)\b/;
+const LOAN_LABEL = /\b(PRET|ECH(EANCE)?S?( DE)? (PRET|CREDIT)|CREDIT (AUTO|CONSO|IMMO)|PASSEPORT CREDIT|COFIDIS|CETELEM|SOFINCO|FRANFINANCE|ONEY|YOUNITED|FLOA|CREDIPAR|DIAC|MENSUALITE)\b/;
 
-/** Does a debit label look like a loan instalment (« Ech prêt auto », « Cap In Utilisation », « Cetelem »)? */
+/** Does a debit label look like a loan instalment (« Ech prêt auto », « Cetelem »)? */
 export function isLoanLabel(label: string): boolean {
 	return LOAN_LABEL.test(label.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
 }

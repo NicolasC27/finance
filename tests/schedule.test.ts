@@ -115,13 +115,13 @@ test('buildSchedule: a detected debit that is a loan instalment is dropped, sort
 });
 
 test('isLoanLabel and recurringItems: loan debits from the current account become « Crédits »', () => {
-	assert.equal(isLoanLabel('Cap In Utilisation N'), true);
+	assert.equal(isLoanLabel('Credit Conso Utilisation'), true);
 	assert.equal(isLoanLabel('Ech prêt auto'), true);
 	assert.equal(isLoanLabel('CETELEM'), true);
 	assert.equal(isLoanLabel('Assurance Habitation'), false);
 	assert.equal(isLoanLabel('Crédit Mutuel Assurance'), false);
 	assert.equal(isLoanLabel('Autoroutes Du Sud De'), false);
-	const items = recurringItems([{ key: 'CAPIN', label: 'Cap In Utilisation N', amount: 150, cadence: 'mensuelle', nextDate: '2026-10-06', confidence: 'haute', loan: true }], FROM, TO90);
+	const items = recurringItems([{ key: 'CONSO', label: 'Credit Conso Mensuel', amount: 150, cadence: 'mensuelle', nextDate: '2026-10-06', confidence: 'haute', loan: true }], FROM, TO90);
 	assert.ok(items.length > 0 && items.every((i) => i.kind === 'loan'));
 	const kept = buildSchedule([items], FROM, TO90);
 	assert.equal(kept.length, items.length, 'un crédit vu en prélèvement n’est pas supprimé par lui-même');
