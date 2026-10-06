@@ -52,6 +52,7 @@
 		'/historique': () => import('./pages/History.svelte'),
 		'/simulateur': () => import('./pages/Simulator.svelte'),
 		'/echeancier': () => import('./pages/Schedule.svelte'),
+		'/impot': () => import('./pages/IncomeTax.svelte'),
 		'/patrimoine': () => import('./pages/Wealth.svelte'),
 		'/crypto': () => import('./pages/Crypto.svelte'),
 		'/analyse': () => import('./pages/Analysis.svelte'),
@@ -131,7 +132,7 @@
 			}
 			return;
 		}
-		const goTo: Record<string, RoutePath> = { d: '/', b: '/budget', a: '/analyse', i: '/trier', t: '/transactions', p: '/patrimoine', c: '/crypto', r: '/rapport', j: '/ia', o: '/portage', v: '/voiture', y: '/historique', w: '/simulateur', e: '/echeancier' };
+		const goTo: Record<string, RoutePath> = { d: '/', b: '/budget', a: '/analyse', i: '/trier', t: '/transactions', p: '/patrimoine', c: '/crypto', r: '/rapport', j: '/ia', o: '/portage', v: '/voiture', y: '/historique', w: '/simulateur', e: '/echeancier', f: '/impot' };
 		const to = goTo[e.key];
 		if (to && isRouteEnabled(to)) {
 			pendingG = 0;
@@ -211,7 +212,8 @@
 		'/voiture': 'Budget — Voiture',
 		'/historique': 'Budget — Historique des données',
 		'/simulateur': 'Budget — Simulateur',
-		'/echeancier': 'Budget — Échéancier'
+		'/echeancier': 'Budget — Échéancier',
+		'/impot': 'Budget — Impôt sur le revenu'
 	};
 
 	// Tab title synced with the route

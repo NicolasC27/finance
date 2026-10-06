@@ -11,7 +11,7 @@ import { getCarExpenses, vehicleSheet } from './car.svelte';
 import { natixisState } from './natixisHoldings.svelte';
 import { goalsState } from './goals.svelte';
 import { isModuleActive } from './modules.svelte';
-import { addDays, buildSchedule, carItems, goalItems, loanItems, recurringItems, savingsItems, taxItems, type ScheduleItem } from './schedule';
+import { addDays, isLoanLabel, buildSchedule, carItems, goalItems, loanItems, recurringItems, savingsItems, taxItems, type ScheduleItem } from './schedule';
 
 /**
  * Schedule, app side: reads every source (detected direct debits, loans, tax notices, vehicles,
@@ -29,7 +29,7 @@ const schedule = $derived.by((): ScheduleItem[] => {
 	const to = addDays(from, MAX_HORIZON);
 	const recurring = detectRecurring(confirmed, budgetState.overrides, from, getMerchantCategoryMap())
 		.filter((r) => r.kind === 'debit' && r.active && r.fixed && flowKind(r.categoryId) === 'expense')
-		.map((r) => ({ key: r.key, label: r.label, amount: r.amount, cadence: r.cadence, nextDate: r.nextDate, confidence: r.confidence, tax: r.categoryId === 'impots' }));
+		.map((r) => ({ key: r.key, label: r.label, amount: r.amount, cadence: r.cadence, nextDate: r.nextDate, confidence: r.confidence, tax: r.categoryId === 'impots', loan: r.categoryId !== 'impots' && isLoanLabel(r.label) }));
 	const loans = getLoanCosts().map((c) => ({
 		accountId: c.v.accountId,
 		label: c.v.label,

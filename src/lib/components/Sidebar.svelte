@@ -393,6 +393,15 @@
 				>
 					Simulateur
 				</a>
+				<a
+					href="/impot"
+					class="press whitespace-nowrap text-secondary transition-colors hover:text-[var(--accent)] hover:underline"
+					class:!text-[var(--accent)]={route.path === '/impot'}
+					aria-current={route.path === '/impot' ? 'page' : undefined}
+					title="Impôt sur le revenu : estimation de l'année et régularisation de septembre (G puis F)"
+				>
+					Impôt
+				</a>
 				<button
 					type="button"
 					class="press cursor-pointer whitespace-nowrap text-secondary transition-colors hover:text-[var(--accent)] hover:underline"

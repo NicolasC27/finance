@@ -1,21 +1,19 @@
 <script lang="ts">
-	import { budgetState } from '$lib/budget.svelte';
-	import { getBudgetTransactions } from '$lib/transfers.svelte';
-	import { isPending, sortByDate } from '$lib/data';
-	import { detectRecurring, forecastTotals, forecastRefIso, confidenceStyle, confidenceLabel } from '$lib/forecast';
+	import { confidenceStyle, confidenceLabel } from '$lib/forecast';
 	import { formatDate, formatEUR, sensitiveEUR } from '$lib/format';
 	import { getSchedule } from '$lib/schedule.svelte';
-	import { KIND_COLORS, KIND_LABELS } from '$lib/schedule';
-	import { getMerchantCategoryMap } from '$lib/store.svelte';
-	import { flowKind } from '$lib/flow';
+	import { KIND_COLORS, KIND_LABELS, scheduleTotal } from '$lib/schedule';
 
-	/** 'À venir' card (Dashboard): expected spending within 30 days + the next deadlines of the schedule. */
+	/**
+	 * 'À venir' card (Dashboard): total of the schedule's deadlines within 30 days (direct debits,
+	 * loans, taxes…) and the next ones; the full spending forecast stays on the Budget page.
+	 */
 	let {
 		showTotal = true,
 		showList = true,
 		showConfidence = true
 	}: {
-		/** Expected total within 30 days (block element). */
+		/** Total of the deadlines within 30 days (block element). */
 		showTotal?: boolean;
 		/** Next payments list (block element). */
 		showList?: boolean;
@@ -23,33 +21,22 @@
 		showConfidence?: boolean;
 	} = $props();
 
-	// Budget scope (v13): internal transfers excluded from upcoming payments
-	// Computed portage entries excluded: recurrence detection works on bank data
-	const confirmed = $derived(getBudgetTransactions().filter((tx) => !isPending(tx) && tx.source !== 'portage'));
-	// Same reference as ForecastSection: max(dataset, today).
-	const fromIso = $derived(forecastRefIso(sortByDate(confirmed)[confirmed.length - 1]?.booking_date ?? ''));
-	// Upcoming payments = LIVE FIXED charges (subscriptions, direct debits, rent): not Saturday
-	// groceries, not a cancelled subscription, not savings
-	const recurring = $derived(
-		detectRecurring(confirmed, budgetState.overrides, fromIso, getMerchantCategoryMap()).filter((r) => r.kind === 'debit' && r.active && r.fixed && flowKind(r.categoryId) === 'expense')
-	);
+	const within30 = $derived(getSchedule(30).filter((i) => i.amount !== undefined));
+	const total30 = $derived(scheduleTotal(within30));
+	const kinds = $derived([...new Set(within30.map((i) => KIND_LABELS[i.kind].toLowerCase()))].join(', '));
 	const next = $derived(getSchedule(90).slice(0, 4));
-	const total30 = $derived(fromIso ? forecastTotals(confirmed, budgetState.overrides, fromIso, 30, getMerchantCategoryMap()) : null);
 </script>
 
-{#if (showTotal && total30 && recurring.length > 0) || (showList && next.length > 0)}
+{#if (showTotal && within30.length > 0) || (showList && next.length > 0)}
 	<div class="grid gap-4 {showTotal && showList ? '@xl:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]' : ''}">
-		<!-- Total expected within 30 days, with a range -->
-		{#if showTotal && total30 && recurring.length > 0}
+		<!-- Total of the deadlines within 30 days -->
+		{#if showTotal && within30.length > 0}
 		<div>
 			<p class="label-xs">À venir sous 30 jours</p>
-			<p class="amount-md mt-1.5">{formatEUR(total30.expected)}</p>
-			<p class="meta-xs mt-1">
-				entre <span class="tabular">{formatEUR(total30.low)}</span> et <span class="tabular">{formatEUR(total30.high)}</span>
-				· {recurring.length} échéance{recurring.length > 1 ? 's' : ''} détectée{recurring.length > 1 ? 's' : ''}
-			</p>
-			<a href="/budget" class="mt-3 inline-block text-xs font-medium transition-colors hover:underline" style="color: var(--accent);">
-				Voir le détail des prévisions
+			<p class="amount-md mt-1.5">{formatEUR(total30)}</p>
+			<p class="meta-xs mt-1">{within30.length} échéance{within30.length > 1 ? 's' : ''} ({kinds})</p>
+			<a href="/budget" class="mt-3 inline-block text-xs font-medium transition-colors hover:underline" style="color: var(--accent);" title="Prévision de toutes les dépenses du mois, courses et dépenses variables comprises">
+				Toutes les dépenses prévues
 			</a>
 		</div>
 		{/if}
