@@ -3,20 +3,29 @@
  * requests (CSV import, prefilled search).
  */
 
-import { setPersistFailureHandler } from './storage';
+import { persistRaw, setPersistFailureHandler } from './storage';
 import { setPrivacySource } from './format';
 
 const SIDEBAR_KEY = 'budget:sidebar';
 const COLLAPSE_KEY = 'budget:ui-collapse';
 const PRIVACY_KEY = 'budget:privacy';
+const COMPACT_ROWS_KEY = 'budget:compact-rows';
+const ACCOUNT_BADGES_KEY = 'budget:account-badges';
+const BRAND_LOGOS_KEY = 'budget:brand-logos';
 
-function loadPrivacy(): boolean {
-	if (typeof localStorage === 'undefined') return false;
+/** Display preference stored as 'on' / 'off' (`fallback` while nothing is stored). */
+function loadFlag(key: string, fallback: boolean): boolean {
+	if (typeof localStorage === 'undefined') return fallback;
 	try {
-		return localStorage.getItem(PRIVACY_KEY) === 'on';
+		const raw = localStorage.getItem(key);
+		return raw === null ? fallback : raw === 'on';
 	} catch {
-		return false;
+		return fallback;
 	}
+}
+
+function saveFlag(key: string, on: boolean): void {
+	persistRaw(key, on ? 'on' : 'off');
 }
 
 function loadSidebar(): boolean {
@@ -43,7 +52,13 @@ export const uiState = $state({
 	/** Collapsed sidebar (64 px, icons only), persisted. */
 	sidebarCollapsed: loadSidebar(),
 	/** Privacy mode: every amount masked (screen sharing, public place), persisted. */
-	privacy: loadPrivacy(),
+	privacy: loadFlag(PRIVACY_KEY, false),
+	/** Compact rows: long lists on one line per row, a colour dot for the mark, alternate tint; persisted. */
+	compactRows: loadFlag(COMPACT_ROWS_KEY, false),
+	/** Account badge on each row of Transactions; persisted. */
+	accountBadges: loadFlag(ACCOUNT_BADGES_KEY, true),
+	/** Brand logos on operation rows when the brand is known (else the category mark); persisted. */
+	brandLogos: loadFlag(BRAND_LOGOS_KEY, true),
 	/** Command palette open (Cmd/Ctrl+K). */
 	paletteOpen: false,
 	/** Quick expense entry dialog (sidebar, palette, « n » shortcut). */
@@ -154,11 +169,29 @@ setPrivacySource(() => uiState.privacy);
 export function togglePrivacy(): void {
 	uiState.privacy = !uiState.privacy;
 	document.documentElement.classList.toggle('privacy', uiState.privacy);
-	try {
-		localStorage.setItem(PRIVACY_KEY, uiState.privacy ? 'on' : 'off');
-	} catch {
-	}
+	saveFlag(PRIVACY_KEY, uiState.privacy);
 	showToast(uiState.privacy ? 'Mode discret : montants masqués (touche H pour les afficher)' : 'Montants affichés');
 }
 
 if (typeof document !== 'undefined') document.documentElement.classList.toggle('privacy', uiState.privacy);
+
+/** Toggles compact rows on every long list (see « Compact rows » in app.css) and remembers it. */
+export function toggleCompactRows(): void {
+	uiState.compactRows = !uiState.compactRows;
+	document.documentElement.toggleAttribute('data-compact-rows', uiState.compactRows);
+	saveFlag(COMPACT_ROWS_KEY, uiState.compactRows);
+}
+
+/** Switches between brand logos and category icons on operation rows and remembers it. */
+export function toggleBrandLogos(): void {
+	uiState.brandLogos = !uiState.brandLogos;
+	saveFlag(BRAND_LOGOS_KEY, uiState.brandLogos);
+}
+
+/** Shows or hides the account badge on the rows of Transactions and remembers it. */
+export function toggleAccountBadges(): void {
+	uiState.accountBadges = !uiState.accountBadges;
+	saveFlag(ACCOUNT_BADGES_KEY, uiState.accountBadges);
+}
+
+if (typeof document !== 'undefined') document.documentElement.toggleAttribute('data-compact-rows', uiState.compactRows);

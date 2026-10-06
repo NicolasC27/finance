@@ -3,30 +3,39 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<meta name="theme-color" content="#1c1c1c" />
+		<meta name="theme-color" content="#edeff3" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<title>Budget — Suivi personnel</title>
-		<!-- Anti-FOUC : Encre (dark) par défaut ; data-theme posé avant le CSS bundlé.
-		     Migration des anciennes valeurs : dark → encre, light → papier.
-		     La classe .light reste le switch structurel (Papier ET Sable). -->
+		<!-- No flash on load: the theme (Porcelaine by default) is set on <html> before the bundled CSS.
+		     Old values migrate: dark → encre, light → papier. The `light` class stays the structural
+		     switch of the light themes (Porcelaine, Papier, Sable). -->
 		<script>
+			var t = 'porcelaine';
 			try {
 				var raw = localStorage.getItem('budget:theme');
 				if (raw === 'dark') raw = 'encre';
 				else if (raw === 'light') raw = 'papier';
-				var t = ['encre', 'papier', 'ardoise', 'foret', 'sable'].indexOf(raw) >= 0 ? raw : 'encre';
-				document.documentElement.dataset.theme = t;
-				document.documentElement.classList.toggle('light', t === 'papier' || t === 'sable');
+				if (['porcelaine', 'porcelaine-nuit', 'encre', 'papier', 'ardoise', 'foret', 'sable'].indexOf(raw) >= 0) t = raw;
 			} catch (e) {
-				/* localStorage indisponible : on reste en Encre (défaut) */
+				/* localStorage unavailable: the default theme stays */
 			}
+			document.documentElement.dataset.theme = t;
+			document.documentElement.classList.toggle('light', t === 'porcelaine' || t === 'papier' || t === 'sable');
+			var bg = { porcelaine: '#edeff3', 'porcelaine-nuit': '#0f131b', encre: '#1c1c1c', papier: '#f7f5f0', ardoise: '#1a1d20', foret: '#171c18', sable: '#f2ede4' };
+			document.querySelector('meta[name="theme-color"]').setAttribute('content', bg[t]);
 		</script>
 		<style>
-			/* Fond posé avant le CSS bundlé pour éviter tout flash */
+			/* Background set before the bundled CSS, one rule per theme */
 			html {
+				background-color: #edeff3;
+			}
+			html[data-theme='porcelaine-nuit'] {
+				background-color: #0f131b;
+			}
+			html[data-theme='encre'] {
 				background-color: #1c1c1c;
 			}
-			html.light {
+			html[data-theme='papier'] {
 				background-color: #f7f5f0;
 			}
 			html[data-theme='ardoise'] {

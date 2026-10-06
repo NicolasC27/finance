@@ -55,7 +55,8 @@
 	import { getPortageEntries, noteOfTx } from '$lib/portage.svelte';
 	import { navigate } from '$lib/router.svelte';
 	import ImportMapperModal, { type MapperSource } from '$lib/components/ImportMapperModal.svelte';
-	import CategoryIcon from '$lib/components/CategoryIcon.svelte';
+	import MerchantMark from '$lib/components/MerchantMark.svelte';
+	import RowsToggle from '$lib/components/RowsToggle.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import PageTitle from '$lib/components/PageTitle.svelte';
@@ -479,7 +480,7 @@
 	const hasTags = $derived(paginated.some((tx) => (tx.tags?.length ?? 0) > 0));
 	const hasChecked = $derived(paginated.some((tx) => tx.checked));
 	const hasBalance = $derived(paginated.some((tx) => tx.balance_after !== undefined));
-	const colCount = $derived(6 + (hasTags ? 1 : 0) + (hasChecked ? 1 : 0) + (hasBalance ? 1 : 0) + (selectMode ? 1 : 0));
+	const colCount = $derived(7 + (hasTags ? 1 : 0) + (hasChecked ? 1 : 0) + (hasBalance ? 1 : 0) + (selectMode ? 1 : 0));
 
 	// Back to page 1 when the FILTERS or the sort change, no longer when the row count moves (a
 	// deletion or recategorisation on page 4 sent you back to page 1)
@@ -1786,6 +1787,7 @@
 		{/if}
 		<div class="ml-auto flex items-center gap-2">
 			{#if view === 'liste'}
+				<span class="hidden md:inline-flex"><RowsToggle /></span>
 				<button
 					type="button"
 					class="btn btn-sm {selectMode ? 'btn-accent' : 'btn-secondary'}"
@@ -1931,7 +1933,7 @@
 								Date{sortArrow('date')}
 							</button>
 						</th>
-						<th class="sticky-th label-plain px-4 py-2">Libellé</th>
+						<th class="sticky-th label-plain px-4 py-2" colspan="2">Libellé</th>
 						<th class="sticky-th label-plain px-4 py-2">Catégorie</th>
 						{#if hasTags}<th class="sticky-th label-plain px-4 py-2">Tags</th>{/if}
 						{#if hasChecked}<th class="sticky-th label-plain px-2 py-2 text-center">Pointée</th>{/if}
@@ -1949,19 +1951,21 @@
 						<th class="sticky-th w-10 px-2 py-2" aria-label="Actions"></th>
 					</tr>
 				</thead>
-				<tbody>
+				<tbody class="rows">
 					{#each paginated as tx, rowIndex (txKey(tx))}
 						{@const amount = signedAmount(tx)}
 						{@const catId = categorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap())}
 						{@const sub = getSubcategory(subcategorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap()) ?? '')}
 						{@const expanded = expandedKey === txKey(tx)}
 						{@const isSelected = selected.has(txKey(tx))}
+						{@const newDay = sortKey === 'date' && !isPending(tx) && (rowIndex === 0 || paginated[rowIndex - 1]!.booking_date !== tx.booking_date)}
+						<!-- Sorted by date, the first row of a day carries the date in ink under a full rule: days read as groups -->
 						<tr
-							class="row-hover press group cursor-pointer border-t transition-colors"
+							class="row row-hover press group cursor-pointer border-t transition-colors"
 							class:row-cursor={cursor === rowIndex}
 							class:row-selected={isSelected}
 							class:quick-pending={tx.source === 'manual'}
-							style="border-color: var(--border-subtle);"
+							style="border-color: var({newDay && rowIndex > 0 ? '--hairline' : '--border-subtle'});"
 							data-row-index={rowIndex}
 							tabindex="0"
 							aria-expanded={expanded}
@@ -1985,17 +1989,20 @@
 									{/if}
 								</td>
 							{/if}
-							<td class="tabular px-4 py-1 whitespace-nowrap text-secondary">
+							<td class="tabular px-4 py-1 whitespace-nowrap {newDay ? 'font-medium' : 'text-secondary'}">
 								{tx.booking_date ? formatDate(tx.booking_date) : '—'}
 							</td>
-							<td class="max-w-80 px-4 py-1">
+							<td class="w-px py-1 pr-0 pl-4">
+								<MerchantMark label={displayLabel(tx)} id={catId} size={22} title />
+							</td>
+							<td class="max-w-80 py-1 pr-4 pl-2.5">
 								<p class="truncate leading-[1.4] font-medium" title={rawLabel(tx)}>
 									{displayLabel(tx)}
 									{#if isExcluded(txKey(tx))}
 										<!-- Internal transfer hidden from the budget (neutral badge, never red) -->
 										<span class="chip chip-outline ml-2" title={isInternal(txKey(tx)) ? "Virement entre vos comptes — exclu des totaux du budget, compté dans les soldes" : "Opération exceptionnelle masquée du budget — comptée dans les soldes"}>{isInternal(txKey(tx)) ? 'Virement interne' : 'Hors budget'}</span>
 									{/if}
-									{#if accountBadge(tx)}
+									{#if (uiState.accountBadges || tx.source === 'portage') && accountBadge(tx)}
 										{@const badge = accountBadge(tx)!}
 										<span class="chip chip-muted ml-2" title={badge.title} aria-label={badge.title}>{badge.label}</span>
 									{/if}
@@ -2024,7 +2031,7 @@
 									{/if}
 								</p>
 								{#if tx.note}
-									<p class="meta-xs mt-0.5 truncate">{tx.source === 'portage' ? maskAmounts(tx.note) : tx.note}</p>
+									<p class="row-sub meta-xs mt-0.5 truncate">{tx.source === 'portage' ? maskAmounts(tx.note) : tx.note}</p>
 								{/if}
 							</td>
 							<td class="px-4 py-1" onclick={(e) => e.stopPropagation()}>
@@ -2181,9 +2188,7 @@
 							}}
 						/>
 					{/if}
-					<span class="flex h-8 w-8 shrink-0 items-center justify-center" style="color: {getCategory(catId).color};" aria-hidden="true">
-						<CategoryIcon id={catId} size={17} />
-					</span>
+					<MerchantMark label={displayLabel(tx)} id={catId} size={28} />
 					<div class="min-w-0 flex-1">
 						<p class="truncate text-sm font-medium" title={rawLabel(tx)}>
 							{displayLabel(tx)}
@@ -2191,7 +2196,7 @@
 								<!-- Internal transfer hidden from the budget (neutral badge) -->
 								<span class="chip chip-outline ml-1.5" title={isInternal(txKey(tx)) ? "Virement entre vos comptes — exclu des totaux du budget, compté dans les soldes" : "Opération exceptionnelle masquée du budget — comptée dans les soldes"}>{isInternal(txKey(tx)) ? 'Virement interne' : 'Hors budget'}</span>
 							{/if}
-							{#if accountBadge(tx)}
+							{#if (uiState.accountBadges || tx.source === 'portage') && accountBadge(tx)}
 								{@const badge = accountBadge(tx)!}
 								<span class="chip chip-muted ml-1.5" title={badge.title} aria-label={badge.title}>{badge.label}</span>
 							{/if}
@@ -2411,7 +2416,7 @@
 										{@const opened = calOpenKey === key}
 										<li class="cal-op-item" class:cal-op-open={opened}>
 											<button type="button" class="cal-op press" aria-expanded={opened} onclick={() => (calOpenKey = opened ? null : key)}>
-												<span class="flex h-6 w-6 shrink-0 items-center justify-center" style="color: {getCategory(catId).color};" aria-hidden="true"><CategoryIcon id={catId} size={14} /></span>
+												<MerchantMark label={displayLabel(item.tx)} id={catId} size={22} />
 												<span class="min-w-0 flex-1 text-left">
 													<span class="block truncate text-[12.5px]" style="color: var(--text);">{displayLabel(item.tx)}</span>
 													<span class="meta-xs block truncate">{getCategory(catId).label}{multiDay ? ` · ${rangeLabel(item.date, item.date)}` : ''}</span>

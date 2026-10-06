@@ -6,8 +6,10 @@
  * store starts from scratch without special cases.
  */
 
+import { KEPT_ON_RESET } from './prefs';
+
 const PREFIX = 'budget:';
-const PREF_KEYS = new Set(['budget:theme', 'budget:sidebar', 'budget:ui-collapse']);
+const PREF_KEYS = KEPT_ON_RESET;
 
 /** Data keys currently stored (preferences excluded). */
 export function listDataKeys(): string[] {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { uiState, showToast, showSuccess, togglePrivacy } from '$lib/ui.svelte';
+	import { uiState, showToast, showSuccess, toggleAccountBadges, toggleBrandLogos, toggleCompactRows, togglePrivacy } from '$lib/ui.svelte';
 	import { navigate, type RoutePath } from '$lib/router.svelte';
 	import { getTransactions, resetImported, restoreImported } from '$lib/store.svelte';
 	import { layoutState, toggleWide, resetLayout, resetPage, setFullscreen, setDensity, DENSITY_LABELS, type Density } from '$lib/layout.svelte';
@@ -288,6 +288,27 @@
 					run: () => setDensity(d)
 				})
 			),
+			{
+				id: 'compact-rows',
+				group: 'Apparence',
+				label: `Lignes compactes : ${uiState.compactRows ? 'désactiver' : 'activer'}`,
+				hint: 'Longues listes sur une ligne, point de couleur, fond alterné',
+				run: toggleCompactRows
+			},
+			{
+				id: 'brand-logos',
+				group: 'Apparence',
+				label: `Logos des marques : ${uiState.brandLogos ? 'revenir aux icônes de catégorie' : 'afficher'}`,
+				hint: 'Le logo quand la marque est connue',
+				run: toggleBrandLogos
+			},
+			{
+				id: 'account-badges',
+				group: 'Apparence',
+				label: `Compte sur chaque ligne : ${uiState.accountBadges ? 'masquer' : 'afficher'}`,
+				hint: 'Le badge du compte dans Transactions',
+				run: toggleAccountBadges
+			},
 			...THEMES.map(
 				(meta): PaletteItem => ({
 					id: `theme-${meta.id}`,

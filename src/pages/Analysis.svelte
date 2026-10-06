@@ -389,9 +389,9 @@
 											{#if show('dernier')}<th class="tabular py-1 text-right font-medium">Dernier</th>{/if}
 										</tr>
 									</thead>
-									<tbody>
+									<tbody class="rows">
 										{#each merchants.slice(0, merchantsShown) as r (r.key)}
-											<tr class="row-hover border-t" style="border-color: var(--border-subtle);">
+											<tr class="row row-hover border-t" style="border-color: var(--border-subtle);">
 												<td class="py-1.5 pr-3">
 													<button type="button" class="cursor-pointer text-left font-medium hover:underline" title="Voir les opérations" onclick={() => openMerchant(r)}>{r.label}</button>
 												</td>

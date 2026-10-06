@@ -34,11 +34,12 @@
 	import '$lib/amazon.svelte'; // hooks the subcategory derived from Amazon orders
 	import { initKraken } from '$lib/wealth.svelte';
 	import { uiState, showToast, togglePrivacy } from '$lib/ui.svelte';
+	import { PREF_KEYS } from '$lib/prefs';
 	import Toast from '$lib/components/Toast.svelte';
 
 	/** Root: sidebar layout + custom router outlet, Cmd+K palette, Kraken modal. */
 
-	let theme = $state<Theme>('encre');
+	let theme = $state<Theme>('porcelaine');
 
 	/**
 	 * Secondary pages in separate chunks (main bundle: home, budget, transactions): imported on first
@@ -146,7 +147,6 @@
 	});
 
 	/** Display preferences: a change in another tab never threatens data. */
-	const PREF_KEYS = new Set(['budget:theme', 'budget:sidebar', 'budget:ui-collapse', 'budget:analyse-ui', 'budget:layout', 'budget:modules', 'budget:car-options', 'budget:privacy']);
 
 	/**
 	 * Another tab open on the app: each tab rewrites its full in-memory copy and the last writer wins,
@@ -168,7 +168,7 @@
 	});
 
 	/**
-	 * On mount: apply the stored theme without persisting it (no preference = dark default); load
+	 * On mount: apply the stored theme without persisting it (no preference = Porcelaine); load
 	 * transactions, then sync tracked loans, review internal transfers (dialog once per detection
 	 * batch) and refresh vehicle valuations older than 30 days in the background (IA relay); resume
 	 * the encrypted auto-backup when configured.

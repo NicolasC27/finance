@@ -30,7 +30,7 @@ const schedule = $derived.by((): ScheduleItem[] => {
 	const to = addDays(from, MAX_HORIZON);
 	const recurring = detectRecurring(confirmed, budgetState.overrides, from, getMerchantCategoryMap())
 		.filter((r) => r.kind === 'debit' && r.active && r.fixed && flowKind(r.categoryId) === 'expense' && !VARIABLE_SUBS.has(r.subId ?? ''))
-		.map((r) => ({ key: r.key, label: r.label, amount: r.amount, cadence: r.cadence, nextDate: r.nextDate, confidence: r.confidence, tax: r.categoryId === 'impots', loan: r.categoryId !== 'impots' && isLoanLabel(r.label) }));
+		.map((r) => ({ key: r.key, label: r.label, amount: r.amount, cadence: r.cadence, nextDate: r.nextDate, confidence: r.confidence, tax: r.categoryId === 'impots', loan: r.categoryId !== 'impots' && isLoanLabel(r.label), categoryId: r.categoryId }));
 	const loans = getLoanCosts().map((c) => ({
 		accountId: c.v.accountId,
 		label: c.v.label,

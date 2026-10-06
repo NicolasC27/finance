@@ -459,7 +459,13 @@ export interface AllocationSlice {
 	color: string;
 }
 
-const ALLOCATION_COLORS = { cm: '#c9a86c', natixis: '#a8a69c', crypto: '#cd9b1f', epargne: '#8f9a7e' } as const;
+/**
+ * Allocation colours: blue for the bank, orange for crypto, green for employee savings. Taken from
+ * the category palette and checked together on 2026-10-06 (all pairs, light and dark surfaces:
+ * OKLab ΔE ≥ 18 in normal vision, ≥ 9 with colour blindness); the former champagne and amber were
+ * 6 apart and three of the four read grey.
+ */
+const ALLOCATION_COLORS = { cm: '#5d94da', natixis: '#9e5598', crypto: '#c77f3e', epargne: '#297613' } as const;
 
 const allocation = $derived.by((): AllocationSlice[] => {
 	const parts: AllocationSlice[] = [
