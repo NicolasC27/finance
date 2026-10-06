@@ -124,16 +124,113 @@ const LABELS: Record<CostItem, string> = {
 	autres: 'Autres dépenses voiture'
 };
 
-/** Default depreciation when no estimate is entered: −15 % per year. */
-export const ANNUAL_DEPRECIATION = 0.15;
+/** Flat depreciation of the « taux fixe » model: −10 % per year (the usual pace of a car past three years). */
+export const ANNUAL_DEPRECIATION = 0.1;
+
+/**
+ * Residual value of a car against its new price by age (years), French used-car market: −20 % the
+ * first year, −15 % the second, −12 % the third, then about −10 % a year (−9 % beyond seven years).
+ */
+const RESIDUAL_BY_AGE: readonly [number, number][] = [[0, 1], [1, 0.8], [2, 0.68], [3, 0.6], [4, 0.54], [5, 0.486], [6, 0.437], [7, 0.394]];
+
+export function residualByAge(years: number): number {
+	const y = Math.max(0, years);
+	const last = RESIDUAL_BY_AGE.at(-1)!;
+	if (y >= last[0]) return last[1] * 0.91 ** (y - last[0]);
+	const i = RESIDUAL_BY_AGE.findIndex(([age]) => age > y);
+	const [a0, v0] = RESIDUAL_BY_AGE[i - 1]!;
+	const [a1, v1] = RESIDUAL_BY_AGE[i]!;
+	return v0 + ((v1 - v0) * (y - a0)) / (a1 - a0);
+}
+
+/** Usual yearly mileage behind the used-car quotes: petrol / hybrid 15 000 km, diesel 20 000 km. */
+export function referenceKmPerYear(b: Asset): number {
+	return /diesel|\bd\b|hdi|tdi|dci|crdi|blue ?hdi/i.test(b.vehicle?.version ?? '') ? 20000 : 15000;
+}
+
+/** Mileage effect on the value: −0.5 % per 1 000 km above the usual mileage for the age, +0.5 % below (bounded 0.6–1.25). */
+export function kmFactor(km: number, ageYears: number, perYear: number): number {
+	return Math.min(1.25, Math.max(0.6, 1 - (0.005 * (km - perYear * Math.max(0, ageYears))) / 1000));
+}
+
+/**
+ * Used-car price level at the end of each year (end of 2019 = 100): market rise of 2020–2022
+ * (+43.7 %, chip shortage), then declines: −6 % in 2023, −7.1 % in 2024, −3.8 % in 2025 (average price
+ * 20 200 € in September 2025 against 21 000 € a year earlier). Sources: Auto1 Group price index,
+ * La Centrale observatory (listing averages). Update each January.
+ */
+export const USED_CAR_MARKET: Readonly<Record<number, number>> = { 2019: 100, 2020: 105, 2021: 126, 2022: 143.7, 2023: 135, 2024: 125.4, 2025: 120.6 };
+
+/** Used-car price level at a date, interpolated between year ends (flat outside the table). */
+export function marketLevel(date: string): number {
+	const years = Object.keys(USED_CAR_MARKET).map(Number).sort((a, b) => a - b);
+	const y = Number(date.slice(0, 4));
+	const t = y - 1 + (daysBetween(`${y}-01-01`, date) + 1) / daysBetween(`${y}-01-01`, `${y + 1}-01-01`);
+	if (t <= years[0]!) return USED_CAR_MARKET[years[0]!]!;
+	if (t >= years.at(-1)!) return USED_CAR_MARKET[years.at(-1)!]!;
+	const y0 = Math.floor(t);
+	return USED_CAR_MARKET[y0]! + (USED_CAR_MARKET[y0 + 1]! - USED_CAR_MARKET[y0]!) * (t - y0);
+}
+
+/** Odometer at a date from the readings (pace continued after the last one), or the usual mileage since purchase without any. */
+function odometerAt(b: Asset, date: string): number | null {
+	const points = kmPoints(b);
+	if (points.length >= 2) return kmAt(points, date);
+	const start = b.vehicle?.kmAtPurchase;
+	return start === undefined ? null : Math.round(start + (referenceKmPerYear(b) * Math.max(0, daysBetween(b.purchaseDate, date))) / 365.25);
+}
+
+export type DepreciationModel = 'market' | 'flat';
+
+/**
+ * First registration used for the age: the registration certificate date, else the date read from
+ * the plate (French plates are issued in order), else the model year in the name or version
+ * (« SUV 2019 », mid-year), else the mileage at purchase at the usual pace (60 000 km ≈ 4 years),
+ * else the purchase date (bought new).
+ */
+export function firstRegistrationOf(b: Asset): { date: string; source: 'carte grise' | 'plaque' | 'année du modèle' | 'kilométrage' | 'achat neuf' } {
+	if (b.vehicle?.firstRegistration) return { date: b.vehicle.firstRegistration, source: 'carte grise' };
+	const fromPlate = b.vehicle?.plate ? plateDate(b.vehicle.plate)?.estimee : undefined;
+	if (fromPlate && fromPlate < b.purchaseDate) return { date: fromPlate, source: 'plaque' };
+	const year = /\b(19[89]\d|20[0-4]\d)\b/.exec(`${b.name} ${b.vehicle?.version ?? ''}`)?.[1];
+	if (year && `${year}-07-01` < b.purchaseDate) return { date: `${year}-07-01`, source: 'année du modèle' };
+	const km = b.vehicle?.kmAtPurchase ?? 0;
+	if (km >= 1000) {
+		const days = Math.round((km / referenceKmPerYear(b)) * 365.25);
+		return { date: new Date(Date.parse(`${b.purchaseDate}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10), source: 'kilométrage' };
+	}
+	return { date: b.purchaseDate, source: 'achat neuf' };
+}
+
+/**
+ * Value from age and mileage (and the used-car market when `withMarket`), relative to the price paid:
+ * price × (residual by age, mileage effect, market level) today ÷ the same on the purchase day; the
+ * options and paint paid for stay in the price. The age comes from firstRegistrationOf. Null without
+ * a price paid.
+ */
+export function marketValue(b: Asset, date: string, withMarket = false): number | null {
+	if (!(b.purchasePrice > 0)) return null;
+	const first = firstRegistrationOf(b).date;
+	const ageAt = (d: string) => Math.max(0, daysBetween(first, d) / 365.25);
+	const perYear = referenceKmPerYear(b);
+	const kmP = b.vehicle?.kmAtPurchase;
+	const kmT = odometerAt(b, date);
+	const km = kmP !== undefined && kmT !== null ? kmFactor(kmT, ageAt(date), perYear) / kmFactor(kmP, ageAt(b.purchaseDate), perYear) : 1;
+	const market = withMarket ? marketLevel(date) / marketLevel(b.purchaseDate) : 1;
+	const ratio = (residualByAge(ageAt(date)) / residualByAge(ageAt(b.purchaseDate))) * km * market;
+	return Math.round(b.purchasePrice * Math.min(1.3, ratio));
+}
 
 /**
  * Vehicle value at a date: the retained value (confirmed or still to confirm), else the theoretical
- * estimate (`depreciation` per year since purchase, −15 % by default, `parDefaut`). An AI proposal never
+ * estimate (`parDefaut`): age + mileage + used-car market since purchase (« market », default), or
+ * `depreciation` per year (« flat », and fallback without a first registration). An AI proposal never
  * counts until validated.
  */
-export function vehicleValue(b: Asset, date: string, depreciation = ANNUAL_DEPRECIATION): { valeur: number; parDefaut: boolean } {
+export function vehicleValue(b: Asset, date: string, depreciation = ANNUAL_DEPRECIATION, model: DepreciationModel = 'market', withMarket = false): { valeur: number; parDefaut: boolean } {
 	if (b.estimatedValue !== undefined) return { valeur: b.estimatedValue, parDefaut: false };
+	const market = model === 'market' ? marketValue(b, date, withMarket) : null;
+	if (market !== null) return { valeur: market, parDefaut: true };
 	const years = Math.max(0, daysBetween(b.purchaseDate, date) / 365.25);
 	return { valeur: Math.round(b.purchasePrice * (1 - depreciation) ** years), parDefaut: true };
 }
@@ -145,8 +242,12 @@ export const REVALIDATE_MONTHS = 6;
 export interface CarOptions {
 	/** Ask the user to confirm the retained value (« à confirmer » chip and Confirmer button). */
 	confirmValue: boolean;
-	/** Theoretical yearly depreciation used while no value is retained (0.15 = −15 %/year). */
+	/** Theoretical yearly depreciation of the « flat » model (0.1 = −10 %/year). */
 	depreciation: number;
+	/** Theoretical value while none is retained: age + mileage (« market » model), or the flat rate. */
+	depreciationModel: DepreciationModel;
+	/** Add the used-car market change since purchase to the age + mileage value (off by default). */
+	marketEffect: boolean;
 	/** Months after which a retained value shows « à revalider ». */
 	revalidateMonths: number;
 	/** Count the loss of value in the monthly cost (then only the loan interest counts). */
@@ -154,10 +255,10 @@ export interface CarOptions {
 }
 
 /**
- * Defaults: no confirmation asked, −15 %/year, 6 months, and no loss of value in the monthly cost,
+ * Defaults: no confirmation asked, age + km + market (flat rate −10 %/year as an option), 6 months, and no loss of value in the monthly cost,
  * which is then the money spent on the car (the user chose both on 2026-10-04).
  */
-export const DEFAULT_CAR_OPTIONS: CarOptions = { confirmValue: false, depreciation: ANNUAL_DEPRECIATION, revalidateMonths: REVALIDATE_MONTHS, countValueLoss: false };
+export const DEFAULT_CAR_OPTIONS: CarOptions = { confirmValue: false, depreciation: ANNUAL_DEPRECIATION, depreciationModel: 'market', marketEffect: false, revalidateMonths: REVALIDATE_MONTHS, countValueLoss: false };
 
 /** Stored options, each field checked and bounded (depreciation 0–60 %, reminder 1–60 months), defaults otherwise. */
 export function sanitizeCarOptions(raw: unknown): CarOptions {
@@ -166,6 +267,8 @@ export function sanitizeCarOptions(raw: unknown): CarOptions {
 	return {
 		confirmValue: typeof o.confirmValue === 'boolean' ? o.confirmValue : DEFAULT_CAR_OPTIONS.confirmValue,
 		depreciation: bounded(o.depreciation, 0, 0.6, DEFAULT_CAR_OPTIONS.depreciation),
+		depreciationModel: o.depreciationModel === 'flat' ? 'flat' : 'market',
+		marketEffect: o.marketEffect === true,
 		revalidateMonths: Math.round(bounded(o.revalidateMonths, 1, 60, DEFAULT_CAR_OPTIONS.revalidateMonths)),
 		countValueLoss: typeof o.countValueLoss === 'boolean' ? o.countValueLoss : DEFAULT_CAR_OPTIONS.countValueLoss
 	};
@@ -197,10 +300,10 @@ export interface RetainedValue {
 export function retainedValue(
 	b: Asset,
 	today: string,
-	options: { confirmation?: boolean; depreciation?: number; revalidateMonths?: number } = {}
+	options: { confirmation?: boolean; depreciation?: number; model?: DepreciationModel; market?: boolean; revalidateMonths?: number } = {}
 ): RetainedValue {
 	const confirmation = options.confirmation ?? true;
-	const { valeur: value, parDefaut: isDefault } = vehicleValue(b, today, options.depreciation);
+	const { valeur: value, parDefaut: isDefault } = vehicleValue(b, today, options.depreciation, options.model, options.market);
 	if (isDefault) return { valeur: value, theorique: true, source: null, date: null, confirmee: true, tracked: confirmation, aRevalider: false };
 	const date = b.valueDate ?? null;
 	return {
@@ -223,6 +326,11 @@ export function pendingProposal(b: Asset): VehicleValuation | null {
 /** Patch that retains a value given by the user (amount, source), confirmed, dated today. */
 export function patchRetainValue(amount: number, source: ValueSource, today: string): Partial<AssetInput> {
 	return { estimatedValue: Math.round(amount * 100) / 100, valueDate: today, valueSource: source, valueConfirmed: true };
+}
+
+/** Patch that drops the retained value: the theoretical value (age + km + market, or flat rate) applies again. */
+export function patchClearValue(): Partial<AssetInput> {
+	return { estimatedValue: undefined, valueDate: undefined, valueSource: undefined, valueConfirmed: undefined };
 }
 
 /** Patch that confirms the current retained value as it is (null without a retained value). */
@@ -278,7 +386,7 @@ export function monthlyCost(
 	b: Asset,
 	expenses: readonly CarExpense[],
 	today: string,
-	options: { partInterets?: number | null; depreciation?: number; countLoss?: boolean } = {}
+	options: { partInterets?: number | null; depreciation?: number; model?: DepreciationModel; market?: boolean; countLoss?: boolean } = {}
 ): VehicleCost {
 	const months = Math.max(1, daysBetween(b.purchaseDate, today) / AVG_MONTH_DAYS);
 	const linked = new Set(b.linkedTxKeys);
@@ -292,7 +400,7 @@ export function monthlyCost(
 		outflows += d.montant;
 	}
 	const end = b.estimatedValue !== undefined && b.valueDate ? b.valueDate : today;
-	const { valeur: value, parDefaut: isDefault } = vehicleValue(b, today, options.depreciation);
+	const { valeur: value, parDefaut: isDefault } = vehicleValue(b, today, options.depreciation, options.model, options.market);
 	const valueMonths = Math.max(1, daysBetween(b.purchaseDate, end) / AVG_MONTH_DAYS);
 	const loss = Math.max(0, b.purchasePrice - value);
 	const part = options.partInterets ?? null;

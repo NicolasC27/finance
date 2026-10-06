@@ -3,6 +3,8 @@ import { natixisPdfKind } from './pdfNatixis';
 import { looksLikeKrakStatement } from './pdfKrak';
 import { looksLikeTaxNotice } from './pdfTax';
 import { portageDocumentType } from './portage';
+import { looksLikeFranceTravailStatement } from './franceTravail';
+import { isAmazonArchive } from './amazonArchive';
 import { readVehicleDocument } from './pdfVehicle';
 import { detectStatementFormat } from './statements';
 import { decodeCsv, detectDelimiter, tokenize } from './csvCore';
@@ -34,9 +36,10 @@ export type ImportFamily =
 	| 'natixis-pdf'
 	| 'impot-pdf'
 	| 'infoportage'
+	| 'france-travail'
 	| 'vehicule';
 
-export type ImportTarget = 'transactions' | 'portage' | 'voiture';
+export type ImportTarget = 'transactions' | 'portage' | 'voiture' | 'impot';
 
 export interface Detection {
 	famille: ImportFamily;
@@ -62,14 +65,16 @@ export const FAMILY_LABELS: Record<ImportFamily, string> = {
 	'natixis-pdf': 'Document Natixis (PDF)',
 	'impot-pdf': "Avis d'impôt (PDF)",
 	infoportage: 'Document InfoPortage (PDF)',
+	'france-travail': 'Relevé France Travail (PDF)',
 	vehicule: 'Document véhicule (PDF)'
 };
 
-const PDF_TARGETS: Record<'krak-pdf' | 'natixis-pdf' | 'impot-pdf' | 'infoportage' | 'vehicule', ImportTarget> = {
+const PDF_TARGETS: Record<'krak-pdf' | 'natixis-pdf' | 'impot-pdf' | 'infoportage' | 'france-travail' | 'vehicule', ImportTarget> = {
 	'krak-pdf': 'transactions',
 	'natixis-pdf': 'transactions',
 	'impot-pdf': 'transactions',
 	infoportage: 'portage',
+	'france-travail': 'impot',
 	vehicule: 'voiture'
 };
 
@@ -90,7 +95,8 @@ export function detectFile(name: string, buffer: ArrayBuffer): Detection | Unrec
 	const bytes = new Uint8Array(buffer, 0, Math.min(4, buffer.byteLength));
 	const zip = bytes[0] === 0x50 && bytes[1] === 0x4b;
 	if (/\.xlsx$/i.test(name) || zip) {
-		return /\.xlsx$/i.test(name) ? { famille: 'cm-xlsx', cible: 'transactions' } : { famille: null, raison: 'archive ou document bureautique non pris en charge' };
+		if (zip && !/\.xlsx$/i.test(name) && isAmazonArchive(buffer)) return { famille: 'amazon', cible: 'transactions' };
+		return /\.xlsx$/i.test(name) ? { famille: 'cm-xlsx', cible: 'transactions' } : { famille: null, raison: 'archive non prise en charge (export Amazon « Your Shopping History » attendu pour un ZIP)' };
 	}
 	if (/\.(ofx|qfx|qif|xml)$/i.test(name)) return { famille: null, raison: 'relevé non reconnu : ni OFX/QFX, ni QIF, ni CAMT.053/052' };
 	if (!/\.(csv|txt|tsv)$/i.test(name)) return { famille: null, raison: 'format non pris en charge (CSV, XLSX, OFX, QIF, CAMT ou PDF attendus)' };
@@ -115,13 +121,15 @@ export function detectPdf(pages: PdfLine[][]): Detection | Unrecognized {
 		? 'krak-pdf'
 		: natixisPdfKind(pages)
 			? 'natixis-pdf'
-			: looksLikeTaxNotice(pages)
+			: looksLikeFranceTravailStatement(pages)
+				? 'france-travail'
+				: looksLikeTaxNotice(pages)
 				? 'impot-pdf'
 				: portageDocumentType(pages)
 					? 'infoportage'
 					: !('error' in readVehicleDocument(pages))
 						? 'vehicule'
 						: null;
-	if (!family) return { famille: null, raison: 'PDF non reconnu (ni relevé Krak, ni Natixis, ni avis d’impôt, ni InfoPortage, ni document véhicule)' };
+	if (!family) return { famille: null, raison: 'PDF non reconnu (ni relevé Krak, ni Natixis, ni avis d’impôt, ni relevé France Travail, ni InfoPortage, ni document véhicule)' };
 	return { famille: family, cible: PDF_TARGETS[family] };
 }

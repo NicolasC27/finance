@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeTax, defaultTaxYear, professionalDeduction, projectMonths, regularisation, taxParts } from '../src/lib/incomeTax';
+import { computeTax, defaultTaxYear, isUnemploymentBenefit, professionalDeduction, projectMonths, regularisation, taxParts } from '../src/lib/incomeTax';
 import { currentLawFor, rulesFor, rulesWarning, TAX_RULES } from '../src/lib/incomeTaxRules';
 
 const R2025 = TAX_RULES[2025]!;
@@ -111,4 +111,12 @@ test('defaultTaxYear: last year until October unless its notice is there', () =>
 	assert.equal(defaultTaxYear('2027-08-20', true), 2027, 'avis reçu : année en cours');
 	assert.equal(defaultTaxYear('2026-10-06', false), 2026);
 	assert.equal(defaultTaxYear('2027-12-01', false), 2027);
+});
+
+test('isUnemploymentBenefit: France Travail and Pôle emploi credits', () => {
+	assert.equal(isUnemploymentBenefit('VIR FRANCE TRAVAIL ARE 202603'), true);
+	assert.equal(isUnemploymentBenefit('Pôle Emploi'), true);
+	assert.equal(isUnemploymentBenefit('POLEEMPLOI'), true);
+	assert.equal(isUnemploymentBenefit('VIREMENT SALAIRE ACME'), false);
+	assert.equal(isUnemploymentBenefit('Travail Temporaire Interim'), false);
 });

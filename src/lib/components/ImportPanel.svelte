@@ -147,7 +147,7 @@
 			bind:this={input}
 			type="file"
 			multiple
-			accept=".csv,.tsv,.txt,.xlsx,.ofx,.qfx,.qif,.xml,.pdf,text/csv,application/pdf"
+			accept=".csv,.tsv,.txt,.xlsx,.ofx,.qfx,.qif,.xml,.pdf,.zip,text/csv,application/pdf,application/zip"
 			class="hidden"
 			onchange={(e) => {
 				void importFiles((e.target as HTMLInputElement).files);

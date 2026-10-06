@@ -3,6 +3,7 @@
 	import { formatEUR } from '$lib/sensitiveFormat';
 	import { getIncomeTax, setTaxSettings, setYearInputs, taxSettings, type TaxSettings, type YearInputs } from '$lib/incomeTax.svelte';
 	import { navigate } from '$lib/router.svelte';
+	import { importFiles } from '$lib/importPanelState.svelte';
 
 	/**
 	 * Income tax of the current year: taxable income (payslips read and projected, salary before
@@ -11,6 +12,7 @@
 	 * the only thing stored.
 	 */
 
+	let ftInput = $state<HTMLInputElement | null>(null);
 	const v = $derived(getIncomeTax());
 	const s = $derived(taxSettings.v);
 	const r = $derived(v.result);
@@ -86,6 +88,14 @@
 						<td class="text-right">{formatEUR(v.before.withheld)}</td>
 					</tr>
 				{/if}
+				{#if v.benefits.taxable > 0}
+					<tr class="border-t" style="border-color: var(--border-subtle);" title={[v.benefits.statements.length ? `Lu sur ${v.benefits.statements.length} relevé${v.benefits.statements.length > 1 ? 's' : ''} (${v.benefits.statements.map(monthLabel).join(', ')}) : base du prélèvement à la source` : '', v.benefits.estimated ? `Estimé : ${eur0(v.benefits.credits)} de virements France Travail sans relevé sur ${v.benefits.months} mois, divisés par (1 − ${pct(v.before.rate)})` : '', y.benefits !== null ? 'Saisi (attestation fiscale France Travail)' : ''].filter(Boolean).join(' · ')}>
+						<td class="py-1">Allocations France Travail <span class="meta-xs">{y.benefits !== null ? 'saisi' : [v.benefits.statements.length ? `${v.benefits.statements.length} relevé${v.benefits.statements.length > 1 ? 's' : ''}` : '', v.benefits.estimated ? 'estimé' : ''].filter(Boolean).join(' + ')}</span></td>
+						<td class="text-right">{formatEUR(v.benefits.taxable)}</td>
+						<td class="text-right">{pct(v.before.rate)}</td>
+						<td class="text-right">{formatEUR(v.benefits.withheld)}</td>
+					</tr>
+				{/if}
 				{#each v.months as m (m.month)}
 					<tr class="border-t {m.projected ? 'text-secondary italic' : ''}" style="border-color: var(--border-subtle);" title={m.projected ? 'Projeté au niveau de la dernière fiche de paie' : 'Lu sur la fiche de paie'}>
 						<td class="py-1">{monthLabel(m.month)}{#if m.projected} <span class="meta-xs not-italic">projeté</span>{/if}</td>
@@ -96,17 +106,24 @@
 				{/each}
 				<tr class="border-t font-medium" style="border-color: var(--border);">
 					<td class="py-1">Total</td>
-					<td class="text-right">{formatEUR(v.before.taxable + v.portageTaxable)}</td>
+					<td class="text-right">{formatEUR(v.before.taxable + v.benefits.taxable + v.portageTaxable)}</td>
 					<td></td>
 					<td class="text-right">{formatEUR(v.reg.withheldSoFar + v.reg.withheldToCome - (s.couple ? y.partnerWithheld : 0))}</td>
 				</tr>
 			</tbody>
 		</table>
 
+		<div class="mt-3 flex flex-wrap items-center gap-2">
+			<button type="button" class="btn btn-secondary btn-sm" onclick={() => ftInput?.click()}>Importer des relevés France Travail (PDF)</button>
+			<input bind:this={ftInput} type="file" accept=".pdf,application/pdf" multiple class="hidden" aria-label="Relevés France Travail (PDF)" onchange={(e) => { void importFiles((e.target as HTMLInputElement).files); (e.target as HTMLInputElement).value = ''; }} />
+			<span class="meta-xs">ou glisse-les n'importe où dans l'app</span>
+		</div>
+
 		<h3 class="label-plain mt-4 mb-1.5">À compléter <span class="meta-xs normal-case">(vide = lu dans tes données)</span></h3>
 		<div class="grid grid-cols-1 gap-y-1">
 			{@render field('Net imposable avant', y.before, String(v.before.taxable), (n) => setY({ before: n }), 'Cumul net imposable de ta dernière fiche de paie chez l’ancien employeur (vide = estimé depuis tes virements de salaire)')}
 			{@render field('Taux prélevé avant (%)', y.beforeRate, String(v.before.rate).replace('.', ','), (n) => setY({ beforeRate: n }), 'Taux de prélèvement à la source appliqué avant (vide = taux de ta première fiche de l’année)', 'w-16')}
+			{@render field('Allocations chômage', y.benefits, String(v.benefits.taxable), (n) => setY({ benefits: n }), 'Net imposable de l’année sur l’attestation fiscale France Travail (espace personnel › Mes attestations) ; vide = estimé depuis tes virements France Travail')}
 			{@render field('Autres revenus imposables', y.otherIncome || null, '0', (n) => setY({ otherIncome: n ?? 0 }), 'Revenus nets imposés au barème (fonciers, pensions…) ; les plus-values crypto sont imposées à part (voir Patrimoine)')}
 			{@render field('Frais réels', y.actualExpenses, `10 % = ${eur0(r.deduction)}`, (n) => setY({ actualExpenses: n }), 'Vide = abattement forfaitaire de 10 % (les notes de frais du portage ne sont déjà pas imposées)')}
 			{@render field('Réductions et crédits', y.reductions || null, '0', (n) => setY({ reductions: n ?? 0 }), 'Dons, emploi à domicile, garde d’enfant… (montant de la réduction, pas de la dépense)')}
@@ -128,7 +145,7 @@
 	<section class="card p-4 text-[12px]" aria-label="Calcul de l'impôt">
 		<h2 class="label-xs mb-2">Calcul</h2>
 		<dl class="tabular grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
-			<dt>Salaires nets imposables</dt><dd class="text-right">{formatEUR(r.grossSalaries)}</dd>
+			<dt>Salaires et allocations imposables</dt><dd class="text-right">{formatEUR(r.grossSalaries)}</dd>
 			<dt class="text-secondary">− {y.actualExpenses === null ? 'abattement de 10 %' : 'frais réels'}</dt><dd class="text-right text-secondary">−{formatEUR(r.deduction)}</dd>
 			{#if y.otherIncome > 0}<dt class="text-secondary">+ autres revenus</dt><dd class="text-right text-secondary">+{formatEUR(y.otherIncome)}</dd>{/if}
 			<dt class="font-medium">Revenu net imposable</dt><dd class="text-right font-medium">{formatEUR(r.netIncome)}</dd>

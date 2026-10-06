@@ -10,7 +10,8 @@ import {
 	amazonNote,
 	mergeAmazonNote,
 	amazonOwnsCategory,
-	type AmazonMatch
+	type AmazonMatch,
+	type AmazonOrder
 } from './amazonOrders';
 
 /**
@@ -72,7 +73,11 @@ export interface AmazonApplySummary {
  * recent order.
  */
 export function applyAmazonImport(text: string, fileName = 'Export Amazon'): AmazonApplySummary {
-	const parsed = parseAmazonOrders(text);
+	return applyAmazonOrders(parseAmazonOrders(text), fileName);
+}
+
+/** Applies orders already read (CSV, or the JSON files of a ZIP export). */
+export function applyAmazonOrders(parsed: { orders: AmazonOrder[]; errors: string[] }, fileName = 'Export Amazon'): AmazonApplySummary {
 	const txs = getTransactions();
 	const result = matchAmazonOrders(txs, parsed.orders);
 	const byKey = new Map(txs.map((t) => [txKey(t), t] as const));

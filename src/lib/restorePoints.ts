@@ -80,7 +80,8 @@ const KEY_NAMES: Readonly<Record<string, string>> = {
 	'budget:notes': 'bloc-notes',
 	'budget:scenarios': 'scénarios du simulateur',
 	'budget:loan-profile': 'profil emprunteur du simulateur',
-	'budget:income-tax': 'réglages de l’estimation d’impôt'
+	'budget:income-tax': 'réglages de l’estimation d’impôt',
+	'budget:france-travail': 'relevés France Travail'
 };
 
 /** Identity of an operation inside budget:imported-txs (dates, amount, direction, label, rank). */

@@ -11,7 +11,13 @@ import {
 	patchAcceptProposal,
 	pendingProposal,
 	retainedValue,
-	vehicleValue
+	vehicleValue,
+	residualByAge,
+	kmFactor,
+	marketLevel,
+	marketValue,
+	firstRegistrationOf,
+	USED_CAR_MARKET
 } from '../src/lib/vehicle';
 
 const CAR: Asset = {
@@ -26,8 +32,8 @@ const CAR: Asset = {
 
 const aiValuation = (privateSale: number, extra: Partial<VehicleValuation> = {}): VehicleValuation => ({ date: '2026-10-01', particulier: privateSale, auto: true, annonces: [{ libelle: 'Annonce fictive', km: 50000, prix: privateSale }], ...extra });
 
-test('no retained value: theoretical estimate at −15 %/year, never « à confirmer »', () => {
-	const r = retainedValue(CAR, '2026-03-01');
+test('no retained value: theoretical estimate at the flat rate (flat model), never « à confirmer »', () => {
+	const r = retainedValue(CAR, '2026-03-01', { model: 'flat' });
 	const years = (Date.parse('2026-03-01') - Date.parse('2024-03-01')) / 86_400_000 / 365.25;
 	assert.equal(r.theorique, true);
 	assert.equal(r.valeur, Math.round(20000 * (1 - ANNUAL_DEPRECIATION) ** years));
@@ -117,8 +123,8 @@ test('confirmation off: no value to confirm, status not tracked', () => {
 /** Theoretical depreciation and reminder delay follow the Voiture options. */
 test('theoretical depreciation and revalidation reminder follow the options', () => {
 	const years = (Date.parse('2026-03-01') - Date.parse('2024-03-01')) / 86_400_000 / 365.25;
-	assert.equal(vehicleValue(CAR, '2026-03-01', 0.1).valeur, Math.round(20000 * 0.9 ** years));
-	assert.equal(retainedValue(CAR, '2026-03-01', { depreciation: 0.1 }).valeur, Math.round(20000 * 0.9 ** years));
+	assert.equal(vehicleValue(CAR, '2026-03-01', 0.1, 'flat').valeur, Math.round(20000 * 0.9 ** years));
+	assert.equal(retainedValue(CAR, '2026-03-01', { depreciation: 0.1, model: 'flat' }).valeur, Math.round(20000 * 0.9 ** years));
 	const b: Asset = { ...CAR, estimatedValue: 15000, valueDate: '2026-06-01', valueSource: 'reprise', valueConfirmed: true };
 	assert.equal(retainedValue(b, '2026-08-20').aRevalider, false);
 	assert.equal(retainedValue(b, '2026-08-20', { revalidateMonths: 2 }).aRevalider, true);
@@ -128,9 +134,46 @@ test('theoretical depreciation and revalidation reminder follow the options', ()
 test('car options: sanitised and bounded', () => {
 	assert.deepEqual(sanitizeCarOptions(null), DEFAULT_CAR_OPTIONS);
 	assert.deepEqual(sanitizeCarOptions({ confirmValue: 'yes', depreciation: 'x', revalidateMonths: null }), DEFAULT_CAR_OPTIONS);
-	assert.deepEqual(sanitizeCarOptions({ confirmValue: true, depreciation: 2, revalidateMonths: 0 }), { confirmValue: true, depreciation: 0.6, revalidateMonths: 1, countValueLoss: false });
-	assert.deepEqual(sanitizeCarOptions({ depreciation: 0.12, revalidateMonths: 7.6 }), { confirmValue: false, depreciation: 0.12, revalidateMonths: 8, countValueLoss: false });
+	assert.deepEqual(sanitizeCarOptions({ confirmValue: true, depreciation: 2, revalidateMonths: 0 }), { confirmValue: true, depreciation: 0.6, depreciationModel: 'market', marketEffect: false, revalidateMonths: 1, countValueLoss: false });
+	assert.deepEqual(sanitizeCarOptions({ depreciation: 0.12, revalidateMonths: 7.6 }), { confirmValue: false, depreciation: 0.12, depreciationModel: 'market', marketEffect: false, revalidateMonths: 8, countValueLoss: false });
 	assert.equal(DEFAULT_CAR_OPTIONS.countValueLoss, false);
 	assert.equal(sanitizeCarOptions({ countValueLoss: true }).countValueLoss, true);
 	assert.equal(sanitizeCarOptions({ countValueLoss: 'yes' }).countValueLoss, false);
+});
+
+test('market model: age, mileage and used-car market relative to the price paid', () => {
+	assert.equal(residualByAge(0), 1);
+	assert.equal(residualByAge(1), 0.8);
+	assert.ok(Math.abs(residualByAge(1.5) - 0.74) < 1e-9);
+	assert.ok(Math.abs(residualByAge(5) / residualByAge(4) - 0.9) < 0.001, '≈ −10 %/an après 3 ans');
+	assert.ok(residualByAge(8) < residualByAge(6));
+	assert.equal(kmFactor(30000, 2, 15000), 1, 'kilométrage habituel : neutre');
+	assert.equal(kmFactor(40000, 2, 15000), 0.95, '+10 000 km : −5 %');
+	assert.equal(kmFactor(500000, 2, 15000), 0.6, 'borné');
+	assert.equal(marketLevel('2025-12-31'), USED_CAR_MARKET[2025]);
+	assert.equal(marketLevel('2030-06-01'), USED_CAR_MARKET[2025], 'au-delà de la table : dernier niveau');
+	const used: Asset = { ...CAR, purchaseDate: '2024-03-01', purchasePrice: 18000, vehicle: { firstRegistration: '2020-03-01', boughtUsed: true, kmAtPurchase: 60000, kmLog: [{ date: '2025-03-01', km: 75000, source: 'saisie' }] } };
+	const v = marketValue(used, '2026-03-01')!;
+	const expected = 18000 * (residualByAge(6) / residualByAge(4));
+	assert.ok(Math.abs(v - expected) <= 5, `${v} ≈ ${expected} (15 000 km/an : effet kilométrage quasi neutre)`);
+	const heavy: Asset = { ...used, vehicle: { ...used.vehicle!, kmLog: [{ date: '2025-03-01', km: 95000, source: 'saisie' }] } };
+	assert.ok(marketValue(heavy, '2026-03-01')! < v, 'gros rouleur : valeur plus basse');
+	const noDate: Asset = { ...used, vehicle: { ...used.vehicle!, firstRegistration: undefined } };
+	assert.deepEqual(firstRegistrationOf(noDate), { date: '2020-03-01', source: 'kilométrage' }, '60 000 km à 15 000 km/an : 4 ans avant l’achat');
+	assert.deepEqual(firstRegistrationOf({ ...noDate, name: 'SUV 2019' }), { date: '2019-07-01', source: 'année du modèle' });
+	assert.deepEqual(firstRegistrationOf({ ...CAR }), { date: CAR.purchaseDate, source: 'achat neuf' });
+	assert.equal(firstRegistrationOf({ ...noDate, vehicle: { ...noDate.vehicle!, plate: 'FA-123-AB' } }).source, 'plaque', 'plaque SIV : date de la série');
+	assert.ok(marketValue(noDate, '2026-03-01')! > 0, 'sans carte grise : âge déduit, jamais le taux fixe');
+	assert.equal(vehicleValue(used, '2026-03-01').valeur, v, 'modèle par défaut : âge + km');
+	const withMarket = marketValue(used, '2026-03-01', true)!;
+	assert.ok(Math.abs(withMarket - v * (marketLevel('2026-03-01') / marketLevel('2024-03-01'))) <= 2, 'option marché');
+});
+
+test('patchClearValue: back to the computed value', async () => {
+	const { patchClearValue } = await import('../src/lib/vehicle');
+	const kept: Asset = { ...CAR, estimatedValue: 9000, valueDate: '2026-09-01', valueSource: 'saisie', valueConfirmed: true };
+	const cleared = { ...kept, ...patchClearValue() } as Asset;
+	assert.equal(vehicleValue(kept, '2026-10-01').parDefaut, false);
+	assert.equal(vehicleValue(cleared, '2026-10-01').parDefaut, true);
+	assert.equal(JSON.parse(JSON.stringify(cleared)).estimatedValue, undefined, 'champ absent une fois enregistré');
 });

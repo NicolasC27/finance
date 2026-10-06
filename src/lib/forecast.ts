@@ -1,10 +1,13 @@
 import type { CategoryId, Transaction } from './types';
 import { isPending, signedAmount } from './data';
 import { categorize, type MerchantCategoryMap } from './categories';
+import { subcategorize } from './subcategories';
 import { cleanLabel, monthKeyOf, normalizeLabelKey } from './format';
 import { merchantLabel } from './merchant';
 import { isWealthLine } from './scope';
 import { monthTotals, monthCutoffDay, lastFlowDate, isBudgetFlow } from './totals';
+import { flowKind } from './flow';
+import { VARIABLE_SUBS } from './schedule';
 
 /**
  * Forecast engine — pure, testable functions (no state, no DOM).
@@ -27,6 +30,8 @@ export interface RecurringItem {
 	/** Readable label: short merchantLabel (SPEC v13 §A), cleanLabel fallback. */
 	label: string;
 	categoryId: CategoryId;
+	/** Subcategory of the last occurrence (null when none). */
+	subId: string | null;
 	kind: 'credit' | 'debit';
 	cadence: Cadence;
 	/** Median interval between occurrences, in days. */
@@ -286,6 +291,7 @@ export function detectRecurring(
 			key,
 			label: merchantLabel(last.remittance_information) || cleanLabel(last.remittance_information),
 			categoryId: categorize(last, overrides, undefined, merchantMap),
+			subId: subcategorize(last, overrides, undefined, merchantMap),
 			kind: last.credit_debit_indicator === 'CRDT' ? 'credit' : 'debit',
 			cadence,
 			intervalDays,
@@ -387,7 +393,7 @@ export function forecastTotals(
 	days: 30 | 60 | 90,
 	merchantMap?: MerchantCategoryMap
 ): GlobalForecast {
-	const allRecurring = detectRecurring(txs, overrides, fromIso, merchantMap).filter((r) => r.kind === 'debit');
+	const allRecurring = detectRecurring(txs, overrides, fromIso, merchantMap).filter((r) => r.kind === 'debit' && r.fixed && flowKind(r.categoryId) === 'expense' && !VARIABLE_SUBS.has(r.subId ?? ''));
 	const recurring = allRecurring.filter((r) => r.active);
 	const end = parseIso(fromIso).getTime() + days * DAY_MS;
 
@@ -405,25 +411,26 @@ export function forecastTotals(
 
 	const recKeys = new Set(allRecurring.map((r) => r.key));
 	const lastData = lastFlowDate(txs);
-	const windowEnd = lastData && lastData < fromIso ? lastData : fromIso;
-	const windowStart = new Date(parseIso(windowEnd).getTime() - 89 * DAY_MS);
-	const startIso = dayIso(windowStart);
-	let nonRec = 0;
-	const nonRecByMonth = new Map<string, number>();
+	let lastMonth = (lastData && lastData < fromIso ? lastData : fromIso).slice(0, 7);
+	if (lastData && monthCutoffDay(lastMonth, lastData, fromIso) !== null) lastMonth = shiftMonth(lastMonth, -1);
+	const firstMonth = txs.filter(isBudgetFlow).reduce((min, tx) => (tx.booking_date < min ? tx.booking_date : min), '9999').slice(0, 7);
+	const months = [shiftMonth(lastMonth, -2), shiftMonth(lastMonth, -1), lastMonth].filter((m) => m >= firstMonth);
+	const nonRecByMonth = new Map<string, number>(months.map((m) => [m, 0]));
+	let seen = false;
 	for (const tx of txs) {
-		if (isPending(tx) || isWealthLine(tx)) continue;
-		const amount = signedAmount(tx);
-		if (amount >= 0) continue;
-		if (tx.booking_date < startIso || tx.booking_date > windowEnd) continue;
-		if (recKeys.has(normalizeLabel(tx))) continue;
-		nonRec -= amount;
+		if (isPending(tx) || isWealthLine(tx) || !isBudgetFlow(tx)) continue;
 		const mk = monthKeyOf(tx.booking_date);
-		nonRecByMonth.set(mk, (nonRecByMonth.get(mk) ?? 0) - amount);
+		if (!nonRecByMonth.has(mk) || recKeys.has(normalizeLabel(tx))) continue;
+		if (flowKind(categorize(tx, overrides, undefined, merchantMap)) !== 'expense') continue;
+		const spend = -signedAmount(tx);
+		seen = true;
+		nonRecByMonth.set(mk, (nonRecByMonth.get(mk) ?? 0) + spend);
 	}
-	const daily = nonRec / 90;
-	const otherExpected = daily * days;
-	const monthSigma = stddev([...nonRecByMonth.values()]);
-	const otherSigma = monthSigma * Math.sqrt(days / 30);
+	const monthly = [...nonRecByMonth.values()];
+	const otherMonth = seen ? median(monthly) : 0;
+	const otherExpected = Math.max(0, otherMonth) * (days / 30.4);
+	const monthSigma = seen ? stddev(monthly) : 0;
+	const otherSigma = monthSigma * Math.sqrt(days / 30.4);
 
 	const expected = recExpected + otherExpected;
 	const low = recLow + Math.max(0, otherExpected - otherSigma);

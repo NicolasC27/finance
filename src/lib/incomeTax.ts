@@ -132,6 +132,13 @@ export function computeTax(input: TaxInput, rules: TaxYearRules): TaxResult {
 	};
 }
 
+const BENEFIT_LABEL = /\b(POLE ?EMPLOI|FRANCE ?TRAVAIL|ALLOCATIONS? ARE)\b/;
+
+/** Is a credit an unemployment benefit (France Travail, ex-Pôle emploi), taxable like a salary? */
+export function isUnemploymentBenefit(label: string): boolean {
+	return BENEFIT_LABEL.test(label.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+}
+
 /**
  * Income year to show by default: last year until October (declaration in May, regularisation in
  * September) as long as its notice has not been imported, else this year.

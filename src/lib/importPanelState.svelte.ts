@@ -5,6 +5,7 @@ import { detectFile, detectPdf, isPdf, type ImportTarget, type ImportFamily } fr
 import { extractPdfPages } from './pdfNatixis';
 import { importPortagePdf } from './portage.svelte';
 import { importCarDocuments } from './carAuto.svelte';
+import { importFranceTravailPdf } from './franceTravail.svelte';
 import { isModuleActive, setModuleActive } from './modules.svelte';
 import type { ModuleId } from './modules';
 
@@ -75,7 +76,7 @@ export async function importFiles(fileList: FileList | File[] | null | undefined
 	importPanelState.enCours = true;
 	importPanelState.lignes = [];
 	const rows: ImportLine[] = [];
-	const batches: Record<ImportTarget, File[]> = { transactions: [], portage: [], voiture: [] };
+	const batches: Record<ImportTarget, File[]> = { transactions: [], portage: [], voiture: [], impot: [] };
 	try {
 		for (const f of files) {
 			try {
@@ -99,6 +100,10 @@ export async function importFiles(fileList: FileList | File[] | null | undefined
 			attachSummaries(rows, batches.voiture, (await importCarDocuments(batches.voiture)).resumes);
 			recordImport('vehicule', batchLabel(batches.voiture, 'documents'));
 		}
+		if (batches.impot.length > 0) {
+			attachSummaries(rows, batches.impot, await importFranceTravailPdf(batches.impot));
+			recordImport('france-travail', batchLabel(batches.impot, 'relevés'));
+		}
 		if (batches.transactions.length > 0) {
 			for (const l of rows) if (l.cible === 'transactions') l.message = 'importé par la page Transactions';
 			uiState.importsEnAttente = batches.transactions;
@@ -110,12 +115,16 @@ export async function importFiles(fileList: FileList | File[] | null | undefined
 	enableImportedModules(rows);
 	const rejected = rows.filter((l) => !l.ok);
 	const others = rows.filter((l) => l.ok && l.cible !== 'transactions');
+	if (batches.impot.length > 0 && batches.transactions.length === 0 && !uiState.importPanelOpen) {
+		const read = rows.filter((l) => l.ok && l.cible === 'impot').length;
+		showToast(`${read} relevé${read > 1 ? 's' : ''} France Travail lu${read > 1 ? 's' : ''} : pris en compte dans l'impôt`, 'Détails', openImportPanel);
+	}
 	if (batches.transactions.length > 0) {
 		uiState.importPanelOpen = false;
 		navigate('/transactions');
 		if (rejected.length > 0 || others.length > 0) {
 			const parts = [
-				others.length > 0 ? `${others.length} document${others.length > 1 ? 's' : ''} lu${others.length > 1 ? 's' : ''} (Portage, Voiture)` : '',
+				others.length > 0 ? `${others.length} document${others.length > 1 ? 's' : ''} lu${others.length > 1 ? 's' : ''} (Portage, Voiture, France Travail)` : '',
 				rejected.length > 0 ? `${rejected.length} fichier${rejected.length > 1 ? 's' : ''} non reconnu${rejected.length > 1 ? 's' : ''}` : ''
 			].filter(Boolean);
 			showToast(parts.join(' · '), 'Détails', openImportPanel);

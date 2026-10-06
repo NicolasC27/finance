@@ -300,3 +300,20 @@ test('Kraken statement: both layouts (Wallet on the detail line / split Spot-Mai
 	assert.deepEqual([c!.transaction_amount.amount, c!.credit_debit_indicator], ['8.05', 'CRDT']);
 	assert.equal(categorize(c!), 'alimentation', 'remboursement Carrefour : déduit de l’alimentation');
 });
+
+test('classifyItemName: earliest keyword wins, longest on a tie', async () => {
+	const { classifyItemName } = await import('../src/lib/amazonOrders');
+	const c = (n: string) => { const r = classifyItemName(n); return r ? `${r.categoryId}/${r.subId}` : null; };
+	assert.equal(c('Seagate IronWolf 4To, Disque dur interne NAS'), 'loisirs/high-tech');
+	assert.equal(c('Steelseries Qck+ - Tapis de Souris de Jeu'), 'loisirs/high-tech');
+	assert.equal(c('by Amazon Aliment pour Chat Adultes sans céréale'), 'autre/null');
+	assert.equal(c('SwitchBot Lot de 4 thermomètres hygromètres d’intérieur'), 'logement/travaux-equipement');
+	assert.equal(c('JETech Verre Trempé pour iPhone 11'), 'loisirs/high-tech');
+	assert.equal(c('Remington Tondeuse Barbe Homme'), 'alimentation/courses');
+	assert.equal(c('SanDisk Ultra 32 Go, Clé USB 3.0'), 'loisirs/high-tech');
+	assert.equal(c('La Sagesse du Colibri: Cartes oracle'), 'loisirs/culture-sorties');
+	assert.equal(c('LA SPORTIVA Mantra - Chaussons escalade homme'), 'loisirs/sport');
+	assert.equal(c('Gardena Raccord de Tuyau 2917-20'), 'loisirs/bricolage-jardin');
+	assert.equal(c('"Prime Membership Fee"'), 'abonnements/streaming');
+	assert.equal(c('Objet inconnu XZ-200'), null);
+});

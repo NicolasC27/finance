@@ -85,10 +85,10 @@ export function vehicleSheet(b: Asset, today: string) {
 		km: kmPerYear(points, today),
 		kmAujourdhui: estimation?.km ?? null,
 		estimation,
-		cout: monthlyCost(b, expenses, today, { partInterets: interestShare, depreciation: options.depreciation, countLoss: options.countValueLoss }),
+		cout: monthlyCost(b, expenses, today, { partInterets: interestShare, depreciation: options.depreciation, model: options.depreciationModel, market: options.marketEffect, countLoss: options.countValueLoss }),
 		etapes: nextMilestones(b, expenses, today, estimation?.km),
-		valeur: vehicleValue(b, today, options.depreciation),
-		retenue: retainedValue(b, today, { confirmation: options.confirmValue, depreciation: options.depreciation, revalidateMonths: options.revalidateMonths }),
+		valeur: vehicleValue(b, today, options.depreciation, options.depreciationModel, options.marketEffect),
+		retenue: retainedValue(b, today, { confirmation: options.confirmValue, depreciation: options.depreciation, model: options.depreciationModel, market: options.marketEffect, revalidateMonths: options.revalidateMonths }),
 		proposition: pendingProposal(b)
 	};
 }

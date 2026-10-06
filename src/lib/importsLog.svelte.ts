@@ -5,7 +5,7 @@
  * the previous month).
  */
 
-export type ImportSource = 'cm' | 'krak' | 'natixis' | 'impots' | 'amazon' | 'kraken-csv' | 'releves' | 'portage' | 'vehicule';
+export type ImportSource = 'cm' | 'krak' | 'natixis' | 'impots' | 'amazon' | 'kraken-csv' | 'releves' | 'portage' | 'vehicule' | 'france-travail';
 
 export interface ImportEntry {
 	at: string; // ISO
@@ -37,7 +37,8 @@ export const SOURCE_LABELS: Record<ImportSource, string> = {
 	'kraken-csv': 'Ledger Kraken',
 	releves: 'Relevés OFX/QIF/CAMT',
 	portage: 'InfoPortage',
-	vehicule: 'Documents véhicule'
+	vehicule: 'Documents véhicule',
+	'france-travail': 'Relevés France Travail'
 };
 
 /** Records an import; the period is only replaced when it moves forward. Unavailable storage is ignored. */
