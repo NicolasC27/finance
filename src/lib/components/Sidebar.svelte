@@ -378,6 +378,15 @@
 				>
 					Historique
 				</a>
+				<a
+					href="/simulateur"
+					class="press whitespace-nowrap text-secondary transition-colors hover:text-[var(--accent)] hover:underline"
+					class:!text-[var(--accent)]={route.path === '/simulateur'}
+					aria-current={route.path === '/simulateur' ? 'page' : undefined}
+					title="Simulateur : effet d'un crédit, d'un déménagement, d'un changement de revenu (G puis W)"
+				>
+					Simulateur
+				</a>
 				<button
 					type="button"
 					class="press cursor-pointer whitespace-nowrap text-secondary transition-colors hover:text-[var(--accent)] hover:underline"

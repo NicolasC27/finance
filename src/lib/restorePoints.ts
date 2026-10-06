@@ -77,7 +77,9 @@ const KEY_NAMES: Readonly<Record<string, string>> = {
 	'budget:imports-log': 'journal des imports',
 	'budget:quick-memory': 'apprentissage de la saisie rapide',
 	'budget:indexation': 'indexation des budgets',
-	'budget:notes': 'bloc-notes'
+	'budget:notes': 'bloc-notes',
+	'budget:scenarios': 'scénarios du simulateur',
+	'budget:loan-profile': 'profil emprunteur du simulateur'
 };
 
 /** Identity of an operation inside budget:imported-txs (dates, amount, direction, label, rank). */

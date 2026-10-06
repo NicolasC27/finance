@@ -13,20 +13,13 @@
 
 <script lang="ts">
 	import { segmented } from '$lib/actions/segmented';
-	import { getNetWorth, getCryptoTotal } from '$lib/wealth.svelte';
-	import { getLoanViews, loanState } from '$lib/loans.svelte';
+	import { getNetWorth } from '$lib/wealth.svelte';
 	import { goalsState } from '$lib/goals.svelte';
-	import { categorize } from '$lib/categories';
-	import { budgetState } from '$lib/budget.svelte';
-	import { getMerchantCategoryMap } from '$lib/store.svelte';
-	import { getBudgetTransactions } from '$lib/transfers.svelte';
-	import { monthTotals } from '$lib/totals';
 	import { formatEURCompact } from '$lib/sensitiveFormat';
 	const formatEUR = formatEURCompact;
 	import { LONG_TERM_INFLATION } from '$lib/inflation';
-	import { averageSavings, monthsToReach, projectNetWorth, realReturn } from '$lib/realReturn';
-	import { getInvestments } from '$lib/investments.svelte';
-	import { monthsBefore } from '$lib/priceItems.svelte';
+	import { monthsToReach, projectNetWorth } from '$lib/realReturn';
+	import { getAutoRealRate, getBudgetAverages, getLoanPrincipal } from '$lib/projectionBase.svelte';
 	import { chartHeight } from '$lib/tileGrid';
 	import { financeSettings, setProjectionSetting } from '$lib/financeSettings.svelte';
 
@@ -45,31 +38,12 @@
 
 	const SHORT_MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 	const now = new Date();
-	const currentMonth = now.toISOString().slice(0, 7);
 	const SPREAD = 2;
 
-	/**
-	 * Average balance (income − spending) over the last 12 complete months. Loan account rows are left
-	 * out: their principal part is added separately (loanPrincipal), only once.
-	 */
-	const budgetSavings = $derived.by(() => {
-		const txs = getBudgetTransactions().filter((t) => !(t.account && t.account in loanState.loans));
-		const mm = getMerchantCategoryMap();
-		const catOf = (tx: Parameters<typeof categorize>[0]) => categorize(tx, budgetState.overrides, undefined, mm);
-		const monthsWithData = new Set(txs.map((t) => t.booking_date.slice(0, 7)));
-		return averageSavings(monthsBefore(currentMonth, 12).filter((m) => monthsWithData.has(m)).map((m) => monthTotals(txs, m, catOf).net));
-	});
-	/** Loan principal repaid each month: debt goes down, wealth goes up. */
-	const loanPrincipal = $derived(Math.round([...getLoanViews().values()].filter((l) => l.monthsRemaining > 0).reduce((s, l) => s + l.effectivePayment, 0)));
+	const budgetSavings = $derived(getBudgetAverages().net);
+	const loanPrincipal = $derived(getLoanPrincipal());
 	const autoSavings = $derived(budgetSavings + loanPrincipal);
-
-	/** Nominal return of the mix (crypto and current accounts at 0 %), then real at 2 % inflation. */
-	const autoRealRate = $derived.by(() => {
-		const investments = getInvestments();
-		const assetsTotal = investments.reduce((s, p) => s + p.montant, 0) + getCryptoTotal();
-		const rate = assetsTotal > 0 ? investments.reduce((s, p) => s + p.montant * p.taux, 0) / assetsTotal : 0;
-		return Math.round(realReturn(rate, LONG_TERM_INFLATION) * 10) / 10;
-	});
+	const autoRealRate = $derived(getAutoRealRate());
 
 	const start = $derived(getNetWorth());
 	const savings = $derived(financeSettings.projection.epargne ?? autoSavings);
@@ -236,6 +210,7 @@
 	<p class="text-[13px]">
 		Dans {years} ans : <b class="tabular">{formatEUR(central[central.length - 1]!)}</b>
 		<span class="meta-xs">(entre {formatEUR(low[low.length - 1]!)} et {formatEUR(high[high.length - 1]!)} selon le rendement, {pct(realRate - SPREAD)} à {pct(realRate + SPREAD)} %/an)</span>
+		<a href="/simulateur" class="meta-xs whitespace-nowrap hover:text-[var(--accent)] hover:underline" title="Effet d'un crédit, d'un déménagement, d'un changement de revenu (G puis W)">Simuler un changement →</a>
 	</p>
 	{/if}
 	{#if show('objectifs')}
