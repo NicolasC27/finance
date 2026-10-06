@@ -24,6 +24,7 @@
 			items: [
 				{ keys: ['G', 'D'], label: 'Accueil' },
 				{ keys: ['G', 'B'], label: 'Budget' },
+				{ keys: ['G', 'E'], label: 'Échéancier' },
 				{ keys: ['G', 'A'], label: 'Analyse' },
 				{ keys: ['G', 'I'], label: 'À trier' },
 				{ keys: ['G', 'T'], label: 'Transactions' },

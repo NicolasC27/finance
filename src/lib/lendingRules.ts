@@ -31,6 +31,13 @@ export const INCOME_WEIGHTS = { salary: 1, variable: 0.7, rental: 0.7, alimony: 
 /** Remaining income per month (« reste à vivre », €), bank practice: per adult, couple, per child. */
 export const REMAINING_INCOME = { adult: 800, couple: 1300, child: 350 } as const;
 
+/**
+ * Strong points that let a bank overlook one point to watch (two of them per point, one being a
+ * remaining income several times the expected one): debt ratio well below the limit (%), remaining
+ * income multiple, savings left (months).
+ */
+export const STRONG = { debtRatio: 20, remainingMultiple: 4, savingsMonths: 6 } as const;
+
 /** Seniority (months) that reassures banks, by job type. */
 export const JOB_SENIORITY = {
 	cdi: { ok: 3 },

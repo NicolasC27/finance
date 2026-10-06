@@ -134,7 +134,10 @@
 			<p class="meta-xs mb-2">
 				Endettement (crédits) <span class="tabular">{pct(result.debtBefore)}</span> → <b class="tabular">{pct(result.debtAfter)}</b> (max 35 %){#if result.rentKept} · avec le loyer <span class="tabular">{pct(result.effortWithRent)}</span>{/if} · reste à vivre <span class="tabular">{formatEUR(result.remainingIncome)}</span>
 			</p>
-			<p class="meta-xs mb-2">Un critère bloquant non tenu suffit à faire refuser ; chaque point important à surveiller baisse le niveau d'un cran, deux points secondaires aussi.</p>
+			<p class="meta-xs mb-2">Un critère bloquant non tenu suffit à faire refuser ; chaque point important à surveiller baisse le niveau d'un cran, deux points secondaires aussi ; deux atouts compensent un point important à surveiller.</p>
+			{#if result.strengths.length}
+				<p class="mb-2 text-[12px]"><span class="font-medium" style="color: var(--accent);">Atouts</span> <span class="text-secondary">{result.strengths.join(' · ')}{result.offset ? ` : compensent ${result.offset > 1 ? `${result.offset} points` : 'un point'} à surveiller.` : '.'}</span></p>
+			{/if}
 			<ul class="space-y-1.5 text-[12px]">
 				{#each result.criteria as c, i (c.id + i)}
 					<li class="flex gap-2">

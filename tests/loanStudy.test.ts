@@ -144,6 +144,19 @@ test('bankStudy: down payment above the savings, employee savings released for a
 	assert.equal(home.criteria.find((c) => c.id === 'emergency')!.status, 'pass', '45 000 − 30 000 = 7,5 mois');
 });
 
+test('bankStudy: strengths offset one major warning, never a failure', () => {
+	const car = analyzeLoan(resolveLoan(loan({ kind: 'car', amount: 20000, rate: 4.9, months: 60 }), 35), TODAY);
+	const rich = bankStudy({ ...HOUSEHOLD, incomes: { salary: 100000, variable: 0, rental: 0, alimony: 0 }, job: 'portage', seniorityMonths: 2, today: '2026-10-06' }, [car]);
+	assert.equal(rich.criteria.find((c) => c.id === 'job')!.status, 'warn');
+	assert.ok(rich.strengths.length >= 2, rich.strengths.join(', '));
+	assert.equal(rich.offset, 1);
+	assert.equal(rich.verdict, 'high');
+	const tight = bankStudy({ ...HOUSEHOLD, incomes: { salary: 4000, variable: 0, rental: 0, alimony: 0 }, savings: 0, job: 'portage', seniorityMonths: 2, today: '2026-10-06' }, [zeroRate(1240)]);
+	assert.equal(tight.offset, 0, '31 % d’endettement : pas un atout');
+	assert.equal(tight.verdict, 'medium');
+	assert.equal(verdictOf([{ status: 'fail', weight: 'major' }], 3), 'low', 'un échec n’est jamais compensé');
+});
+
 test('verdictOf: blocking, major and minor weights', () => {
 	const c = (status: 'pass' | 'warn' | 'fail', weight: 'blocking' | 'major' | 'minor' | 'info') => ({ status, weight });
 	assert.equal(verdictOf([c('pass', 'blocking'), c('pass', 'major')]), 'high');

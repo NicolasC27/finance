@@ -15,6 +15,7 @@ import {
 	MAX_MORTGAGE_MONTHS_NEW,
 	NOTARY_RATE,
 	REMAINING_INCOME,
+	STRONG,
 	USURY,
 	USURY_MAX_AGE_MONTHS,
 	type UsuryTable
@@ -343,6 +344,10 @@ export interface Study {
 	/** Largest total monthly instalment allowed by the 35 % rule, insurance included. */
 	maxMonthly: number;
 	criteria: Criterion[];
+	/** Strong points of the file (very low debt, comfortable remaining income, savings left). */
+	strengths: string[];
+	/** Major warnings offset by the strengths (two strengths for one warning, only with a comfortable remaining income). */
+	offset: number;
 	verdict: Verdict;
 }
 
@@ -357,14 +362,23 @@ function monthIn(today: string, n: number): string {
 	return `${MONTHS_FR[idx % 12]} ${Math.floor(idx / 12)}`;
 }
 
-/** Verdict from the weighted criteria: any blocking failure, else one level down per major issue and per two minor ones. */
-export function verdictOf(criteria: readonly Pick<Criterion, 'status' | 'weight'>[]): Verdict {
+/** Major warnings (not failures) that `strengths` strong points can offset: two strengths per warning. */
+export function offsetOf(criteria: readonly Pick<Criterion, 'status' | 'weight'>[], strengths: number): number {
+	const warnings = criteria.filter((c) => c.status === 'warn' && c.weight === 'major').length;
+	return Math.min(warnings, Math.floor(strengths / 2));
+}
+
+/**
+ * Verdict from the weighted criteria: any blocking failure, else one level down per major issue
+ * (two for a failure) and per two minor ones, minus the major warnings offset by strengths.
+ */
+export function verdictOf(criteria: readonly Pick<Criterion, 'status' | 'weight'>[], strengths = 0): Verdict {
 	const issues = criteria.filter((c) => c.status !== 'pass' && c.weight !== 'info');
 	if (issues.some((c) => c.weight === 'blocking' && c.status === 'fail')) return 'very-low';
 	const major = issues.filter((c) => c.weight === 'blocking' || c.weight === 'major').reduce((n, c) => n + (c.status === 'fail' ? 2 : 1), 0);
 	const minor = issues.filter((c) => c.weight === 'minor').length;
-	const score = major + Math.floor(minor / 2);
-	return score === 0 ? 'high' : score === 1 ? 'medium' : score === 2 ? 'low' : 'very-low';
+	const score = major - offsetOf(criteria, strengths) + Math.floor(minor / 2);
+	return score <= 0 ? 'high' : score === 1 ? 'medium' : score === 2 ? 'low' : 'very-low';
 }
 
 /** Acceptance checklist of the scenario's new loans (with their insurance) for a household. */
@@ -481,9 +495,10 @@ export function bankStudy(input: StudyInput, loans: readonly LoanAnalysis[]): St
 	}
 
 	const spent = downPayment + input.oneOff + loans.filter((l) => l.loan.kind !== 'mortgage').reduce((sum, l) => sum + l.loan.fees.total, 0);
+	const left = Math.max(0, available - spent);
+	const monthsLeft = input.monthlySpending > 0 ? Math.round((left / input.monthlySpending) * 10) / 10 : 0;
 	if (spent > 0 && input.monthlySpending > 0) {
-		const left = Math.max(0, available - spent);
-		const months = Math.round((left / input.monthlySpending) * 10) / 10;
+		const months = monthsLeft;
 		criteria.push({
 			id: 'emergency',
 			label: 'Épargne restante',
@@ -516,7 +531,13 @@ export function bankStudy(input: StudyInput, loans: readonly LoanAnalysis[]): St
 		});
 	}
 
-	return { income, debtBefore, debtAfter, effortWithRent, newMonthly, rentKept, remainingIncome, remainingThreshold, maxMonthly, criteria, verdict: verdictOf(criteria) };
+	const strengths: string[] = [];
+	const comfortable = remainingIncome >= STRONG.remainingMultiple * remainingThreshold;
+	if (comfortable) strengths.push(`reste à vivre confortable (${eur(remainingIncome)}, plus de ${STRONG.remainingMultiple}× l’attendu)`);
+	if (income > 0 && debtAfter <= STRONG.debtRatio) strengths.push(`endettement très bas (${pct1(debtAfter)})`);
+	if (monthsLeft >= STRONG.savingsMonths) strengths.push(`épargne restante solide (${monthsLeft.toLocaleString('fr-FR')} mois de dépenses)`);
+	const counted = comfortable ? strengths.length : 0;
+	return { income, debtBefore, debtAfter, effortWithRent, newMonthly, rentKept, remainingIncome, remainingThreshold, maxMonthly, criteria, strengths, offset: offsetOf(criteria, counted), verdict: verdictOf(criteria, counted) };
 }
 
 export interface CapacityRow {
