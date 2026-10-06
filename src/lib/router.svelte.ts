@@ -2,9 +2,9 @@ import { navDirection } from './navOrder';
 
 /** Home-made router (~40 lines): History API + View Transitions (graceful fallback). */
 
-export type RoutePath = '/' | '/budget' | '/analyse' | '/trier' | '/transactions' | '/patrimoine' | '/crypto' | '/rapport' | '/ia' | '/portage' | '/voiture' | '/historique' | '/simulateur' | '/echeancier';
+export type RoutePath = '/' | '/budget' | '/analyse' | '/trier' | '/transactions' | '/patrimoine' | '/crypto' | '/rapport' | '/ia' | '/portage' | '/voiture' | '/historique' | '/simulateur' | '/echeancier' | '/impot';
 
-const KNOWN: RoutePath[] = ['/', '/budget', '/analyse', '/trier', '/transactions', '/patrimoine', '/crypto', '/rapport', '/ia', '/portage', '/voiture', '/historique', '/simulateur', '/echeancier'];
+const KNOWN: RoutePath[] = ['/', '/budget', '/analyse', '/trier', '/transactions', '/patrimoine', '/crypto', '/rapport', '/ia', '/portage', '/voiture', '/historique', '/simulateur', '/echeancier', '/impot'];
 
 /**
  * Normalises a pathname for static hosting:

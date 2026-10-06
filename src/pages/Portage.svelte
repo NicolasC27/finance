@@ -335,6 +335,7 @@
 								{:else}
 									<p class="meta-xs mt-1">Aucune alerte : {alerts.length} message{alerts.length > 1 ? 's' : ''} d'information masqué{alerts.length > 1 ? 's' : ''}.</p>
 								{/if}
+								<a href="/impot" class="meta-xs mt-2 inline-block underline">Estimer l'impôt de l'année et la régularisation →</a>
 							{/snippet}
 						</Block>
 					{/if}

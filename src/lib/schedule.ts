@@ -83,6 +83,15 @@ export interface RecurringSource {
 	confidence: 'haute' | 'moyenne' | 'faible';
 	/** Tax direct debit (withholding tax, instalments) rather than a plain one. */
 	tax?: boolean;
+	/** Loan instalment debited from the current account (no loan account in the app). */
+	loan?: boolean;
+}
+
+const LOAN_LABEL = /\b(PRET|ECH(EANCE)?S?( DE)? (PRET|CREDIT)|CREDIT (AUTO|CONSO|IMMO)|CAP ?IN|PASSEPORT CREDIT|COFIDIS|CETELEM|SOFINCO|FRANFINANCE|ONEY|YOUNITED|FLOA|CREDIPAR|DIAC|MENSUALITE)\b/;
+
+/** Does a debit label look like a loan instalment (« Ech prêt auto », « Cap In Utilisation », « Cetelem »)? */
+export function isLoanLabel(label: string): boolean {
+	return LOAN_LABEL.test(label.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
 }
 
 /** Every occurrence of the recurring direct debits between `from` and `to` (both included). */
@@ -94,7 +103,7 @@ export function recurringItems(sources: readonly RecurringSource[], from: string
 			const date = step(r.nextDate, k);
 			if (date > to) break;
 			if (date < from) continue;
-			out.push({ id: `debit:${r.key}:${date}`, date, kind: r.tax ? 'tax' : 'debit', label: r.label, detail: r.cadence, amount: r.amount, href: '/budget', confidence: r.confidence });
+			out.push({ id: `debit:${r.key}:${date}`, date, kind: r.tax ? 'tax' : r.loan ? 'loan' : 'debit', label: r.label, detail: r.cadence, amount: r.amount, href: '/budget', confidence: r.confidence });
 		}
 	}
 	return out;
@@ -222,7 +231,7 @@ export function buildSchedule(parts: readonly (readonly ScheduleItem[])[], from:
 	const byId = new Map<string, ScheduleItem>();
 	for (const item of parts.flat()) if (item.date >= from && item.date <= to && !byId.has(item.id)) byId.set(item.id, item);
 	const all = [...byId.values()];
-	const precise = all.filter((i) => i.kind === 'loan' || (i.kind === 'tax' && !i.id.startsWith('debit:')));
+	const precise = all.filter((i) => (i.kind === 'loan' || i.kind === 'tax') && !i.id.startsWith('debit:'));
 	const kept = all.filter((i) => !i.id.startsWith('debit:') || !precise.some((p) => sameAmountNearDate(i, p)));
 	return kept.sort((a, b) => a.date.localeCompare(b.date) || KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || a.label.localeCompare(b.label, 'fr'));
 }

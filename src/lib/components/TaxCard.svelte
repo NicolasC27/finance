@@ -88,6 +88,7 @@
 			{/if}
 		</div>
 		<div class="flex items-center gap-2">
+			<a href="/impot" class="btn btn-secondary btn-sm" title="Impôt sur le revenu de l'année en cours et régularisation de septembre">Estimer l'impôt de l'année</a>
 			<button type="button" class="btn btn-secondary btn-sm" disabled={importing} onclick={() => fileInput?.click()}>
 				{importing ? 'Lecture…' : 'Importer des avis d’impôt (PDF)'}
 			</button>

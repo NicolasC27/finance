@@ -68,7 +68,8 @@
 		{ href: '/portage', label: 'Portage', hint: 'Activité, salaire, notes de frais, tickets resto, chèques culture' },
 		{ href: '/voiture', label: 'Voiture', hint: 'Fiche véhicule : compteur, coût par mois, contrôle technique' },
 		{ href: '/historique', label: 'Historique des données', hint: 'Points de restauration : différences, revenir en arrière' },
-		{ href: '/simulateur', label: 'Simulateur', hint: 'Et si… : crédit, déménagement, revenu en baisse, nouvel abonnement' }
+		{ href: '/simulateur', label: 'Simulateur', hint: 'Et si… : crédit, déménagement, revenu en baisse, nouvel abonnement' },
+		{ href: '/impot', label: 'Impôt sur le revenu', hint: 'Estimation de l’année, prélèvement à la source, régularisation de septembre' }
 	];
 
 	/** Static items (Pages, Actions and one Appearance command per theme), built once. */
