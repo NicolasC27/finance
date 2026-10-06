@@ -1,4 +1,5 @@
 import { warnPersistFailure } from './storage';
+import { PREF_KEYS } from './prefs';
 
 /**
  * App data in the PROJECT DATABASE (`donnees/budget.db`, encrypted SQLite,
@@ -232,7 +233,8 @@ class DiskStorage {
 				}
 			})
 		);
-		if (written.length) channel?.postMessage({ type: 'ecrit', keys: written });
+		const data = written.filter((key) => !PREF_KEYS.has(key));
+		if (data.length) channel?.postMessage({ type: 'ecrit', keys: data });
 		if (failed) {
 			warnPersistFailure();
 			if (!this.timer) this.timer = setTimeout(() => void this.flush(), RETRY_MS);

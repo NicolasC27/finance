@@ -16,7 +16,7 @@
 	import { showToast, uiState, showSuccess } from '$lib/ui.svelte';
 	import { navigate } from '$lib/router.svelte';
 	import PageTitle from '$lib/components/PageTitle.svelte';
-	import CategoryIcon from '$lib/components/CategoryIcon.svelte';
+	import CategoryMark from '$lib/components/CategoryMark.svelte';
 
 	/**
 	 * Sorting inbox: operations still in 'Autre' (wealth movements and hidden operations excluded),
@@ -232,7 +232,7 @@
 						onclick={() => apply(c.id)}
 					>
 						<kbd class="kbd">{KEYS[i]}</kbd>
-						<CategoryIcon id={c.id} size={14} />
+						<CategoryMark id={c.id} size={20} />
 						<span class="truncate">{c.label}</span>
 					</button>
 				{/each}

@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addMonths, buildSchedule, isLoanLabel, rentItems, rentSource, VARIABLE_SUBS, carItems, goalItems, loanItems, recurringItems, savingsItems, scheduleTotal, taxItems } from '../src/lib/schedule';
+import { addMonths, buildSchedule, isLoanLabel, rentItems, rentSource, VARIABLE_SUBS, carItems, goalItems, loanItems, recurringItems, savingsItems, scheduleTotal, taxItems, GROUP_ORDER, groupColor, groupLabel, scheduleGroup, type ScheduleGroup, type ScheduleItem } from '../src/lib/schedule';
+import { CATEGORIES, getCategory } from '../src/lib/categories';
+import { isExpenseCategory } from '../src/lib/flow';
+import type { CategoryId } from '../src/lib/types';
 
 const FROM = '2026-10-05';
 const TO90 = '2027-01-03';
@@ -155,4 +158,34 @@ test('buildSchedule: rent wins over the same detected debit; an instalment due j
 	assert.equal(oct.length, 1);
 	assert.equal(oct[0]!.date, '2026-10-06');
 	assert.match(oct[0]!.label, /Échéance · Crédit/);
+});
+
+test('recurringItems and rentItems: the budget category follows the deadline', () => {
+	const [netflix] = recurringItems([{ key: 'NETFLIX', label: 'Netflix', amount: 13.49, cadence: 'mensuelle', nextDate: '2026-10-12', confidence: 'haute', categoryId: 'abonnements' }], FROM, '2026-10-31');
+	assert.equal(netflix!.categoryId, 'abonnements');
+	assert.equal(rentItems({ amount: 700, day: 8 }, FROM, '2026-10-31')[0]!.categoryId, 'logement');
+});
+
+test('scheduleGroup: budget category for debits, taxes and the car under theirs, loans, savings and goals apart', () => {
+	const item = (kind: ScheduleItem['kind'], categoryId?: CategoryId): ScheduleItem => ({ id: kind, date: FROM, kind, label: kind, href: '/', ...(categoryId ? { categoryId } : {}) });
+	assert.equal(scheduleGroup(item('debit', 'abonnements')), 'abonnements');
+	assert.equal(scheduleGroup(item('debit')), 'autre');
+	assert.equal(scheduleGroup(item('tax')), 'impots');
+	assert.equal(scheduleGroup(item('car')), 'voiture');
+	assert.equal(scheduleGroup(item('loan', 'voiture')), 'loan');
+	assert.equal(scheduleGroup(item('savings')), 'savings');
+	assert.equal(scheduleGroup(item('goal')), 'goal');
+});
+
+test('groups: each one listed once with its label, own colours never shared with a spending category', () => {
+	assert.equal(new Set(GROUP_ORDER).size, GROUP_ORDER.length);
+	assert.equal(GROUP_ORDER.length, CATEGORIES.length + 3);
+	assert.equal(GROUP_ORDER.at(-1), 'autre');
+	const own: ScheduleGroup[] = ['loan', 'savings', 'goal'];
+	assert.deepEqual(own.map(groupLabel), ['Crédits', 'Épargne salariale', 'Objectifs']);
+	assert.equal(groupLabel('logement'), 'Logement');
+	assert.equal(groupColor('logement'), getCategory('logement').color);
+	const spending = CATEGORIES.filter((c) => isExpenseCategory(c.id)).map((c) => c.color);
+	for (const g of own) assert.ok(!spending.includes(groupColor(g)), g);
+	assert.equal(new Set(own.map(groupColor)).size, own.length);
 });

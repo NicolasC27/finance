@@ -2,7 +2,8 @@
 	import { confidenceStyle, confidenceLabel } from '$lib/forecast';
 	import { formatDate, formatEUR, sensitiveEUR } from '$lib/format';
 	import { getSchedule } from '$lib/schedule.svelte';
-	import { KIND_COLORS, KIND_LABELS, scheduleTotal } from '$lib/schedule';
+	import { groupLabel, KIND_LABELS, scheduleGroup, scheduleTotal } from '$lib/schedule';
+	import ScheduleMark from './ScheduleMark.svelte';
 
 	/**
 	 * 'À venir' card (Dashboard): total of the schedule's deadlines within 30 days (direct debits,
@@ -46,10 +47,10 @@
 			<ul class="divide-y divide-[var(--border-subtle)]">
 				{#each next as item (item.id)}
 					<li class="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
-						<span class="h-2 w-2 shrink-0 rounded-full" style="background-color: {KIND_COLORS[item.kind]};" title={KIND_LABELS[item.kind]}></span>
+						<ScheduleMark group={scheduleGroup(item)} label={item.id.startsWith('debit:') ? item.label : ''} />
 						<div class="min-w-0 flex-1">
 							<p class="truncate text-sm font-medium">{item.label}</p>
-							<p class="meta-xs mt-0.5">{KIND_LABELS[item.kind]} · {formatDate(item.date)}</p>
+							<p class="meta-xs mt-0.5">{groupLabel(scheduleGroup(item))} · {formatDate(item.date)}</p>
 						</div>
 						{#if item.amount !== undefined}<span class="tabular shrink-0 text-sm font-semibold">{item.sensitive ? sensitiveEUR(item.amount) : formatEUR(item.amount)}</span>{/if}
 						{#if showConfidence && item.confidence}

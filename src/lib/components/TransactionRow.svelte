@@ -8,10 +8,10 @@
 	import { isPending, signedAmount } from '$lib/data';
 	import { deleteTransactions, restoreTransactions, getMerchantCategoryMap } from '$lib/store.svelte';
 	import { showToast } from '$lib/ui.svelte';
-	import CategoryIcon from './CategoryIcon.svelte';
+	import MerchantMark from './MerchantMark.svelte';
 
 	/**
-	 * Transaction row: icon, cleaned label, editable category, date, signed amount. `compact`
+	 * Transaction row: category mark, cleaned label, editable category, date, signed amount. `compact`
 	 * (Dashboard): read only, category as text, no select and no deletion.
 	 */
 	let {
@@ -49,10 +49,8 @@
 </script>
 
 <div class="row-hover fade-slide group flex items-center gap-2.5 rounded-lg px-2 {compact ? 'py-1' : 'py-1.5'}" class:quick-pending={tx.source === 'manual'}>
-	<!-- Bare category icon: 1.5 stroke, category colour (no more tinted square) -->
-	<span class="flex h-6 w-6 shrink-0 items-center justify-center" style="color: {category.color};" aria-hidden="true">
-		<CategoryIcon id={categoryId} size={15} />
-	</span>
+	<!-- Brand logo or category mark, the same on every operation list -->
+	<MerchantMark label={displayLabel} id={categoryId} size={22} />
 
 	<div class="min-w-0 flex-1">
 		<p class="truncate text-[13px] font-medium" title={rawLabel}>

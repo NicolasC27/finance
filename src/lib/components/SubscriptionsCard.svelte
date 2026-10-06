@@ -133,9 +133,9 @@
 				{#if showAlerts}<th class="py-1 font-medium">Alerte</th>{/if}
 			</tr>
 		</thead>
-		<tbody>
+		<tbody class="rows">
 			{#each rows as r (r.key)}
-				<tr class="row-hover border-t" style="border-color: var(--border-subtle);">
+				<tr class="row row-hover border-t" style="border-color: var(--border-subtle);">
 					<td class="py-1.5 pr-3"><button type="button" class="cursor-pointer text-left font-medium hover:underline" onclick={() => open(r)}>{r.label}</button></td>
 					<td class="py-1.5 pr-3 whitespace-nowrap text-secondary"><span class="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style="background-color: {getCategory(r.categoryId).color};"></span>{getCategory(r.categoryId).label}</td>
 					{#if showCadence}<td class="py-1.5 pr-3 text-secondary">{CADENCE[r.cadence] ?? r.cadence}</td>{/if}

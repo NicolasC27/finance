@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { registerAccounts } from '$lib/accounts.svelte';
+	import { KIND_COLORS, registerAccounts } from '$lib/accounts.svelte';
 	import Block from '$lib/components/Block.svelte';
 	import { chartHeight } from '$lib/tileGrid';
 	import TileCanvas from '$lib/components/TileCanvas.svelte';
@@ -41,6 +41,7 @@
 	import type { AccountKind } from '$lib/accounts.svelte';
 	import { trendFromOhlc, type TrendReading } from '$lib/trends';
 	import AccountIcon from '$lib/components/AccountIcon.svelte';
+	import Mark from '$lib/components/Mark.svelte';
 	import AnimatedAmount from '$lib/components/AnimatedAmount.svelte';
 	import OdometerAmount from '$lib/components/OdometerAmount.svelte';
 	import BalanceChart from '$lib/components/BalanceChart.svelte';
@@ -595,9 +596,9 @@
 												{@const variation = acc.monthVar !== 0 && show('variation')}
 												<li class="border-b py-2" style="border-color: var(--border-subtle);">
 													<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-														<span class="flex h-8 w-8 shrink-0 items-center justify-center" style="color: var(--text-2);" aria-hidden="true">
+														<Mark color={KIND_COLORS[acc.kind]} size={28}>
 															<AccountIcon kind={acc.kind} size={17} />
-														</span>
+														</Mark>
 														<div class="min-w-0 flex-[1_1_9rem]">
 															<!-- Only the label is truncated; the ••XXXX mask is NEVER truncated (shrink-0) nor doubled when the label already contains it -->
 															<p class="flex items-baseline gap-1.5 text-sm font-medium" title={acc.label}>

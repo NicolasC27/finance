@@ -44,6 +44,18 @@ export const KIND_LABELS: Record<AccountKind, string> = {
 	autre: 'Autre compte'
 };
 
+/**
+ * Mark colour of each account type: the blue of the bank and the orange of crypto in the
+ * allocation, a green for savings, the violet of the schedule's « Crédits » for loans.
+ */
+export const KIND_COLORS: Record<AccountKind, string> = {
+	courant: '#5d94da',
+	livret: '#7aa14e',
+	pret: '#8966e9',
+	crypto: '#c77f3e',
+	autre: '#8a857a'
+};
+
 const ACCOUNTS_KEY = 'budget:accounts';
 
 /** Loads the registry; a kind missing from storage (v8 → v9 migration) is detected again. */

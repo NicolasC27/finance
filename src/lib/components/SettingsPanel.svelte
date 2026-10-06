@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { uiState, showToast, showSuccess } from '$lib/ui.svelte';
+	import { uiState, showToast, showSuccess, toggleAccountBadges, toggleBrandLogos, toggleCompactRows } from '$lib/ui.svelte';
 	import { navigate, route } from '$lib/router.svelte';
 	import { THEMES, type Theme } from '$lib/theme';
 	import { layoutState, toggleWide, resetLayout, resetPage, setDensity, DENSITY_LABELS, type Density } from '$lib/layout.svelte';
@@ -88,7 +88,7 @@
 	<!-- Appearance: theme, density, width -->
 	<section aria-labelledby="settings-apparence">
 		<h3 id="settings-apparence" class="label-plain mb-2">Apparence</h3>
-		<div class="grid grid-cols-5 gap-2" role="radiogroup" aria-label="Thème">
+		<div class="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Thème">
 			{#each THEMES as meta (meta.id)}
 				{@const active = theme === meta.id}
 				<button
@@ -137,6 +137,21 @@
 			<button type="button" role="switch" aria-checked={layoutState.wide} aria-labelledby="settings-large" class="switch shrink-0 cursor-pointer" onclick={() => toggleWide()}>
 				<span class="switch-knob" aria-hidden="true"></span>
 			</button>
+		</div>
+
+		<div class="mt-2 flex items-center justify-between gap-3">
+			<span id="settings-lignes" class="text-secondary">Lignes compactes <span class="meta-xs">· longues listes sur une ligne, point de couleur, fond alterné</span></span>
+			<Switch checked={uiState.compactRows} labelledby="settings-lignes" onchange={toggleCompactRows} />
+		</div>
+
+		<div class="mt-2 flex items-center justify-between gap-3">
+			<span id="settings-logos" class="text-secondary">Logos des marques <span class="meta-xs">· le logo quand la marque est connue, sinon l'icône de catégorie</span></span>
+			<Switch checked={uiState.brandLogos} labelledby="settings-logos" onchange={toggleBrandLogos} />
+		</div>
+
+		<div class="mt-2 flex items-center justify-between gap-3">
+			<span id="settings-compte" class="text-secondary">Compte sur chaque ligne <span class="meta-xs">· le badge du compte dans Transactions</span></span>
+			<Switch checked={uiState.accountBadges} labelledby="settings-compte" onchange={toggleAccountBadges} />
 		</div>
 
 		<button

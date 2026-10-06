@@ -4,6 +4,9 @@
  * savings releases, savings goals — merged into one chronological list without duplicates.
  */
 
+import { CATEGORIES, getCategory } from './categories';
+import type { CategoryId } from './types';
+
 export type ScheduleKind = 'debit' | 'loan' | 'tax' | 'car' | 'savings' | 'goal';
 
 export interface ScheduleItem {
@@ -12,6 +15,8 @@ export interface ScheduleItem {
 	/** ISO date (AAAA-MM-JJ). */
 	date: string;
 	kind: ScheduleKind;
+	/** Budget category of a direct debit or of the rent: its group on the page. */
+	categoryId?: CategoryId;
 	label: string;
 	detail?: string;
 	/** Expected amount (€, positive) when known. */
@@ -24,6 +29,7 @@ export interface ScheduleItem {
 	confidence?: 'haute' | 'moyenne' | 'faible';
 }
 
+/** Source of a deadline, in the plural: what the total of a list covers. */
 export const KIND_LABELS: Readonly<Record<ScheduleKind, string>> = {
 	debit: 'Prélèvements',
 	loan: 'Crédits',
@@ -33,15 +39,46 @@ export const KIND_LABELS: Readonly<Record<ScheduleKind, string>> = {
 	goal: 'Objectifs'
 };
 
-/** Marker colour of each kind (always shown next to its label). */
-export const KIND_COLORS: Readonly<Record<ScheduleKind, string>> = {
-	debit: 'var(--text-secondary)',
-	loan: 'var(--debit)',
-	tax: 'var(--amber)',
-	car: 'var(--olive)',
-	savings: 'var(--accent)',
-	goal: 'var(--beige)'
+/**
+ * Group of a deadline, one icon and one colour wherever it is shown: the budget category for direct
+ * debits and rent, taxes and the car under their own category, and three groups outside the budget.
+ */
+export type ScheduleGroup = CategoryId | 'loan' | 'savings' | 'goal';
+
+/**
+ * Groups outside the budget categories. Crédits takes the free hue farthest from the 13 category
+ * colours (OKLab ΔE ≥ 12.8, ≥ 8.2 with colour blindness, ≥ 3.7:1 on the five theme surfaces;
+ * checked on 2026-10-06), Épargne salariale the colour of the savings category (never a deadline
+ * itself), Objectifs the champagne of the goal rings.
+ */
+const OWN_GROUPS: Readonly<Record<'loan' | 'savings' | 'goal', { label: string; color: string }>> = {
+	loan: { label: KIND_LABELS.loan, color: '#8966e9' },
+	savings: { label: KIND_LABELS.savings, color: getCategory('epargne').color },
+	goal: { label: KIND_LABELS.goal, color: '#c9a86c' }
 };
+
+/** Order of the groups in filters and legends: budget categories first, « Autre » last. */
+export const GROUP_ORDER: readonly ScheduleGroup[] = [...CATEGORIES.map((c) => c.id).filter((id) => id !== 'autre'), 'loan', 'savings', 'goal', 'autre'];
+
+export function scheduleGroup(item: ScheduleItem): ScheduleGroup {
+	if (item.kind === 'loan' || item.kind === 'savings' || item.kind === 'goal') return item.kind;
+	if (item.kind === 'tax') return 'impots';
+	if (item.kind === 'car') return 'voiture';
+	return item.categoryId ?? 'autre';
+}
+
+function isOwnGroup(group: ScheduleGroup): group is keyof typeof OWN_GROUPS {
+	return Object.hasOwn(OWN_GROUPS, group);
+}
+
+export function groupLabel(group: ScheduleGroup): string {
+	return isOwnGroup(group) ? OWN_GROUPS[group].label : getCategory(group).label;
+}
+
+/** Mark colour of a group (always shown next to its label or its icon). */
+export function groupColor(group: ScheduleGroup): string {
+	return isOwnGroup(group) ? OWN_GROUPS[group].color : getCategory(group).color;
+}
 
 const KIND_ORDER: readonly ScheduleKind[] = ['tax', 'loan', 'debit', 'car', 'savings', 'goal'];
 
@@ -85,6 +122,8 @@ export interface RecurringSource {
 	tax?: boolean;
 	/** Loan instalment debited from the current account (no loan account in the app). */
 	loan?: boolean;
+	/** Budget category of the debit. */
+	categoryId?: CategoryId;
 }
 
 const LOAN_LABEL = /\b(PRET|ECH(EANCE)?S?( DE)? (PRET|CREDIT)|CREDIT (AUTO|CONSO|IMMO)|PASSEPORT CREDIT|COFIDIS|CETELEM|SOFINCO|FRANFINANCE|ONEY|YOUNITED|FLOA|CREDIPAR|DIAC|MENSUALITE)\b/;
@@ -103,7 +142,7 @@ export function recurringItems(sources: readonly RecurringSource[], from: string
 			const date = step(r.nextDate, k);
 			if (date > to) break;
 			if (date < from) continue;
-			out.push({ id: `debit:${r.key}:${date}`, date, kind: r.tax ? 'tax' : r.loan ? 'loan' : 'debit', label: r.label, detail: r.cadence, amount: r.amount, href: '/budget', confidence: r.confidence });
+			out.push({ id: `debit:${r.key}:${date}`, date, kind: r.tax ? 'tax' : r.loan ? 'loan' : 'debit', ...(r.categoryId ? { categoryId: r.categoryId } : {}), label: r.label, detail: r.cadence, amount: r.amount, href: '/budget', confidence: r.confidence });
 		}
 	}
 	return out;
@@ -261,7 +300,7 @@ export function rentItems(rent: RentSource | null, from: string, to: string): Sc
 		const date = dayOfMonth(addMonths(`${from.slice(0, 7)}-01`, k).slice(0, 7), rent.day);
 		if (date > to) break;
 		if (date < from) continue;
-		out.push({ id: `rent:${date}`, date, kind: 'debit', label: 'Loyer', detail: 'loyer & charges, mensuel', amount: rent.amount, href: '/budget' });
+		out.push({ id: `rent:${date}`, date, kind: 'debit', categoryId: 'logement', label: 'Loyer', detail: 'loyer & charges, mensuel', amount: rent.amount, href: '/budget' });
 	}
 	return out;
 }
