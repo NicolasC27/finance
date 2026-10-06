@@ -34,6 +34,7 @@
 				{ keys: ['G', 'O'], label: 'Portage' },
 				{ keys: ['G', 'V'], label: 'Voiture' },
 				{ keys: ['G', 'Y'], label: 'Historique des données' },
+				{ keys: ['G', 'W'], label: 'Simulateur' },
 				{ keys: ['+'], label: 'Saisir une dépense' },
 				{ keys: ['H'], label: 'Mode discret : masquer / afficher les montants' }
 			]
