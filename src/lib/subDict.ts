@@ -58,6 +58,7 @@ export const SUBCATEGORIES: Subcategory[] = [
 	{ id: 'mutuelle', categoryId: 'sante', label: 'Mutuelle & optique' },
 	// revenus
 	{ id: 'salaire', categoryId: 'revenus', label: 'Salaire' },
+	{ id: 'chomage', categoryId: 'revenus', label: 'Allocations chômage' },
 	{ id: 'remboursements', categoryId: 'revenus', label: 'Remboursements' },
 	{ id: 'cheques-recus', categoryId: 'revenus', label: 'Chèques reçus' },
 	// autre
@@ -400,6 +401,7 @@ export const SUB_MERCHANT_DICT: Record<string, string[]> = {
 	],
 	mutuelle: ['OPTICIEN', 'OPTIQUE', 'MUTUELLE', 'MGEN', 'CPAM', 'AMELI', 'COMPLEMENTAIRE SANTE', 'LUNETTES'],
 	salaire: ['VIREMENT SALAIRE', 'SALAIRE'],
+	chomage: ['POLE EMPLOI', 'FRANCE TRAVAIL', 'FRANCETRAVAIL', 'ALLOCATION ARE'],
 	remboursements: ['REMBOURSEMENT'],
 	'cheques-recus': ['REMISE CHEQUE'],
 	credits: ['ECHEANCE PRET', 'ECHEANCE CREDIT', 'REMBOURSEMENT PRET', 'MENSUALITE PRELEVEE'],

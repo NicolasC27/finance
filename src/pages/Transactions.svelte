@@ -61,7 +61,9 @@
 	import PageTitle from '$lib/components/PageTitle.svelte';
 	import DateRangePicker from '$lib/components/DateRangePicker.svelte';
 	import { matchesAmazonHeader } from '$lib/amazonOrders';
-	import { applyAmazonImport, amazonMatchFor } from '$lib/amazon.svelte';
+	import { applyAmazonImport, applyAmazonOrders, amazonMatchFor, type AmazonApplySummary } from '$lib/amazon.svelte';
+	import { isZip } from '$lib/unzip';
+	import { isAmazonArchive, readAmazonArchive } from '$lib/amazonArchive';
 	import { vacationState, assignedVacation, assignVacation, isDetached, vacationOf, vacationFor, addVacation, removeVacation, type VacationPeriod } from '$lib/vacations.svelte';
 	import { orderRange, rangeLabel, suggestVacationLabel } from '$lib/rangeCalendar';
 
@@ -1000,6 +1002,17 @@
 		});
 	}
 
+	/** Toast of an Amazon import (CSV or ZIP export): lines matched, lines and orders left alone. */
+	function showAmazonResult(r: AmazonApplySummary, fileName: string) {
+		const parts = [
+			`${r.matched} ligne${r.matched > 1 ? 's' : ''} Amazon rapprochée${r.matched > 1 ? 's' : ''} (${r.items} article${r.items > 1 ? 's' : ''})`,
+			r.unmatchedTx > 0 ? `${r.unmatchedTx} ligne${r.unmatchedTx > 1 ? 's' : ''} Amazon sans commande trouvée` : '',
+			r.unmatchedOrders > 0 ? `${r.unmatchedOrders} commande${r.unmatchedOrders > 1 ? 's' : ''} de l’export absente${r.unmatchedOrders > 1 ? 's' : ''} de ce relevé (autre payeur ?)` : ''
+		].filter(Boolean);
+		showToast(parts.join(' · '));
+		if (r.errors.length > 0) txState.feedback = { added: 0, duplicates: 0, enriched: 0, ignored: r.errors.length, resurrectedBlocked: 0, errors: r.errors, fileName, accounts: [], at: Date.now() };
+	}
+
 	/** Read error feedback (unreadable file, parser failure). */
 	function failFeedback(fileName: string, message: string) {
 		txState.feedback = {
@@ -1083,6 +1096,11 @@
 			}
 
 			const buffer = await file.arrayBuffer();
+			if (!format && isZip(buffer) && isAmazonArchive(buffer)) {
+				lastFile = file;
+				showAmazonResult(applyAmazonOrders(await readAmazonArchive(buffer), file.name), file.name);
+				return;
+			}
 			const statement = parseStatement(buffer, file.name);
 			if (statement) {
 				lastFile = null;
@@ -1099,14 +1117,7 @@
 
 			if (!format && matchesAmazonHeader(headerFields)) {
 				lastFile = file;
-				const r = applyAmazonImport(text);
-				const parts = [
-					`${r.matched} ligne${r.matched > 1 ? 's' : ''} Amazon rapprochée${r.matched > 1 ? 's' : ''} (${r.items} article${r.items > 1 ? 's' : ''})`,
-					r.unmatchedTx > 0 ? `${r.unmatchedTx} ligne${r.unmatchedTx > 1 ? 's' : ''} Amazon sans commande trouvée` : '',
-					r.unmatchedOrders > 0 ? `${r.unmatchedOrders} commande${r.unmatchedOrders > 1 ? 's' : ''} de l’export absente${r.unmatchedOrders > 1 ? 's' : ''} de ce relevé (autre payeur ?)` : ''
-				].filter(Boolean);
-				showToast(parts.join(' · '));
-				if (r.errors.length > 0) txState.feedback = { added: 0, duplicates: 0, enriched: 0, ignored: r.errors.length, resurrectedBlocked: 0, errors: r.errors, fileName: file.name, accounts: [], at: Date.now() };
+				showAmazonResult(applyAmazonImport(text, file.name), file.name);
 				return;
 			}
 
@@ -1547,7 +1558,7 @@
 	<input
 		bind:this={fileInput}
 		type="file"
-		accept=".csv,.xlsx,.ofx,.qfx,.qif,.xml,text/csv"
+		accept=".csv,.xlsx,.ofx,.qfx,.qif,.xml,.zip,text/csv,application/zip"
 		class="hidden"
 		onchange={(e) => {
 			void handleFile((e.target as HTMLInputElement).files?.[0]);

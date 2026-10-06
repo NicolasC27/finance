@@ -216,6 +216,56 @@ export function goalItems(goals: readonly GoalSource[], from: string, to: string
 		.map((g) => ({ id: `goal:${g.id}`, date: g.targetDate!, kind: 'goal' as const, label: `Objectif · ${g.name}`, detail: 'date visée', amount: Math.round((g.targetAmount - g.currentAmount) * 100) / 100, href: '/budget', sensitive: true }));
 }
 
+/** Subcategories of variable spending: never a deadline, even when a debit looks regular (toll badge, fuel card…). */
+export const VARIABLE_SUBS: ReadonlySet<string> = new Set(['peages-parkings', 'carburant', 'courses', 'restaurants', 'petits-commercants', 'vtc-taxi', 'transports-commun', 'shopping', 'pharmacie']);
+
+export interface RentSource {
+	/** Usual monthly rent (€) and day of the month it is paid. */
+	amount: number;
+	day: number;
+}
+
+/**
+ * Rent read from the « Loyer & charges » payments of the last three complete months (whatever the
+ * label, which often changes every month): the median monthly total and the usual day, when at
+ * least two of those months have a payment. Null otherwise.
+ */
+export function rentSource(payments: readonly { date: string; amount: number }[], today: string): RentSource | null {
+	const months = [1, 2, 3].map((k) => addMonths(`${today.slice(0, 7)}-01`, -k).slice(0, 7));
+	const byMonth = new Map<string, { total: number; day: number; biggest: number }>();
+	for (const p of payments) {
+		const m = p.date.slice(0, 7);
+		if (!months.includes(m) || !(p.amount > 0)) continue;
+		const g = byMonth.get(m) ?? { total: 0, day: 1, biggest: 0 };
+		g.total += p.amount;
+		if (p.amount > g.biggest) {
+			g.biggest = p.amount;
+			g.day = Number(p.date.slice(8, 10));
+		}
+		byMonth.set(m, g);
+	}
+	if (byMonth.size < 2) return null;
+	const med = (v: number[]) => {
+		const s = [...v].sort((a, b) => a - b);
+		return s.length % 2 ? s[(s.length - 1) / 2]! : (s[s.length / 2 - 1]! + s[s.length / 2]!) / 2;
+	};
+	const groups = [...byMonth.values()];
+	return { amount: Math.round(med(groups.map((g) => g.total)) * 100) / 100, day: Math.round(med(groups.map((g) => g.day))) };
+}
+
+/** Monthly rent from the next usual day on (the current month only while its day is still ahead). */
+export function rentItems(rent: RentSource | null, from: string, to: string): ScheduleItem[] {
+	if (!rent) return [];
+	const out: ScheduleItem[] = [];
+	for (let k = 0; k < 24; k++) {
+		const date = dayOfMonth(addMonths(`${from.slice(0, 7)}-01`, k).slice(0, 7), rent.day);
+		if (date > to) break;
+		if (date < from) continue;
+		out.push({ id: `rent:${date}`, date, kind: 'debit', label: 'Loyer', detail: 'loyer & charges, mensuel', amount: rent.amount, href: '/budget' });
+	}
+	return out;
+}
+
 /** Same payment seen twice: a detected direct debit that is really a loan instalment or a tax payment. */
 function sameAmountNearDate(a: ScheduleItem, b: ScheduleItem): boolean {
 	if (a.amount === undefined || b.amount === undefined) return false;
@@ -228,11 +278,22 @@ function sameAmountNearDate(a: ScheduleItem, b: ScheduleItem): boolean {
  * date, then kind, then label.
  */
 export function buildSchedule(parts: readonly (readonly ScheduleItem[])[], from: string, to: string): ScheduleItem[] {
+	const lead = addDays(from, -5);
 	const byId = new Map<string, ScheduleItem>();
-	for (const item of parts.flat()) if (item.date >= from && item.date <= to && !byId.has(item.id)) byId.set(item.id, item);
+	for (const item of parts.flat()) if (item.date >= lead && item.date <= to && !byId.has(item.id)) byId.set(item.id, item);
 	const all = [...byId.values()];
-	const precise = all.filter((i) => (i.kind === 'loan' || i.kind === 'tax') && !i.id.startsWith('debit:'));
-	const kept = all.filter((i) => !i.id.startsWith('debit:') || !precise.some((p) => sameAmountNearDate(i, p)));
+	const precise = all.filter((i) => (i.kind === 'loan' || i.kind === 'tax' || i.id.startsWith('rent:')) && !i.id.startsWith('debit:'));
+	const kept: ScheduleItem[] = [];
+	for (const i of all) {
+		if (!i.id.startsWith('debit:')) {
+			if (i.date >= from) kept.push(i);
+			continue;
+		}
+		if (i.date < from) continue;
+		const twin = precise.find((p) => sameAmountNearDate(i, p));
+		if (!twin) kept.push(i);
+		else if (twin.date < from && !kept.some((k) => k.id === twin.id)) kept.push({ ...twin, date: i.date });
+	}
 	return kept.sort((a, b) => a.date.localeCompare(b.date) || KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || a.label.localeCompare(b.label, 'fr'));
 }
 

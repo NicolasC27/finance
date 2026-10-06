@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addMonths, buildSchedule, isLoanLabel, carItems, goalItems, loanItems, recurringItems, savingsItems, scheduleTotal, taxItems } from '../src/lib/schedule';
+import { addMonths, buildSchedule, isLoanLabel, rentItems, rentSource, VARIABLE_SUBS, carItems, goalItems, loanItems, recurringItems, savingsItems, scheduleTotal, taxItems } from '../src/lib/schedule';
 
 const FROM = '2026-10-05';
 const TO90 = '2027-01-03';
@@ -125,4 +125,34 @@ test('isLoanLabel and recurringItems: loan debits from the current account becom
 	assert.ok(items.length > 0 && items.every((i) => i.kind === 'loan'));
 	const kept = buildSchedule([items], FROM, TO90);
 	assert.equal(kept.length, items.length, 'un crédit vu en prélèvement n’est pas supprimé par lui-même');
+});
+
+test('rentSource and rentItems: rent from « Loyer & charges », whatever the label', () => {
+	const pay = [
+		{ date: '2026-07-03', amount: 700 },
+		{ date: '2026-08-04', amount: 700 },
+		{ date: '2026-09-02', amount: 650 },
+		{ date: '2026-09-15', amount: 50 },
+		{ date: '2026-05-03', amount: 9999 }
+	];
+	assert.deepEqual(rentSource(pay, '2026-10-06'), { amount: 700, day: 3 });
+	assert.equal(rentSource([{ date: '2026-09-03', amount: 700 }], '2026-10-06'), null, 'un seul mois : pas assez');
+	const items = rentItems({ amount: 700, day: 3 }, '2026-10-06', '2026-12-31');
+	assert.deepEqual(items.map((i) => i.date), ['2026-11-03', '2026-12-03']);
+	assert.equal(items[0]!.label, 'Loyer');
+	assert.equal(VARIABLE_SUBS.has('peages-parkings'), true);
+});
+
+test('buildSchedule: rent wins over the same detected debit; an instalment due just before today is kept once, re-dated', () => {
+	const rent = rentItems({ amount: 700, day: 3 }, FROM, TO90);
+	const debitRent = recurringItems([{ key: 'VIR LOYER', label: 'Vir loyer octobre', amount: 700, cadence: 'mensuelle', nextDate: '2026-11-04', confidence: 'haute' }], FROM, TO90);
+	const merged = buildSchedule([rent, debitRent], FROM, TO90);
+	assert.ok(merged.every((i) => i.label === 'Loyer'), 'le virement de loyer détecté ne fait pas doublon');
+	const loans = loanItems([{ accountId: 'L', label: 'Crédit', payment: 150, lastPaymentDate: '2026-09-05', endMonth: null }], '2026-10-01', TO90);
+	const debit = recurringItems([{ key: 'CONSO', label: 'Credit Conso Mensuel', amount: 150, cadence: 'mensuelle', nextDate: '2026-10-06', confidence: 'haute', loan: true }], '2026-10-06', TO90);
+	const out = buildSchedule([loans, debit], '2026-10-06', TO90);
+	const oct = out.filter((i) => i.date.startsWith('2026-10'));
+	assert.equal(oct.length, 1);
+	assert.equal(oct[0]!.date, '2026-10-06');
+	assert.match(oct[0]!.label, /Échéance · Crédit/);
 });

@@ -115,3 +115,12 @@ test('loans: the Krak card (running total of payments) is never a loan', () => {
 	assert.equal(extractLoanRecord('krak-card', krak, undefined), null);
 	assert.ok(extractLoanRecord('cm-1', [tx('MENSUALITE PRELEVEE', '2026-08-06', 166.3, { account: 'cm-1', balance_after: -5272.86 })], { id: 'cm-1', kind: 'pret', label: 'Prêt' }));
 });
+
+test('forecastTotals: savings transfers ignored, one big month does not inflate the variable spending', () => {
+	const rent = (d: string) => tx('PRLV SEPA FONCIA LOYER', d, -900, { bank_category: 'Logement / maison' });
+	const shop = (d: string, a: number) => tx(`PAIEMENT CB ${['FNAC', 'IKEA', 'DARTY', 'BOULANGERIE'][Number(d.slice(5, 7)) - 7]}`, d, a);
+	const save = (d: string) => tx('VIR LIVRET A EPARGNE', d, -2000, { bank_category: 'Epargne / placement' });
+	const txs = [rent('2026-07-05'), rent('2026-08-05'), rent('2026-09-05'), shop('2026-07-10', -400), shop('2026-08-10', -3400), shop('2026-09-10', -500), save('2026-07-20'), save('2026-08-20'), save('2026-09-20'), shop('2026-10-01', -5)];
+	const t = forecastTotals(txs, {}, '2026-10-03', 30);
+	assert.ok(t.expected > 900 + 450 && t.expected < 900 + 600, `≈ loyer + mois médian (${t.expected})`);
+});

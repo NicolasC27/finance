@@ -17,7 +17,7 @@
 	import { formatDate, formatEUR } from '$lib/format';
 	import { assetsState, logKm, removeKm, updateAsset } from '$lib/assets.svelte';
 	import { KM_SOURCES, VALUE_SOURCES, shortValueSource, type Asset, type KmReading, type ValueSource } from '$lib/assets';
-	import { plateDate, valuationLinks, priceTrend, type Milestone } from '$lib/vehicle';
+	import { firstRegistrationOf, marketValue, patchClearValue, plateDate, valuationLinks, priceTrend, type Milestone } from '$lib/vehicle';
 	import { vehicleSheet } from '$lib/car.svelte';
 	import { prepareQuestion } from '$lib/ai.svelte';
 	import { navigate } from '$lib/router.svelte';
@@ -39,6 +39,7 @@
 	const vehicles = $derived(assetsState.biens.filter((b) => b.type === 'vehicule').sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate)));
 	let selectedId = $state<string | null>(null);
 	const v = $derived(vehicles.find((b) => b.id === selectedId) ?? vehicles[0]);
+	const computed = $derived(v ? marketValue(v, today, modulesState.car.marketEffect) : null);
 	let formOpen = $state<'ajout' | 'modif' | null>(null);
 
 	const sheet = $derived(v ? vehicleSheet(v, today) : null);
@@ -79,6 +80,8 @@
 
 	const formatKm = (n: number) => `${Math.round(n).toLocaleString('fr-FR')} km`;
 	const pct = (n: number) => `${Math.round(n * 100)} %`;
+	const theoryLabel = $derived(v && modulesState.car.depreciationModel === 'market' && marketValue(v, today) !== null ? (modulesState.car.marketEffect ? 'selon l’âge, le kilométrage et le marché de l’occasion' : 'selon l’âge et le kilométrage') : `à −${pct(modulesState.car.depreciation)} par an`);
+	const ageSource = $derived(v ? firstRegistrationOf(v) : null);
 	const monthLabel = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
 	// ---------- Visual: slight movement on hover (2D: CSS 3D made the drawing disappear on some
@@ -549,13 +552,14 @@
 												<dt class="label-xs">Valeur retenue</dt>
 												<dd class="amount-md tabular mt-1">{retained ? formatEUR(retained.valeur) : '—'}</dd>
 												{#if retained?.theorique}
-													<dd class="meta-xs" title="Aucune valeur retenue : décote théorique depuis l'achat">estimation théorique (−{pct(modulesState.car.depreciation)}/an)</dd>
+													<dd class="meta-xs" title="Prix payé (options et peinture comprises) × effet de l'âge × effet des km{modulesState.car.marketEffect ? ' × effet du marché de l’occasion' : ''}, chacun comparé au jour de l'achat{ageSource ? ` · mise en circulation ${ageSource.source === 'carte grise' ? 'du' : 'estimée'} ${formatDate(ageSource.date)} (${ageSource.source})` : ''}">estimation théorique {theoryLabel}{#if ageSource && ageSource.source !== 'carte grise'} · âge estimé ({ageSource.source}){/if}</dd>
 												{:else if retained}
 													<dd class="meta-xs flex flex-wrap items-center gap-1">
 														<span>{shortValueSource(retained.source)}{retained.date ? ` du ${shortDate(retained.date)}` : ''}</span>
 														{#if retained.tracked}<span class="chip {retained.confirmee ? 'chip-muted' : 'chip-amber'} px-1.5 py-0 text-[10px]">{retained.confirmee ? 'validée' : 'à confirmer'}</span>{/if}
 														{#if retained.aRevalider}<span class="chip chip-muted px-1.5 py-0 text-[10px]" title="Valeur de plus de {modulesState.car.revalidateMonths} mois : une offre de reprise ou une cote récente la remettra à jour">à revalider</span>{/if}
 													</dd>
+													{#if computed !== null}<dd class="meta-xs" title="Prix payé (options et peinture comprises) × effet de l'âge × effet des km{modulesState.car.marketEffect ? ' × effet du marché' : ''}, chacun comparé au jour de l'achat">calcul : {formatEUR(computed)}</dd>{/if}
 												{/if}
 											</div>
 											<div class="min-w-0">
@@ -575,6 +579,19 @@
 												<button type="button" class="btn btn-accent btn-sm" onclick={() => v && showToast(confirmValue(v.id))}>Confirmer</button>
 											{/if}
 											<button type="button" class="btn btn-secondary btn-sm" onclick={openValueEditor} aria-haspopup="dialog">{retained?.theorique ? 'Saisir une valeur' : 'Modifier'}</button>
+											{#if v && retained && !retained.theorique}
+												<button
+													type="button"
+													class="btn btn-secondary btn-sm"
+													title="Retire la valeur retenue : la valeur calculée (âge + km + marché, ou taux fixe selon les options) s'applique de nouveau"
+													onclick={() => {
+														if (!v) return;
+														const id = v.id;
+														const before = { estimatedValue: v.estimatedValue, valueDate: v.valueDate, valueSource: v.valueSource, valueConfirmed: v.valueConfirmed };
+														updateAsset(id, patchClearValue());
+														showToast('Valeur retirée : retour à la valeur calculée', 'Annuler', () => updateAsset(id, before));
+													}}>Revenir au calcul</button>
+											{/if}
 											<button type="button" class="btn btn-secondary btn-sm" disabled={valuationRunning} onclick={requestEstimate} title="L'Analyse IA cherche des annonces comparables (modèle, version, année, km ; ni plaque ni données bancaires). Le résultat reste une proposition à valider.">
 												{valuationRunning ? 'Recherche des annonces…' : 'Demander une estimation'}
 											</button>
@@ -737,7 +754,7 @@
 										{/if}
 										<p>
 											<b class="font-medium text-[var(--text)]">Perte de valeur</b> (on dit aussi amortissement ou décote){cost.countsLoss ? '' : ', non comptée ici'} : payée {formatEUR(cost.perte.prix)} le {formatDate(v.purchaseDate)}, ta voiture vaut aujourd'hui
-											{#if cost.amortissementParDefaut}≈ {formatEUR(cost.perte.valeur)}, une estimation théorique à −{pct(modulesState.car.depreciation)} par an, faute de valeur retenue (« Saisir une valeur » avec une offre de reprise ou une cote).{:else}{formatEUR(cost.perte.valeur)}, ta valeur retenue ({shortValueSource(retained?.source ?? null)}{retained?.date ? ` du ${shortDate(retained.date)}` : ''}{retained && !retained.confirmee ? ', à confirmer' : ''}).{/if}
+											{#if cost.amortissementParDefaut}≈ {formatEUR(cost.perte.valeur)}, une estimation théorique {theoryLabel}, faute de valeur retenue (« Saisir une valeur » avec une offre de reprise ou une cote).{:else}{formatEUR(cost.perte.valeur)}, ta valeur retenue ({shortValueSource(retained?.source ?? null)}{retained?.date ? ` du ${shortDate(retained.date)}` : ''}{retained && !retained.confirmee ? ', à confirmer' : ''}).{/if}
 											Elle a perdu {formatEUR(cost.perte.prix - cost.perte.valeur)} en {cost.perte.mois.toLocaleString('fr-FR')} mois, soit {formatEUR(lossPerMonth)} par mois. Aucun argent ne sort de ton compte pour ça : c'est ce que tu ne récupéreras pas en la revendant.
 											<button type="button" class="cursor-pointer underline decoration-dotted underline-offset-2 hover:text-[var(--accent)]" onclick={() => setCarOptions({ countValueLoss: !cost.countsLoss })}>{cost.countsLoss ? 'Ne plus la compter' : 'La compter dans le coût'}</button>{cost.countsLoss ? '' : ' (le crédit ne compte alors que ses intérêts)'}
 										</p>

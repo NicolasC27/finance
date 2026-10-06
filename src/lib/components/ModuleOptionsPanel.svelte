@@ -106,8 +106,25 @@
 				</div>
 				<label class="flex items-center justify-between gap-3">
 					<span class="min-w-0">
-						<span class="block">Décote théorique</span>
-						<span class="meta-xs mt-0.5 block">Utilisée tant qu'aucune valeur n'est retenue, par an depuis l'achat.</span>
+						<span class="block">Valeur théorique</span>
+						<span class="meta-xs mt-0.5 block">Tant qu'aucune valeur n'est retenue, à partir du prix payé (options comprises). Âge + kilométrage : décote selon l'âge du véhicule et les km faits par rapport à la moyenne (15 000 km/an, 20 000 en diesel). Taux fixe : le pourcentage ci-dessous chaque année.</span>
+					</span>
+					<select class="input-surface w-36 shrink-0 cursor-pointer text-xs" value={car.depreciationModel} aria-label="Modèle de valeur théorique" onchange={(e) => setCarOptions({ depreciationModel: e.currentTarget.value === 'flat' ? 'flat' : 'market' })}>
+						<option value="market">Âge + km</option>
+						<option value="flat">Taux fixe</option>
+					</select>
+				</label>
+				<div class="flex items-start justify-between gap-3">
+					<div class="min-w-0">
+						<p id="option-market-effect">Inclure le marché de l'occasion</p>
+						<p class="meta-xs mt-0.5">Ajoute l'évolution des prix de l'occasion depuis ton achat (forte hausse 2020–2022, baisse depuis). Indicatif : moyennes d'annonces.</p>
+					</div>
+					<Switch checked={car.marketEffect} labelledby="option-market-effect" onchange={(on) => setCarOptions({ marketEffect: on })} />
+				</div>
+				<label class="flex items-center justify-between gap-3">
+					<span class="min-w-0">
+						<span class="block">Taux fixe</span>
+						<span class="meta-xs mt-0.5 block">Par an depuis l'achat : modèle « Taux fixe », ou faute de date de mise en circulation pour un véhicule d'occasion.</span>
 					</span>
 					<span class="flex shrink-0 items-center gap-1">
 						<input

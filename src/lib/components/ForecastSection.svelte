@@ -7,6 +7,7 @@
 	import { formatDate, formatEUR } from '$lib/format';
 	import { getCategory } from '$lib/categories';
 	import { flowKind } from '$lib/flow';
+	import { VARIABLE_SUBS } from '$lib/schedule';
 
 	/**
 	 * 'Prévisions' card (Budget page block): detected upcoming payments + 30/60/90-day totals. The
@@ -28,7 +29,7 @@
 	// Upcoming payments = LIVE FIXED charges (subscriptions, direct debits, rent): not Saturday
 	// groceries, not a stopped direct debit, not savings
 	const recurring = $derived(
-		detectRecurring(confirmed, budgetState.overrides, fromIso, getMerchantCategoryMap()).filter((r) => r.kind === 'debit' && r.active && r.fixed && flowKind(r.categoryId) === 'expense')
+		detectRecurring(confirmed, budgetState.overrides, fromIso, getMerchantCategoryMap()).filter((r) => r.kind === 'debit' && r.active && r.fixed && flowKind(r.categoryId) === 'expense' && !VARIABLE_SUBS.has(r.subId ?? ''))
 	);
 	const byCategory = $derived(forecastByCategory(confirmed, budgetState.overrides, getMerchantCategoryMap()));
 	const totals = $derived(
@@ -47,7 +48,7 @@
 		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 			<h2 class="label-xs">Prévisions de dépenses</h2>
 			{#if showTotals}
-				<!-- Expected 30/60/90-day totals in a row (recurring items + average of the rest) -->
+				<!-- Expected 30/60/90-day totals in a row (fixed charges + median month of the other spending) -->
 				<div class="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[13px]">
 					{#each totals as t (t.days)}
 						<span class="whitespace-nowrap" title="{formatEUR(t.low)} – {formatEUR(t.high)}">

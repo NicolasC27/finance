@@ -6,8 +6,10 @@ import { budgetState } from './budget.svelte';
 import { subcategorize } from './subcategories';
 import { signedAmount } from './data';
 import { getTaxNotices } from './taxes.svelte';
-import { computeTax, defaultTaxYear, projectMonths, regularisation, type Regularisation, type TaxResult, type WithholdingMonth } from './incomeTax';
+import { computeTax, defaultTaxYear, isUnemploymentBenefit, projectMonths, regularisation, type Regularisation, type TaxResult, type WithholdingMonth } from './incomeTax';
 import { currentLawFor, rulesFor, rulesWarning, type TaxYearRules } from './incomeTaxRules';
+import { franceTravailState } from './franceTravail.svelte';
+import { benefitTaxable, benefitYear, paidMonthOf } from './franceTravail';
 
 /**
  * Income tax estimate, app side: the year's payslips (portage salarial), the salary received
@@ -21,8 +23,10 @@ const KEY = 'budget:income-tax';
 export interface YearInputs {
 	/** Net taxable salary received before the first payslip of the year (null = estimated). */
 	before: number | null;
-	/** Withholding rate applied to that salary (%, null = rate of the first payslip). */
+	/** Withholding rate applied to that salary and to the benefits (%, null = rate of the first payslip). */
 	beforeRate: number | null;
+	/** Net taxable unemployment benefits of the year (France Travail certificate; null = estimated). */
+	benefits: number | null;
 	otherIncome: number;
 	/** Actual professional expenses (null = flat 10 %). */
 	actualExpenses: number | null;
@@ -42,7 +46,7 @@ export interface TaxSettings {
 	years: Record<string, YearInputs>;
 }
 
-const EMPTY_YEAR: YearInputs = { before: null, beforeRate: null, otherIncome: 0, actualExpenses: null, reductions: 0, partnerSalary: 0, partnerWithheld: 0 };
+const EMPTY_YEAR: YearInputs = { before: null, beforeRate: null, benefits: null, otherIncome: 0, actualExpenses: null, reductions: 0, partnerSalary: 0, partnerWithheld: 0 };
 const num = (x: unknown, d: number) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : d);
 const numOrNull = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : null);
 
@@ -51,6 +55,7 @@ function readYear(v: unknown): YearInputs {
 	return {
 		before: numOrNull(o.before),
 		beforeRate: numOrNull(o.beforeRate),
+		benefits: numOrNull(o.benefits),
 		otherIncome: num(o.otherIncome, 0),
 		actualExpenses: numOrNull(o.actualExpenses),
 		reductions: num(o.reductions, 0),
@@ -107,6 +112,11 @@ export interface IncomeTaxView {
 	months: WithholdingMonth[];
 	/** Salary credits seen before the first payslip of the year, and the estimate drawn from them. */
 	before: { credits: number; months: number; rate: number; taxable: number; withheld: number; estimated: boolean };
+	/**
+	 * Unemployment benefits of the whole year: months read on the imported France Travail statements
+	 * (exact), other France Travail credits estimated like the salary.
+	 */
+	benefits: { credits: number; months: number; statements: string[]; taxable: number; withheld: number; estimated: boolean };
 	portageTaxable: number;
 	result: TaxResult;
 	reg: Regularisation;
@@ -133,19 +143,29 @@ const view = $derived.by((): IncomeTaxView => {
 	const months = projectMonths(slips, year);
 	const firstMonth = months[0]?.month ?? `${year}-13`;
 	const mm = getMerchantCategoryMap();
-	const salaryCredits = getTransactions().filter((t) => {
-		const d = t.booking_date ?? '';
-		return d.startsWith(`${year}-`) && d.slice(0, 7) < firstMonth && signedAmount(t) > 0 && subcategorize(t, budgetState.overrides, undefined, mm) === 'salaire';
-	});
+	const yearCredits = getTransactions().filter((t) => (t.booking_date ?? '').startsWith(`${year}-`) && signedAmount(t) > 0);
+	const isBenefit = (t: (typeof yearCredits)[number]) => isUnemploymentBenefit(t.remittance_information.join(' ')) || subcategorize(t, budgetState.overrides, undefined, mm) === 'chomage';
+	const benefitCredits = yearCredits.filter(isBenefit);
+	const salaryCredits = yearCredits.filter((t) => t.booking_date.slice(0, 7) < firstMonth && !isBenefit(t) && subcategorize(t, budgetState.overrides, undefined, mm) === 'salaire');
 	const credits = Math.round(salaryCredits.reduce((sum, t) => sum + signedAmount(t), 0));
 	const creditMonths = new Set(salaryCredits.map((t) => t.booking_date.slice(0, 7))).size;
 	const rate = inputs.beforeRate ?? months[0]?.rate ?? 0;
 	const estimatedTaxable = rate < 100 ? Math.round(credits / (1 - rate / 100)) : credits;
 	const beforeTaxable = inputs.before ?? estimatedTaxable;
 	const beforeWithheld = Math.round((beforeTaxable * rate) / 100);
+	const statements = franceTravailState.months.filter((m) => benefitYear(m) === year);
+	const covered = new Set(franceTravailState.months.map((m) => m.month));
+	const uncovered = benefitCredits.filter((t) => !covered.has(paidMonthOf(t.booking_date)));
+	const benefitTotal = Math.round(uncovered.reduce((sum, t) => sum + signedAmount(t), 0));
+	const statementTaxable = statements.reduce((sum, m) => sum + benefitTaxable(m), 0);
+	const statementWithheld = statements.reduce((sum, m) => sum + m.tax, 0);
+	const creditTaxable = rate < 100 ? benefitTotal / (1 - rate / 100) : benefitTotal;
+	const benefitsTaxable = inputs.benefits ?? Math.round(statementTaxable + creditTaxable);
+	const benefitsWithheld = inputs.benefits !== null ? Math.round((inputs.benefits * rate) / 100) : Math.round(statementWithheld + (creditTaxable * rate) / 100);
 	const portageTaxable = Math.round(months.reduce((sum, m) => sum + m.taxable, 0));
+	const ownTaxable = beforeTaxable + benefitsTaxable + portageTaxable;
 	const input = {
-		salaries: s.couple ? [beforeTaxable + portageTaxable, inputs.partnerSalary] : [beforeTaxable + portageTaxable],
+		salaries: s.couple ? [ownTaxable, inputs.partnerSalary] : [ownTaxable],
 		actualExpenses: inputs.actualExpenses === null ? undefined : [inputs.actualExpenses, null],
 		otherIncome: inputs.otherIncome,
 		household: { couple: s.couple, children: s.children },
@@ -174,9 +194,10 @@ const view = $derived.by((): IncomeTaxView => {
 		rules,
 		months,
 		before: { credits, months: creditMonths, rate, taxable: beforeTaxable, withheld: beforeWithheld, estimated: inputs.before === null },
+		benefits: { credits: benefitTotal, months: new Set(uncovered.map((t) => t.booking_date.slice(0, 7))).size, statements: statements.map((m) => m.month), taxable: benefitsTaxable, withheld: benefitsWithheld, estimated: inputs.benefits === null && benefitTotal > 0 },
 		portageTaxable,
 		result,
-		reg: regularisation(result.netTax, months, { withheld: beforeWithheld + (s.couple ? inputs.partnerWithheld : 0) }),
+		reg: regularisation(result.netTax, months, { withheld: beforeWithheld + benefitsWithheld + (s.couple ? inputs.partnerWithheld : 0) }),
 		compare,
 		warning: rulesWarning(year, today),
 		notice: own ? { incomeTax: own.incomeTax, ...(own.remaining !== undefined ? { remaining: own.remaining } : {}) } : null,

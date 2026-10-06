@@ -1,6 +1,6 @@
 import { budgetState } from './budget.svelte';
 import { getBudgetTransactions } from './transfers.svelte';
-import { isPending, sortByDate } from './data';
+import { isPending, signedAmount, sortByDate } from './data';
 import { detectRecurring, forecastRefIso } from './forecast';
 import { getMerchantCategoryMap } from './store.svelte';
 import { flowKind } from './flow';
@@ -11,7 +11,8 @@ import { getCarExpenses, vehicleSheet } from './car.svelte';
 import { natixisState } from './natixisHoldings.svelte';
 import { goalsState } from './goals.svelte';
 import { isModuleActive } from './modules.svelte';
-import { addDays, isLoanLabel, buildSchedule, carItems, goalItems, loanItems, recurringItems, savingsItems, taxItems, type ScheduleItem } from './schedule';
+import { addDays, isLoanLabel, buildSchedule, carItems, goalItems, loanItems, recurringItems, rentItems, rentSource, savingsItems, taxItems, VARIABLE_SUBS, type ScheduleItem } from './schedule';
+import { subcategorize } from './subcategories';
 
 /**
  * Schedule, app side: reads every source (detected direct debits, loans, tax notices, vehicles,
@@ -28,7 +29,7 @@ const schedule = $derived.by((): ScheduleItem[] => {
 	if (!from) return [];
 	const to = addDays(from, MAX_HORIZON);
 	const recurring = detectRecurring(confirmed, budgetState.overrides, from, getMerchantCategoryMap())
-		.filter((r) => r.kind === 'debit' && r.active && r.fixed && flowKind(r.categoryId) === 'expense')
+		.filter((r) => r.kind === 'debit' && r.active && r.fixed && flowKind(r.categoryId) === 'expense' && !VARIABLE_SUBS.has(r.subId ?? ''))
 		.map((r) => ({ key: r.key, label: r.label, amount: r.amount, cadence: r.cadence, nextDate: r.nextDate, confidence: r.confidence, tax: r.categoryId === 'impots', loan: r.categoryId !== 'impots' && isLoanLabel(r.label) }));
 	const loans = getLoanCosts().map((c) => ({
 		accountId: c.v.accountId,
@@ -40,10 +41,15 @@ const schedule = $derived.by((): ScheduleItem[] => {
 	const vehicles = isModuleActive('voiture') ? assetsState.biens.filter((b) => b.type === 'vehicule').sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate)) : [];
 	const insuranceSince = getCarExpenses().filter((e) => e.sub === 'assurance-auto' && e.montant > 0).map((e) => e.date).sort()[0] ?? null;
 	const cars = vehicles.map((b, i) => ({ id: b.id, name: b.name, milestones: vehicleSheet(b, from).etapes.filter((m) => m.id !== 'releve'), insuranceSince: i === 0 ? insuranceSince : null }));
+	const mm = getMerchantCategoryMap();
+	const rentPayments = confirmed
+		.filter((t) => signedAmount(t) < 0 && subcategorize(t, budgetState.overrides, undefined, mm) === 'loyer-charges')
+		.map((t) => ({ date: t.booking_date, amount: -signedAmount(t) }));
 	return buildSchedule(
 		[
+			rentItems(rentSource(rentPayments, from), from, to),
 			recurringItems(recurring, from, to),
-			loanItems(loans, from, to),
+			loanItems(loans, addDays(from, -5), to),
 			taxItems(getTaxNotices(), from, to),
 			carItems(cars, from, to),
 			savingsItems(natixisState.holdings?.holdings ?? [], from, to),

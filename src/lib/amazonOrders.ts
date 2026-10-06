@@ -200,6 +200,47 @@ export function parseAmazonOrders(text: string): { orders: AmazonOrder[]; errors
 	return { orders: [...byId.values()], errors };
 }
 
+type Row = Record<string, unknown>;
+const rowsOf = (v: unknown): Row[] => (Array.isArray(v) ? v.filter((r): r is Row => !!r && typeof r === 'object') : []);
+const str = (v: unknown) => (typeof v === 'string' ? v : '');
+const amountOf = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' ? toAmount(v) : null);
+
+/**
+ * « Your Shopping History » export (JSON, since 2025): physical orders (Orders.OrderHistory, one
+ * row per item, totalOwed VAT included) grouped by order number, and digital purchases (each
+ * DigitalOrders.DigitalItems item is charged alone: Price Amount + Tax of DigitalOrdersMonetary).
+ * Rows without a positive amount (free, cancelled) are skipped.
+ */
+export function parseAmazonShoppingHistory(files: { physical?: unknown; digitalItems?: unknown; digitalMonetary?: unknown }): { orders: AmazonOrder[]; errors: string[] } {
+	const byId = new Map<string, AmazonOrder>();
+	for (const r of rowsOf(files.physical)) {
+		const id = str(r.orderId).trim();
+		const amount = amountOf(r.totalOwed);
+		if (!id || amount === null || amount <= 0) continue;
+		let order = byId.get(id);
+		if (!order) {
+			order = { id, orderDate: toIso(str(r.orderDate)), shipDate: '', items: [], total: 0, payment: '', status: '', website: str(r.website) };
+			byId.set(id, order);
+		}
+		order.items.push({ name: str(r.productName).replace(/\s+/g, ' ').trim(), amount, quantity: typeof r.quantity === 'number' && r.quantity > 0 ? r.quantity : 1 });
+		order.total = Math.round((order.total + amount) * 100) / 100;
+	}
+	const paid = new Map<string, number>();
+	for (const m of rowsOf(files.digitalMonetary)) {
+		const id = str(m.digitalOrderItemId);
+		const amount = amountOf(m.transactionAmount);
+		if (id && amount !== null) paid.set(id, Math.round(((paid.get(id) ?? 0) + amount) * 100) / 100);
+	}
+	for (const it of rowsOf(files.digitalItems)) {
+		const id = str(it.digitalOrderItemId);
+		const amount = paid.get(id) ?? 0;
+		if (!id || amount <= 0 || byId.has(id)) continue;
+		byId.set(id, { id, orderDate: toIso(str(it.eventDate)), shipDate: '', items: [{ name: str(it.title).replace(/\s+/g, ' ').trim(), amount, quantity: 1 }], total: amount, payment: '', status: 'numérique', website: '' });
+	}
+	const orders = [...byId.values()].filter((o) => o.orderDate);
+	return { orders, errors: orders.length ? [] : ['Aucune commande payée dans cet export'] };
+}
+
 /** Amazon statement line (excluding the Prime subscription, which is not an order). */
 export function isAmazonTx(tx: Transaction): boolean {
 	const l = tx.remittance_information.join(' ').toUpperCase();
@@ -219,18 +260,28 @@ interface Rule {
 }
 
 /** Keyword rules (normalised titles: lowercase, no accents). Order = priority. */
+/** Builds a rule from a list of keywords or phrases (normalised: lowercase, no accents, spaces). */
+const words = (list: string, categoryId: CategoryId, subId: string | null): Rule => ({ re: new RegExp(`\\b(?:${list.trim().split(/\s*\|\s*/).join('|')})\\b`, 'g'), categoryId, subId });
+
+/**
+ * Keywords of each kind of product. The keyword found EARLIEST in the title decides (Amazon titles
+ * put the product type right after the brand), the longest one on a tie (« tapis de souris » beats
+ * « tapis », « verre trempe » beats « verre »).
+ */
 const ITEM_RULES: Rule[] = [
-	{ re: /\b(piano|partition|guitare|ukulele|metronome|pupitre|clavier maitre|midi|solfege|violon)\b/, categoryId: 'loisirs', subId: 'musique-cours' },
-	{ re: /\b(livre|book|roman|manga|bande dessinee|tome|poche|edition|essai|guide|dictionnaire|cahier|agenda|vinyles?|disques?|vinyl|cd|dvd|blu ray|album|platine)\b|\bbd\b/, categoryId: 'loisirs', subId: 'culture-sorties' },
-	{ re: /\b(jeu|jeux|game|lego|puzzle|playmobil|figurine|nintendo|playstation|xbox|switch oled|manette|jouet|peluche|carte a jouer|board)\b/, categoryId: 'loisirs', subId: 'culture-sorties' },
-	{ re: /\b(fitness|haltere|yoga|velo|running|raquette|ballon|gourde|tapis de sol|musculation|natation|randonnee|trek)\b/, categoryId: 'loisirs', subId: 'sport' },
-	{ re: /\b(vitamine|complement alimentaire|pharmacie|medical|thermometre|tensiometre|pansement|lunettes|orthese|omega|magnesium|melatonine)\b/, categoryId: 'sante', subId: 'soins' },
-	{ re: /\b(cafe|capsule|the vert|the noir|infusion|chocolat|biscuit|snack|epicerie|bio|boisson|pates|riz|huile|miel|proteine|whey|cereale|confiture|sirop|dentifrice|brosse a dents|rasoir|shampoing|savon|deodorant|lessive|papier toilette|essuie)\b/, categoryId: 'alimentation', subId: 'courses' },
-	{ re: /\b(cable|usb|chargeur|batterie|powerbank|clavier|souris|ecran|moniteur|ssd|disque dur|hdmi|adaptateur|hub|webcam|casque|ecouteur|enceinte|imprimante|cartouche|toner|tablette|smartphone|coque|protection ecran|support|routeur|wifi|raspberry|arduino|capteur|alimentation pc|carte sd|micro sd|lampe led bureau|station d accueil|dock|nas|processeur|ram|carte graphique)\b/, categoryId: 'loisirs', subId: 'high-tech' },
-	{ re: /\b(t shirt|tee shirt|chemise|pantalon|jean|robe|jupe|chaussure|basket|sneaker|chaussette|veste|manteau|sweat|pull|casquette|bonnet|echarpe|gant|sac|ceinture|montre|bijou|lunettes de soleil|maillot|sous vetement|boxer|pyjama)\b/, categoryId: 'loisirs', subId: 'shopping' },
-	{ re: /\b(cuisine|casserole|poele|couteau|assiette|verre|tasse|mug|bouilloire|cafetiere|mixeur|robot|four|micro ondes|frigo|refrigerateur|aspirateur|lampe|ampoule|meuble|etagere|rangement|boite|coussin|rideau|drap|housse|matelas|oreiller|couette|serviette|nettoyant|balai|serpilliere|poubelle|bricolage|perceuse|visseuse|tournevis|peinture|jardin|plante|arrosoir|tondeuse|outil|vis|cheville|crochet|cintre|tapis|miroir|horloge|decoration|bougie|ventilateur|chauffage|radiateur|humidificateur|purificateur|detecteur|serrure|prise|multiprise|interrupteur|filtre|joint|robinet|douche|wc|salle de bain|cuisson|plat|moule|balance de cuisine|thermos|lunch box|bocal)\b/, categoryId: 'logement', subId: 'travaux-equipement' },
-	{ re: /\b(voiture|auto|pneu|essuie glace|siege auto|gps|dashcam|chargeur voiture|housse de siege|balai d essuie)\b/, categoryId: 'voiture', subId: 'equipement-auto' },
-	{ re: /\b(croquette|chat|chien|litiere|animal|aquarium|gamelle)\b/, categoryId: 'autre', subId: null }
+	words('prime membership fee|prime video|student membership|membership|abonnement prime', 'abonnements', 'streaming'),
+	words('cheque cadeau|echeque cadeau|carte cadeau|recharge amazon|emballage cadeau|papier cadeau|cellophane', 'loisirs', 'cadeaux'),
+	words('chat|chats|chaton|kitten|cat food|chien|chiens|chiot|croquettes?|gamelle|griffoir|arbre a chat|aquarium|animaux|litiere|bac a litiere|nourriture humide|friandises? pour', 'autre', null),
+	words('piano|pianiste|partition|guitare|ukulele|metronome|violon|violoncelle|cordes? de violon|solfege|clavier maitre', 'loisirs', 'musique-cours'),
+	words('livre|roman|manga|bande dessinee|bd|tome|dictionnaire|code penal|code civil|jurisprudence|arrets|droit administratif|toeic|vocabulaire|grammaire|methodologie|programmation en|edition|cartes oracle|oracle|tarot|psychogenealogie|pnl|dvd|blu ray|cd|vinyles?|disques? vinyle|album|lego|puzzle|playmobil|figurines?|jouets?|peluches?|jeu de societe|jeux? video|nintendo|playstation|xbox|redemption', 'loisirs', 'culture-sorties'),
+	words('cable|cables|usb|usb c|cle usb|hdmi|displayport|rj45|ethernet|chargeur|batterie externe|powerbank|piles?|pile alcaline|piles? bouton|clavier|switch kailh|souris|mouse|tapis de souris|ecran|moniteur|ssd|disque dur|hdd|nas|ram|ddr4|ddr5|processeurs?|ryzen|carte graphique|carte mere|alimentation pc|netzteil|psu|pcie5?|pate thermique|webcam|casque|ecouteurs?|enceinte|imprimante|cartouches? d encre|toner|tablette|smartphone|iphone|galaxy|coque|verre trempe|protection ecran|routeur|wifi|raspberry|arduino|capteur|carte micro sd|carte sd|microsdxc|fire tv|alexa|echo dot|chromecast|philips hue|ampoules? led connectees?|telecommande|objectif|appareil photo|trepied|dji|osmo|gopro|camera|toile de fond|bracelets? en silicone compatibles?|montre connectee|throttle|joystick|manette|regulateur de tension|hub|dock|station d accueil|adaptateur|attaches? de cable|serre cables?|colliers? de serrage', 'loisirs', 'high-tech'),
+	words('fitness|haltere|yoga|pilates|velo|pompe a velo|running|escalade|chaussons d escalade|chaussons escalade|plongee|masque de plongee|combinaison de plongee|cagoule de plongee|palmes|natation|pince nez|raquette|ballon|gourde|tapis de sol|musculation|randonnee|trek|boussole|trottinette|brassiere sport|short sport|exerciseur', 'loisirs', 'sport'),
+	words('bricolage|perceuse|visseuse|tournevis|pince|pince a denuder|cle|outils?|vis|chevilles?|colle|epoxy|ruban adhesif|ruban double face|double face|scotch|bandes? agrippantes?|scratch|peinture|jardin|jardinage|gants de jardinage|plantes?|terreau|engrais|paillage|billes d argile|arrosage|arrosoir|tuyau|raccord de tuyau|raccord|goutte a goutte|drip|programmateur d arrosage|pulverisateur|multimetre|testeur electrique|mastic|brouette|beche|fourche|biofourche|tondeuse|bache|voiles? d ombrage|piscine|epuisettes?|spirales pour tomates|combinaison de protection|seau', 'loisirs', 'bricolage-jardin'),
+	words('vitamine|complement alimentaire|zinc bisglycinate|magnesium|omega|melatonine|gummies|baume|arnica|aloe vera|creme anti demangeaison|dispositif medical|medical|desinfectant|eau oxygenee|pansements?|thermometre medical|thermometre frontal|tensiometre|genouillere|orthese|bouchons d oreilles|masque de sommeil|collier a macher|soin lavant intime|lime a ongle|mouche bebe|charbon vegetal|marronnier', 'sante', 'pharmacie'),
+	words('cafe|capsules?|dosettes?|the vert|the noir|sachets? de the|infusion|chocolat|biscuits?|snack|epicerie|amandes|poivre|epices|miel|pates|riz|huile|farine|sucre|feuilles azymes|nougat|fruits|barres? de proteines|proteines?|whey|cereales?|confiture|sirop|boisson|dentifrice|fil dentaire|brosse a dents|rasoir|tondeuse barbe|lames|oneblade|shampoing|savon|deodorant|lessive|papier toilette|essuie tout|detartrant|creme mains', 'alimentation', 'courses'),
+	words('t shirt|tee shirt|chemise|pantalon|pantalon de pluie|jean|robe|jupe|chaussures?|chaussons|baskets?|sneakers?|bottes?|bottines?|sabots?|sandales|chaussettes|lacets|veste|blazer|manteau|sweat|pull|casquette|bonnet|echarpe|gants|sacs? a main|sac a dos|ceinture|montre|bijou|bracelet|collier|maillot|maillot de bain|cape|pyjama|sous vetements?|soutien gorge|coussinets|boxer|lunettes de soleil|maquillage|pinceaux de maquillage|base illuminatrice|base a paupieres|coloration|teinture|cheveux|peignes?|eau de parfum|vaporisateur de parfum|eau parfumee|kolonya|creme solaire|ambre solaire|impermeabilisant', 'loisirs', 'shopping'),
+	words('cuisine|ustensiles?|casserole|poele|couteau|mandoline|trancheuse|moulin a poivre|presse puree|presse agrumes|grille pain|toaster|bouilloire|cafetiere|machine expresso|machine a cafe|mixeur|robot|blender|four|micro ondes|frigo|refrigerateur|plat|plats|moules?|patisserie|rouleau a patisserie|douilles?|pelles? a pizza|roulette a pizza|bacs? a glacons|pot a glace|recipients?|boites?|bocal|theiere|chauffe theiere|tasses?|mugs?|verres?|assiettes?|passoire|thermos|lunch box|garde manger|film plastique|scelleuse|scelleur|conteneur|meubles?|table basse|table de chevet|table a repasser|chaises?|etageres?|armoire|rangement|cintres|panier|coussins?|rideau|draps?|housse|matelas|oreiller|couette|plaid|serviettes?|gants de toilette|tapis|paillasson|miroir|horloge|decoration|cadre|tableau blanc|tableau en liege|bougies?|encens|fontaine d interieur|fleurs sechees|lampe|ampoules?|aspirateur|nettoyant|nettoyage|nettoyeur|balai|serpilliere|poubelle|entretien brillant|anti mites|piege a mites|pastilles anti mites|deshumidificateur|climatiseur|ventilateur|chauffage|radiateur|humidificateur|purificateur|thermometres? hygrometres?|hygrometre|detecteur|serrure|bloque porte|securite bebe|boudin de porte|multiprise|interrupteur|filtre|robinet|douche|wc|salle de bain|protection pied de chaise|crochets? adhesifs?|crochets?|gants de barbecue|barbecue|planche a plier|filet a linge|sacs? a linge|support a gateaux', 'logement', 'travaux-equipement'),
+	words('voiture|automobile|pneus?|essuie glace|siege auto|gps|dashcam|barres de toit|thule|meguiars|lustrant|moto|guidon', 'voiture', 'equipement-auto')
 ];
 
 function normalizeName(name: string): string {
@@ -242,11 +293,16 @@ function normalizeName(name: string): string {
 		.trim();
 }
 
-/** Category of a product or object name from the keyword rules (« vinyles », « chargeur »…), null when no rule matches. */
+/** Category of a product or object name: the keyword found earliest in it (longest on a tie), null when none matches. */
 export function classifyItemName(name: string): { categoryId: CategoryId; subId: string | null } | null {
 	const n = ` ${normalizeName(name)} `;
-	for (const r of ITEM_RULES) if (r.re.test(n)) return { categoryId: r.categoryId, subId: r.subId };
-	return null;
+	let best: { index: number; length: number; rule: Rule } | null = null;
+	for (const rule of ITEM_RULES) {
+		for (const m of n.matchAll(rule.re)) {
+			if (!best || m.index < best.index || (m.index === best.index && m[0].length > best.length)) best = { index: m.index, length: m[0].length, rule };
+		}
+	}
+	return best ? { categoryId: best.rule.categoryId, subId: best.rule.subId } : null;
 }
 
 /** Category of a set of items: that of the most expensive item matching a rule; otherwise Loisirs › Shopping. */
