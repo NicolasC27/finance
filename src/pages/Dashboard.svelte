@@ -37,6 +37,7 @@
 	import BudgetRing from '$lib/components/BudgetRing.svelte';
 	import InsightsCard from '$lib/components/InsightsCard.svelte';
 	import PageTitle from '$lib/components/PageTitle.svelte';
+	import WeatherBadge from '$lib/components/WeatherBadge.svelte';
 	import { avgDailyNet, todayIso } from '$lib/forecast';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
@@ -607,7 +608,9 @@
 			</p>
 		{/if}
 		</div>
-		<div class="flex flex-wrap items-center gap-2">
+		<div class="flex flex-wrap items-center gap-3">
+			<!-- Today's weather of the chosen town (Réglages › Météo), nothing until one is chosen -->
+			<WeatherBadge />
 			{#if months.length > 1}
 				<!-- ‹ month › navigation: same selection as the Budget page -->
 				<MonthNavigator {months} />

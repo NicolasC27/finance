@@ -15,7 +15,8 @@ export const PREF_KEYS: ReadonlySet<string> = new Set([
 	'budget:privacy',
 	'budget:compact-rows',
 	'budget:account-badges',
-	'budget:brand-logos'
+	'budget:brand-logos',
+	'budget:weather-place'
 ]);
 
 /** Preferences kept by « Tout réinitialiser »: the look of the app, never what it shows. */

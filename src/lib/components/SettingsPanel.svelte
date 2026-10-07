@@ -8,6 +8,7 @@
 	import { tick, untrack } from 'svelte';
 	import SidePanel from './SidePanel.svelte';
 	import Switch from './Switch.svelte';
+	import WeatherSettings from './WeatherSettings.svelte';
 	import { ESSENTIAL_PAGES, MODULES, type ModuleId } from '$lib/modules';
 	import { modulesState, setModuleActive } from '$lib/modules.svelte';
 
@@ -175,6 +176,9 @@
 			</button>
 		{/if}
 	</section>
+
+	<!-- Weather: the town shown on the home page (Open-Meteo through the local server) -->
+	<WeatherSettings />
 
 	<!-- Modules: optional pages, switched on and off at once (data kept) -->
 	<section bind:this={modulesSection} class="mt-3 border-t pt-3" style="border-color: var(--border-subtle);" aria-labelledby="settings-modules">

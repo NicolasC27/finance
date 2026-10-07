@@ -35,6 +35,7 @@
 	import { initKraken } from '$lib/wealth.svelte';
 	import { uiState, showToast, togglePrivacy } from '$lib/ui.svelte';
 	import { PREF_KEYS } from '$lib/prefs';
+	import { initWeather } from '$lib/weather.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 
 	/** Root: sidebar layout + custom router outlet, Cmd+K palette, Kraken modal. */
@@ -188,6 +189,7 @@
 			reviewTransfers();
 		});
 		initKraken();
+		initWeather();
 		wireAiOrganize();
 		void initAutoBackup();
 		window.addEventListener('keydown', onGlobalKeydown);
