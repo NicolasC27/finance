@@ -94,8 +94,15 @@
 		const target = e.target as HTMLElement | null;
 		if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
 
-		if (e.key === '+') {
+		const fullscreenBlock = document.querySelector('.block-fullscreen') !== null;
+		if (e.key === '+' && !fullscreenBlock) {
 			e.preventDefault();
+			uiState.quickEntryOpen = true;
+			return;
+		}
+		if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && route.path !== '/trier' && !fullscreenBlock) {
+			e.preventDefault();
+			uiState.quickEntryText = e.key;
 			uiState.quickEntryOpen = true;
 			return;
 		}

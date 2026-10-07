@@ -69,7 +69,7 @@ npm ci
 npm run dev                 # http://localhost:5173
 ```
 
-Importe ensuite tes fichiers : bouton **Importer** de la barre latérale, ou glisse-les n'importe où dans l'app. Le panneau qui s'ouvre à droite reconnaît chaque format tout seul.
+Importe ensuite tes fichiers : glisse-les n'importe où dans l'app. Le panneau qui s'ouvre à droite reconnaît chaque format tout seul.
 
 **Analyse IA (optionnel)** : installe [Claude Code](https://claude.com/claude-code) et connecte-le. Lance `npm run ia`, puis colle le jeton affiché dans la page Analyse IA. `npm run ia:install` installe le relais comme service utilisateur.
 
@@ -108,3 +108,5 @@ Pour proposer un changement :
 ## Licence
 
 [MIT](LICENSE) : tu peux utiliser, modifier et redistribuer le code, à condition de garder la mention de licence.
+
+Les logos de marques affichés sur les opérations viennent de collections libres, via Iconify : Simple Icons, SVG Logos et CoreUI Brands (CC0), theSVG (MIT) et Arcticons (CC BY-SA 4.0, Donno et contributeurs). Les marques et leurs logos restent la propriété de leurs titulaires ; l'app ne les utilise que pour reconnaître un commerçant.

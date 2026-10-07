@@ -4,24 +4,28 @@
  * and the glyphs themselves in merchantGlyphs.ts, loaded on first use (150 KB of SVG paths kept out
  * of the main chunk). Nothing is fetched at run time: the app sends no merchant name anywhere.
  *
- * Glyphs, colours and names come from Simple Icons 16.34.0 (https://simpleicons.org), a collection
- * released under CC0 1.0; icons carrying a licence of their own other than CC0 are left out. Brand
- * names and logos remain trademarks of their owners and are used here only to identify the
- * merchant of an operation. Generated on 2026-10-06: 141 brands. Brands absent from Simple Icons
- * (EDF, Free, Amazon, Decathlon…) have no logo here and are never drawn by hand.
+ * Glyphs and names come from open collections reached through Iconify (https://iconify.design):
+ * Simple Icons 16.34.0 (CC0 1.0, with the brand colours), theSVG Color (MIT, logos in their own
+ * colours), SVG Logos and CoreUI Brands (CC0 1.0) and Arcticons (CC BY-SA 4.0, line drawings of
+ * the French brands the others lack: EDF, Engie, Free, Bouygues, MAIF, MGEN, Crédit Mutuel…).
+ * Brand names and logos remain trademarks of their owners and are used here only to identify the
+ * merchant of an operation. 183 brands on 2026-10-07; a brand missing from every collection
+ * (SFR, Veolia, Foncia, BlaBlaCar, Société Générale…) has no logo and is never drawn by hand.
  *
- * To add a brand: copy its hex colour into a new entry of MERCHANT_BRANDS and the `d` of its Simple
- * Icons SVG into GLYPHS (merchantGlyphs.ts) under the same name, the entry placed before any brand
- * it must win against (the first match wins: « UBER EATS »
+ * To add a brand: add an entry to MERCHANT_BRANDS (colour used only for a 'brand' glyph) and its
+ * glyph to GLYPHS (merchantGlyphs.ts) under the same name, the entry placed before any brand it
+ * must win against (the first match wins: « UBER EATS »
  * before « UBER », merchants before the platforms and payment processors that bill for them), give
  * it precise keywords (precision before recall: a wrong logo is worse than a category icon) and add
  * a label to tests/merchantLogos.test.ts.
  */
 
+import type { Glyph } from './merchantGlyphs';
+
 export interface MerchantLogo {
 	/** Brand name (tooltip, key of its glyph in merchantGlyphs.ts). */
 	name: string;
-	/** Brand colour, #rrggbb. */
+	/** Brand colour, #rrggbb: the colour of a 'brand' glyph (see merchantGlyphs.ts). */
 	color: string;
 }
 
@@ -75,7 +79,8 @@ export const MERCHANT_BRANDS: readonly MerchantBrand[] = [
 	{ name: 'Uniqlo', color: '#ff0000', keywords: ['UNIQLO'] },
 	{ name: 'Nike', color: '#111111', keywords: ['NIKE'] },
 	{ name: 'Adidas', color: '#000000', keywords: ['ADIDAS'] },
-	{ name: 'SNCF', color: '#ca0939', keywords: ['SNCF', 'OUIGO', 'INOUI', 'TGV'] },
+	{ name: 'Ouigo', color: '#12161e', keywords: ['OUIGO'] },
+	{ name: 'SNCF', color: '#ca0939', keywords: ['SNCF', 'INOUI', 'TGV'] },
 	{ name: 'Uber', color: '#000000', keywords: ['UBER'] },
 	{ name: 'Lyft', color: '#ff00bf', keywords: ['LYFT'] },
 	{ name: 'Tesla', color: '#cc0000', keywords: ['TESLA'] },
@@ -170,6 +175,47 @@ export const MERCHANT_BRANDS: readonly MerchantBrand[] = [
 	{ name: 'Lydia', color: '#0180ff', keywords: ['LYDIA SOLUTIONS', 'LYDIA APP', 'LYDIA SAS', '^LYDIA$'] },
 	{ name: 'Binance', color: '#f0b90b', keywords: ['BINANCE'] },
 	{ name: 'Coinbase', color: '#0052ff', keywords: ['COINBASE'] },
+	{ name: 'EDF', color: '#12161e', keywords: ['EDF', 'EDF CLIENTS PARTICULIERS', 'EDF SA'] },
+	{ name: 'Engie', color: '#12161e', keywords: ['ENGIE', 'GDF SUEZ'] },
+	{ name: 'Free', color: '#12161e', keywords: ['FREE MOBILE', 'FREE TELECOM', 'FREEBOX', 'FREE PRO', 'FREE HAUT DEBIT', 'FREE SAS'] },
+	{ name: 'Bouygues Telecom', color: '#12161e', keywords: ['BOUYGUES TELECOM', 'BOUYGUES TEL', 'BOUYGTEL'] },
+	{ name: 'Sosh', color: '#12161e', keywords: ['SOSH'] },
+	{ name: 'Amazon', color: '#232f3e', keywords: ['AMAZON', 'AMZN', 'AMAZON EU', 'AMAZON PAYMENTS', 'AMAZON PRIME', 'AMAZON FR', 'AMZN MKTP'] },
+	{ name: 'Decathlon', color: '#3642b8', keywords: ['DECATHLON'] },
+	{ name: 'Sephora', color: '#12161e', keywords: ['SEPHORA'] },
+	{ name: 'Leboncoin', color: '#12161e', keywords: ['LEBONCOIN', 'LE BON COIN'] },
+	{ name: "Domino's", color: '#12161e', keywords: ['DOMINOS', 'DOMINOS PIZZA', 'DOMINO S PIZZA'] },
+	{ name: 'RATP', color: '#12161e', keywords: ['RATP'] },
+	{ name: 'Lime', color: '#12161e', keywords: ['LIME RIDE', 'LIME TECHNOLOGY', '^LIME$'] },
+	{ name: 'Disney+', color: '#12161e', keywords: ['DISNEY PLUS', 'DISNEYPLUS'] },
+	{ name: 'Microsoft', color: '#f1511b', keywords: ['MICROSOFT', 'MSFT'] },
+	{ name: 'Xbox', color: '#107c10', keywords: ['XBOX'] },
+	{ name: 'Nintendo', color: '#e60012', keywords: ['NINTENDO'] },
+	{ name: 'OpenAI', color: '#12161e', keywords: ['OPENAI', 'CHATGPT', 'OPENAI CHATGPT'] },
+	{ name: 'Crédit Mutuel', color: '#12161e', keywords: ['CREDIT MUTUEL'] },
+	{ name: 'Crédit Agricole', color: '#12161e', keywords: ['CREDIT AGRICOLE'] },
+	{ name: 'Boursorama', color: '#12161e', keywords: ['BOURSORAMA', 'BOURSOBANK', 'BOURSO BANK'] },
+	{ name: 'MAIF', color: '#12161e', keywords: ['MAIF'] },
+	{ name: 'Matmut', color: '#12161e', keywords: ['MATMUT'] },
+	{ name: 'MGEN', color: '#12161e', keywords: ['MGEN'] },
+	{ name: 'AXA', color: '#00008f', keywords: ['AXA', 'AXA FRANCE', 'AXA ASSURANCES'] },
+	{ name: 'Doctolib', color: '#12161e', keywords: ['DOCTOLIB'] },
+	{ name: 'La Poste', color: '#12161e', keywords: ['LA POSTE', 'LAPOSTE', 'LA POSTE MOBILE', 'COLISSIMO'] },
+	{ name: 'Kraken', color: '#2e3192', keywords: ['KRAKEN', 'PAYWARD'] },
+	{ name: 'Swile', color: '#12161e', keywords: ['SWILE'] },
+	{ name: 'CIC', color: '#12161e', keywords: ['CIC', 'CIC BANQUE'] },
+	{ name: 'Fortuneo', color: '#12161e', keywords: ['FORTUNEO'] },
+	{ name: 'Hello bank!', color: '#12161e', keywords: ['HELLO BANK', 'HELLOBANK'] },
+	{ name: 'Ameli', color: '#12161e', keywords: ['AMELI', 'CPAM', 'CAISSE PRIMAIRE'] },
+	{ name: 'CAF', color: '#12161e', keywords: ['^CAF$', 'CAISSE ALLOCATIONS FAMILIALES', 'CAF ALLOCATIONS'] },
+	{ name: 'Cdiscount', color: '#12161e', keywords: ['CDISCOUNT'] },
+	{ name: 'Trainline', color: '#12161e', keywords: ['TRAINLINE'] },
+	{ name: 'FlixBus', color: '#12161e', keywords: ['FLIXBUS', 'FLIX BUS'] },
+	{ name: 'Indigo', color: '#12161e', keywords: ['INDIGO NEO', 'PARKING INDIGO', 'INDIGO PARK'] },
+	{ name: 'Molotov', color: '#12161e', keywords: ['MOLOTOV'] },
+	{ name: 'Mondial Relay', color: '#12161e', keywords: ['MONDIAL RELAY'] },
+	{ name: 'Subway', color: '#12161e', keywords: ['SUBWAY'] },
+	{ name: 'Bolt', color: '#12161e', keywords: ['BOLT EU', 'BOLT OPERATIONS', '^BOLT$', '^BOLT'] },
 	{ name: 'Apple Music', color: '#fa243c', keywords: ['APPLE MUSIC'] },
 	{ name: 'Apple TV', color: '#000000', keywords: ['APPLE TV'] },
 	{ name: 'iCloud', color: '#3693f3', keywords: ['ICLOUD'] },
@@ -231,18 +277,18 @@ export function merchantLogo(label: string): MerchantLogo | null {
 	return logo;
 }
 
-type Glyphs = Readonly<Record<string, string>>;
+type Glyphs = Readonly<Record<string, Glyph>>;
 let glyphs: Glyphs | null = null;
 let loading: Promise<Glyphs> | null = null;
 
-/** Loads the glyphs once (dynamic import of merchantGlyphs.ts); resolves with every path by brand name. */
+/** Loads the glyphs once (dynamic import of merchantGlyphs.ts); resolves with every glyph by brand name. */
 export function loadGlyphs(): Promise<Glyphs> {
 	loading ??= import('./merchantGlyphs').then((m) => (glyphs = m.GLYPHS));
 	return loading;
 }
 
-/** SVG path of a brand's glyph once loaded, null before `loadGlyphs` resolved or for an unknown name. */
-export function glyphOf(name: string): string | null {
+/** Glyph of a brand once loaded, null before `loadGlyphs` resolved or for an unknown name. */
+export function glyphOf(name: string): Glyph | null {
 	return glyphs?.[name] ?? null;
 }
 

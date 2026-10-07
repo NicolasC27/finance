@@ -61,8 +61,10 @@ export const uiState = $state({
 	brandLogos: loadFlag(BRAND_LOGOS_KEY, true),
 	/** Command palette open (Cmd/Ctrl+K). */
 	paletteOpen: false,
-	/** Quick expense entry dialog (sidebar, palette, « n » shortcut). */
+	/** Quick expense entry dialog (palette, « + » shortcut, a digit typed anywhere, the row's details). */
 	quickEntryOpen: false,
+	/** Sentence the quick entry starts with when it opens (a digit typed on a page, the row's details). */
+	quickEntryText: '',
 	/** Kraken keys configuration modal. */
 	krakenModalOpen: false,
 	/** Keyboard shortcuts cheat sheet ('?' key). */

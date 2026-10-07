@@ -12,11 +12,12 @@
 	import { isModuleActive, isRouteEnabled } from '$lib/modules.svelte';
 
 	/**
-	 * Sidebar layout: fixed 196 px on desktop (collapsible to 60 px, persisted), net worth mini card +
-	 * sparkline at the bottom, 'Réglages' gear (theme, density, backups… in SettingsPanel),
-	 * 'Importer' button (Imports panel) under 'Rechercher…'. Mobile < 1024 px: fixed bottom tab bar (4
-	 * icons + short labels) + 'Plus' in 5th position: secondary pages, Imports and Settings in a
-	 * popover.
+	 * Sidebar layout: fixed 196 px on desktop (collapsible to 60 px, persisted): logo with the search
+	 * and privacy icons, a thin navigation, net worth mini card + sparkline at the bottom, 'Réglages'
+	 * gear (theme, density, backups… in SettingsPanel). No action button: an expense is typed in the
+	 * first row of the lists (QuickEntryRow) or after a digit typed anywhere; files are dropped
+	 * anywhere or imported from the Transactions page. Mobile < 1024 px: fixed bottom tab bar (4 icons + short labels) +
+	 * 'Plus' in 5th position: secondary pages, Imports and Settings in a popover.
 	 */
 
 	/** 'Plus' popover of the mobile tab bar. */
@@ -170,87 +171,51 @@
 	style="width: {collapsed ? 60 : 196}px; border-color: var(--hairline); background-color: var(--bg);"
 	bind:this={aside}
 >
-	<!-- Logo -->
-	<a
-		href="/"
-		class="flex h-16 shrink-0 items-center gap-2.5 border-b {collapsed ? 'justify-center px-0' : 'px-4'}"
-		style="border-color: var(--hairline);"
-		aria-label="Budget — accueil"
-	>
-		<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0">
-			<path d="M3 17l5-6 4 4 6-8" />
-			<path d="M15 7h6v6" />
-		</svg>
-		{#if !collapsed}<span class="serif truncate text-lg">Budget</span>{/if}
-	</a>
-	<!-- Privacy mode: every amount masked (H key) -->
-	<button
-		type="button"
-		class="privacy-toggle press absolute top-[18px] flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-secondary transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {collapsed ? 'hidden' : 'right-3'}"
-		class:privacy-on={uiState.privacy}
-		onclick={togglePrivacy}
-		aria-pressed={uiState.privacy}
-		title={uiState.privacy ? 'Afficher les montants (H)' : 'Mode discret : masquer les montants (H)'}
-		aria-label={uiState.privacy ? 'Afficher les montants' : 'Masquer les montants'}
-	>
-		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{#if uiState.privacy}<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.1A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3.1 4.2M6.3 6.3C4.1 7.7 2.6 9.8 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.2-1" />{:else}<path d="M2 12c1-2.5 5-7 10-7s9 4.5 10 7c-1 2.5-5 7-10 7S3 14.5 2 12z" /><circle cx="12" cy="12" r="3" />{/if}</svg>
-	</button>
-
-	<!-- Palette button (replaces the search) -->
-	<div class="shrink-0 px-3 pt-4">
+	<!-- Logo, then the search (command palette) and privacy icons -->
+	<div class="flex shrink-0 items-center border-b {collapsed ? 'h-auto flex-col gap-1 px-0 py-3' : 'h-14 gap-1 px-3'}" style="border-color: var(--hairline);">
+		<a href="/" class="flex min-w-0 items-center gap-2.5 {collapsed ? 'justify-center' : 'mr-auto pl-1'}" aria-label="Budget — accueil">
+			<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0">
+				<path d="M3 17l5-6 4 4 6-8" />
+				<path d="M15 7h6v6" />
+			</svg>
+			{#if !collapsed}<span class="serif truncate text-lg">Budget</span>{/if}
+		</a>
 		<button
 			type="button"
-			class="press flex cursor-pointer items-center gap-2.5 rounded-full border text-[13px] text-secondary transition-colors duration-200 hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full px-3.5 py-2'}"
-			style="border-color: var(--hairline);"
+			class="press flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-secondary transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
 			onclick={() => (uiState.paletteOpen = true)}
-			title="Palette de commandes (/ ou Cmd/Ctrl+K)"
-			aria-label="Ouvrir la palette de commandes"
+			title="Rechercher, palette de commandes (/ ou Cmd/Ctrl+K)"
+			aria-label="Rechercher : ouvrir la palette de commandes"
 		>
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" class="shrink-0">
+			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
 				<circle cx="11" cy="11" r="7" />
 				<path d="m20 20-3.5-3.5" />
 			</svg>
-			{#if !collapsed}
-				<span class="flex-1 text-left">Rechercher…</span>
-				<kbd class="kbd">⌘K</kbd>
-			{/if}
 		</button>
-		<!-- Imports panel: every file (statements, exports, PDFs), format recognised automatically -->
+		<!-- Privacy mode: every amount masked (H key) -->
 		<button
 			type="button"
-			class="press mt-2 flex cursor-pointer items-center gap-2.5 rounded-full border text-[13px] text-secondary transition-colors duration-200 hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full px-3.5 py-2'}"
-			style="border-color: var(--hairline);"
-			onclick={() => (uiState.importPanelOpen = true)}
-			title="Importer des fichiers : touche I (ou glissez-les n'importe où)"
-			aria-label="Importer des fichiers"
+			class="privacy-toggle press flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-secondary transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+			class:privacy-on={uiState.privacy}
+			onclick={togglePrivacy}
+			aria-pressed={uiState.privacy}
+			title={uiState.privacy ? 'Afficher les montants (H)' : 'Mode discret : masquer les montants (H)'}
+			aria-label={uiState.privacy ? 'Afficher les montants' : 'Masquer les montants'}
 		>
-			{@render importIcon(14)}
-			{#if !collapsed}<span class="flex-1 text-left">Importer</span>{/if}
-		</button>
-		<!-- Quick expense entry: counted at once, replaced by the bank operation on import -->
-		<button
-			type="button"
-			class="press mt-2 flex cursor-pointer items-center gap-2.5 rounded-full border text-[13px] text-secondary transition-colors duration-200 hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full px-3.5 py-2'}"
-			style="border-color: var(--hairline);"
-			onclick={() => (uiState.quickEntryOpen = true)}
-			title="Saisir une dépense en une phrase (touche +)"
-			aria-label="Saisir une dépense"
-		>
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-			{#if !collapsed}<span class="flex-1 text-left">Dépense</span><kbd class="kbd">+</kbd>{/if}
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{#if uiState.privacy}<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.1A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3.1 4.2M6.3 6.3C4.1 7.7 2.6 9.8 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.2-1" />{:else}<path d="M2 12c1-2.5 5-7 10-7s9 4.5 10 7c-1 2.5-5 7-10 7S3 14.5 2 12z" /><circle cx="12" cy="12" r="3" />{/if}</svg>
 		</button>
 	</div>
 
 	<!-- Navigation links -->
-	<nav class="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pt-4" aria-label="Navigation principale">
+	<nav class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-2" aria-label="Navigation principale">
 		{#each visibleLinks as link (link.href)}
 			{@const active = route.path === link.href}
 			<a
 				href={link.href}
-				class="side-link press group relative flex items-center border-b py-2.5 text-[13px] transition-colors duration-200 {collapsed
+				class="side-link press group relative flex items-center rounded-md py-1.5 text-[13px] transition-colors duration-200 {collapsed
 					? 'justify-center px-0'
-					: 'gap-3 px-2'} {active ? 'font-medium' : 'text-secondary hover:text-[var(--text)]'}"
-				style="border-color: var(--border-subtle); {active ? 'color: var(--text);' : ''}"
+					: 'gap-2.5 px-2'} {active ? 'font-medium' : 'text-secondary hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}"
+				style={active ? 'color: var(--text); background-color: var(--accent-soft);' : ''}
 				title={collapsed ? `${link.label} (G puis ${link.key})` : undefined}
 				aria-current={active ? 'page' : undefined}
 			>
@@ -340,6 +305,7 @@
 				{/if}
 			</a>
 		{/each}
+
 	</nav>
 
 	<!-- Bottom: net worth mini card + actions -->

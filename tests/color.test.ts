@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lighten, readableInk } from '../src/lib/color';
+import { lighten, readsOnWhite } from '../src/lib/color';
 
-test('readableInk: white on dark colours, black on light ones, white when the colour is invalid', () => {
-	assert.equal(readableInk('#000000'), '#ffffff');
-	assert.equal(readableInk('#1e339b'), '#ffffff');
-	assert.equal(readableInk('#ffffff'), '#000000');
-	assert.equal(readableInk('#ffd400'), '#000000');
-	assert.equal(readableInk('pas une couleur'), '#ffffff');
+test('readsOnWhite: dark and saturated colours do, pale ones and invalid values do not', () => {
+	assert.equal(readsOnWhite('#1e339b'), true);
+	assert.equal(readsOnWhite('#e60012'), true);
+	assert.equal(readsOnWhite('#1ed760'), true);
+	assert.equal(readsOnWhite('#ffffff'), false);
+	assert.equal(readsOnWhite('nope'), false);
 });
 
 test('lighten: mixes towards white, leaves an invalid colour as is', () => {

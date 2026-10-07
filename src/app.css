@@ -734,12 +734,17 @@ select.input-surface {
 	background-color: color-mix(in srgb, var(--mark-color) 20%, transparent);
 }
 
-/* Brand mark (BrandMark.svelte): the glyph of a known brand on its brand colour; a hairline ring
-   keeps near-black and near-white brands visible on every theme */
+/* Brand mark (BrandMark.svelte): the logo of a known brand on a white tile, whatever the theme,
+   with a hairline ring; `--brand-ink` colours a single-shape or line glyph, and a line drawing
+   (48-unit box) gets a stroke that reads at 16 px */
 .mark-brand {
 	color: var(--brand-ink);
-	background-color: var(--brand);
+	background-color: #ffffff;
 	box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+.mark-brand svg [stroke] {
+	stroke-width: 2.6;
 }
 
 /* ---- Compact rows (Réglages › Lignes compactes) ----
@@ -808,6 +813,43 @@ select.input-surface {
 
 	html[data-compact-rows] .rows > .row .input-surface:focus {
 		border-color: var(--accent);
+	}
+}
+
+/* ---- Dialog backdrop: the page dims a little and blurs lightly behind a dialog (quick entry, and
+   any dialog that has no backdrop style of its own), with a short fade: the page must stay close ---- */
+.dialog-backdrop {
+	background-color: color-mix(in srgb, var(--bg) 38%, transparent);
+	backdrop-filter: blur(2px);
+	-webkit-backdrop-filter: blur(2px);
+	animation: dialog-fade 150ms ease-out backwards;
+}
+
+@keyframes dialog-fade {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/* The dialog itself: lifted off the blurred page, popping in with the backdrop */
+.dialog-panel {
+	box-shadow:
+		0 16px 40px rgba(0, 0, 0, 0.18),
+		var(--shadow-soft);
+	animation: dialog-pop 150ms ease-out backwards;
+}
+
+@keyframes dialog-pop {
+	from {
+		opacity: 0;
+		transform: translateY(6px) scale(0.98);
+	}
+	to {
+		opacity: 1;
+		transform: none;
 	}
 }
 
@@ -1116,10 +1158,14 @@ html.light .grain {
 /* ---- Craft: focus, selection, scrollbar ---- */
 
 /* Visible focus: 1 px accent outline, 2 px offset */
-:focus-visible {
-	outline: 1px solid var(--accent);
-	outline-offset: 2px;
-	animation: focus-ring-in var(--motion-base) var(--ease-out);
+/* In the base layer, so an element's own `outline-none` or `.input-surface` (outline: none) wins:
+   the ring is for buttons and links, a text field shows its focus with the caret and its border */
+@layer base {
+	:focus-visible {
+		outline: 1px solid var(--accent);
+		outline-offset: 2px;
+		animation: focus-ring-in var(--motion-base) var(--ease-out);
+	}
 }
 
 /* The focus ring tightens onto the element instead of popping in */
