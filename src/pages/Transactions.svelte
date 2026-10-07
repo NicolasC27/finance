@@ -57,6 +57,7 @@
 	import ImportMapperModal, { type MapperSource } from '$lib/components/ImportMapperModal.svelte';
 	import MerchantMark from '$lib/components/MerchantMark.svelte';
 	import RowsToggle from '$lib/components/RowsToggle.svelte';
+	import QuickEntryRow from '$lib/components/QuickEntryRow.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import PageTitle from '$lib/components/PageTitle.svelte';
@@ -1952,6 +1953,10 @@
 					</tr>
 				</thead>
 				<tbody class="rows">
+					<!-- Empty first row: a sentence typed there becomes an operation (QuickEntryRow) -->
+					<tr class="border-b" style="border-color: var(--border-subtle); background-color: color-mix(in srgb, var(--accent) 5%, transparent);">
+						<td colspan={colCount} class="p-0"><QuickEntryRow /></td>
+					</tr>
 					{#each paginated as tx, rowIndex (txKey(tx))}
 						{@const amount = signedAmount(tx)}
 						{@const catId = categorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap())}
@@ -2157,6 +2162,7 @@
 
 	<!-- Mobile: stacked cards -->
 	<section class="mb-3 space-y-2 md:hidden">
+		<div class="card p-1"><QuickEntryRow compact /></div>
 		{#each paginated as tx, i (txKey(tx))}
 			{@const amount = signedAmount(tx)}
 			{@const catId = categorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap())}

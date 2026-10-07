@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { CategoryId } from '$lib/types';
 	import { uiState, showSuccess } from '$lib/ui.svelte';
 	import { modal } from '$lib/actions/modal';
@@ -7,6 +8,7 @@
 	import { askRelay, defaultPayment, QUICK_CATEGORIES, QUICK_SUBCATEGORIES, quickAccounts, relayConfig, saveQuickPayment, suggestCategory, voucherAvailable, voucherOptions } from '$lib/quickEntry.svelte';
 	import { splitVoucherPayment, type QuickPayment } from '$lib/quickEntry';
 	import { formatEUR, formatDate } from '$lib/format';
+	import { todayIso } from '$lib/forecast';
 	import DateField from './DateField.svelte';
 
 	/**
@@ -16,7 +18,7 @@
 	 * counted at once and replaced by the bank operation when the statement is imported.
 	 */
 
-	const today = () => new Date().toISOString().slice(0, 10);
+	const today = todayIso;
 	let text = $state('');
 	let aiDraft = $state<QuickDraft | null>(null);
 	let aiFor = $state('');
@@ -50,15 +52,18 @@
 
 	$effect(() => {
 		if (!uiState.quickEntryOpen) return;
-		text = '';
+		text = untrack(() => uiState.quickEntryText);
+		uiState.quickEntryText = '';
 		aiDraft = null;
 		aiFor = '';
 		aiFailed = false;
 		edits = {};
-		account = quickAccounts()[0]?.id ?? 'cm';
+		account = untrack(() => quickAccounts()[0]?.id ?? 'cm');
 	});
 
-	function close() {
+	/** Closes the dialog; `keep` hands the typed sentence back to whoever opened it (the row), when nothing was saved. */
+	function close(keep = false) {
+		if (keep) uiState.quickEntryText = text;
 		uiState.quickEntryOpen = false;
 	}
 
@@ -96,13 +101,13 @@
 
 {#if uiState.quickEntryOpen}
 	<div
-		class="palette-backdrop fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh]"
+		class="dialog-backdrop fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh]"
 		role="presentation"
 		onclick={(e) => {
-			if (e.target === e.currentTarget) close();
+			if (e.target === e.currentTarget) close(true);
 		}}
 	>
-		<div class="palette-panel quick-panel w-full max-w-lg overflow-hidden rounded-2xl border" style="border-color: var(--border); background-color: var(--surface);" role="dialog" aria-modal="true" aria-label="Saisir une dépense" tabindex="-1" use:modal={{ onEscape: close }}>
+		<div class="dialog-panel w-full max-w-lg overflow-hidden rounded-2xl border" style="border-color: var(--border); background-color: var(--surface);" role="dialog" aria-modal="true" aria-label="Saisir une dépense" tabindex="-1" use:modal={{ onEscape: () => close(true) }}>
 			<div class="flex items-center gap-2 border-b px-4 py-3" style="border-color: var(--border-subtle);">
 				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
 				<input
@@ -197,7 +202,7 @@
 
 			<div class="flex items-center gap-2 border-t px-4 py-2.5" style="border-color: var(--border-subtle);">
 				<span class="meta-xs flex-1">{hasRelay ? 'Entrée : lire avec l’IA, puis Entrée : enregistrer' : 'Entrée : enregistrer'} · Échap : fermer</span>
-				<button type="button" class="btn btn-secondary btn-sm" onclick={close}>Annuler</button>
+				<button type="button" class="btn btn-secondary btn-sm" onclick={() => close(true)}>Annuler</button>
 				<button bind:this={saveBtn} type="button" class="btn btn-primary btn-sm" disabled={!ready} onclick={save}>Enregistrer</button>
 			</div>
 		</div>

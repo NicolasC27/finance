@@ -1,4 +1,4 @@
-/** Colour helpers (two-tone category gradients, ink on a brand colour). */
+/** Colour helpers (two-tone category gradients, a brand colour on white). */
 
 /** "#c9a86c" → [201, 168, 108]; null when invalid. */
 function hexToRgb(hex: string): [number, number, number] | null {
@@ -19,14 +19,14 @@ export function lighten(hex: string, amount = 0.25): string {
 	return `#${mix.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 }
 
-/** Black or white, whichever has the higher WCAG contrast on `hex` (white when `hex` is invalid). */
-export function readableInk(hex: string): '#000000' | '#ffffff' {
+/** Does `hex` show on white (contrast ≥ 1.4:1, enough for a logo's shape)? False for an invalid colour. */
+export function readsOnWhite(hex: string): boolean {
 	const rgb = hexToRgb(hex);
-	if (!rgb) return '#ffffff';
+	if (!rgb) return false;
 	const [r, g, b] = rgb.map((c) => {
 		const v = c / 255;
 		return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
 	}) as [number, number, number];
-	const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-	return 1.05 / (luminance + 0.05) >= (luminance + 0.05) / 0.05 ? '#ffffff' : '#000000';
+	return 1.05 / (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.05) >= 1.4;
 }
+

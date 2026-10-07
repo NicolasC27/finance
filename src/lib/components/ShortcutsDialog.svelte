@@ -38,6 +38,7 @@
 				{ keys: ['G', 'W'], label: 'Simulateur' },
 				{ keys: ['G', 'F'], label: 'Impôt sur le revenu' },
 				{ keys: ['+'], label: 'Saisir une dépense' },
+				{ keys: ['0…9'], label: 'Saisir une dépense en commençant par le montant (sauf sur À trier)' },
 				{ keys: ['H'], label: 'Mode discret : masquer / afficher les montants' }
 			]
 		},

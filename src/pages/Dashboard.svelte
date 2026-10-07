@@ -32,6 +32,7 @@
 	import MonthNavigator from '$lib/components/MonthNavigator.svelte';
 	import BalanceChart, { type ChartAnnotation } from '$lib/components/BalanceChart.svelte';
 	import TransactionRow from '$lib/components/TransactionRow.svelte';
+	import QuickEntryRow from '$lib/components/QuickEntryRow.svelte';
 	import CategoryDonut, { type DonutSlice } from '$lib/components/CategoryDonut.svelte';
 	import BudgetRing from '$lib/components/BudgetRing.svelte';
 	import InsightsCard from '$lib/components/InsightsCard.svelte';
@@ -798,6 +799,7 @@
 							{/if}
 						</div>
 						<div class="divide-y divide-[var(--border-subtle)]">
+							<QuickEntryRow compact />
 							{#each recent.slice(0, show('plus') ? 12 : 6) as tx (txKey(tx))}
 								<TransactionRow {tx} compact showDate={show('date')} showCategory={show('categorie')} />
 							{/each}

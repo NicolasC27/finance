@@ -14,7 +14,7 @@ test('merchantLogo: display labels and raw bank labels name their brand', () => 
 		['ANTHROPIC PBC', 'Anthropic'],
 		['Netflix Com', 'Netflix'],
 		['Paris SNCF Connect', 'SNCF'],
-		['OUIGO PARIS', 'SNCF'],
+		['OUIGO PARIS', 'Ouigo'],
 		['Orange Internet', 'Orange'],
 		['Spotify', 'Spotify'],
 		['PRLV SEPA SPOTIFY AB', 'Spotify'],
@@ -31,8 +31,8 @@ test('merchantLogo: display labels and raw bank labels name their brand', () => 
 	for (const [label, brand] of cases) assert.equal(brandOf(label), brand, label);
 });
 
-test('merchantLogo: a brand missing from the bundled set gives no logo', () => {
-	for (const label of ['Free Mobile', 'Lyon Decathlon', 'Luxembourg Amazon Eu', 'Lyon Total Access', 'Lyon Esso Express', 'EDF Clients Particuliers', 'Bouygues Telecom', 'Foncia Loyer Appartement']) {
+test('merchantLogo: a brand missing from every collection gives no logo', () => {
+	for (const label of ['Lyon Total Access', 'Lyon Esso Express', 'Veolia Eau', 'Foncia Loyer Appartement', 'SFR Mobile', 'Blablacar', 'Societe Generale']) {
 		assert.equal(brandOf(label), null, label);
 	}
 });
@@ -107,7 +107,10 @@ test('MERCHANT_BRANDS: every entry is well formed and can be reached by one of i
 	assert.equal(new Set(MERCHANT_BRANDS.map((b) => b.name)).size, MERCHANT_BRANDS.length, 'unique names');
 	for (const brand of MERCHANT_BRANDS) {
 		assert.match(brand.color, /^#[0-9a-f]{6}$/, brand.name);
-		assert.match(GLYPHS[brand.name] ?? '', /^[Mm][MmLlHhVvCcSsQqTtAaZz0-9eE.,\s+-]+$/, brand.name);
+		const glyph = GLYPHS[brand.name];
+		assert.ok(glyph && ['brand', 'color', 'line'].includes(glyph.k) && /^-?[\d.]+ -?[\d.]+ [\d.]+ [\d.]+$/.test(glyph.v), brand.name);
+		assert.ok(glyph.b.length > 10 && !/<script|javascript:|\son[a-z]+=|<linearGradient|<clipPath/i.test(glyph.b), brand.name);
+		if (glyph.k === 'line') assert.match(glyph.b, /stroke="currentColor"/, brand.name);
 		assert.ok(brand.keywords.length > 0, brand.name);
 		for (const keyword of [...brand.keywords, ...(brand.except ?? [])]) {
 			assert.match(keyword, /^\^?[A-Z0-9]+( [A-Z0-9]+)*\$?$/, `${brand.name}: ${keyword}`);
@@ -133,7 +136,28 @@ test('loadGlyphs: every brand has its glyph, loaded once and then available sync
 	assert.equal(glyphOf('Spotify'), null);
 	const glyphs = await loadGlyphs();
 	assert.equal(Object.keys(glyphs).length, MERCHANT_BRANDS.length);
-	assert.match(glyphOf('Spotify') ?? '', /^M/);
+	assert.equal(glyphOf('Spotify')?.k, 'brand');
+	assert.equal(glyphOf('Carrefour')?.k, 'color');
+	assert.equal(glyphOf('EDF')?.k, 'line');
 	assert.equal(glyphOf('Marque inconnue'), null);
+});
+
+test('merchantLogo: the French brands added from the other collections', () => {
+	for (const [label, name] of [
+		['EDF Clients Particuliers', 'EDF'],
+		['Free Mobile', 'Free'],
+		['Bouygues Telecom', 'Bouygues Telecom'],
+		['Luxembourg Amazon Eu', 'Amazon'],
+		['Lyon Decathlon', 'Decathlon'],
+		['Maif Habitation', 'MAIF'],
+		['Matmut Automobile', 'Matmut'],
+		['Mgen Mutuelle', 'MGEN'],
+		['Credit Mutuel Assurances', 'Crédit Mutuel'],
+		['Doctolib', 'Doctolib'],
+		['Kraken', 'Kraken'],
+		['Caisse Allocations Familiales Du Rhone', 'CAF']
+	]) assert.equal(merchantLogo(label)?.name, name, label);
+	for (const label of ['Cafe Du Parc', 'CAF DE LA GARE', 'Limerick Pub Lyon', 'Lime Tree', 'Boltanski Dupont', 'Hotel Indigo Paris', 'Bouygues Immobilier', 'Disney Store Paris']) assert.equal(merchantLogo(label), null, label);
+	for (const [label, name] of [['PAYPAL *CDISCOUNT', 'Cdiscount'], ['KLARNA*DECATHLON', 'Decathlon'], ['PAYPAL *AMZN MKTP FR', 'Amazon'], ['OUIGO TGV', 'Ouigo']]) assert.equal(merchantLogo(label)?.name, name, label);
 });
 
