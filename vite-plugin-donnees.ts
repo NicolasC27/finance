@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { isAllowedKey, VersionConflict, DATA_STORE_FILE, isValidDocumentName, openDataStore, type DataStore } from './server/base.ts';
 import { accessRefusal } from './server/acces.ts';
 import { privateCall, areValidKeys, deleteKrakenKeys, saveKrakenKeys, readKrakenKeys } from './server/kraken.ts';
+import { cleanCoordinates, searchPlaces, weatherAt } from './server/weather.ts';
+import { cleanQuery, QUERY_RULE } from './src/lib/weather.ts';
 
 /**
  * Local app server: data in an ENCRYPTED SQLITE DATABASE (server/base.ts)
@@ -20,6 +22,8 @@ import { privateCall, areValidKeys, deleteKrakenKeys, saveKrakenKeys, readKraken
  *   PUT    /__secrets/kraken       → { key, secret, tester? }: tested (Balance) then stored in the keyring
  *   DELETE /__secrets/kraken       → forgets the keys
  *   POST   /__kraken/<Method>      → { params, cles? }: signed private call (Balance, Ledgers)
+ *   GET    /__weather/places?q=    → places matching a town name (Open-Meteo geocoding)
+ *   GET    /__weather?lat=&lon=     → current weather and the day's range (Open-Meteo, cached 20 min)
  *
  * Access: local app only (server/acces.ts). The Kraken secret key never goes
  * back to the browser. Database unavailable (locked keyring, missing key…)
@@ -66,7 +70,6 @@ function send(res: ServerResponse, status: number, body: unknown): void {
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const ROUTES = ['/__data', '/__secrets/', '/__kraken/'];
 
 /**
  * Vite plugin: routes on both the dev and the preview server.
@@ -136,73 +139,107 @@ export function dataPlugin(dir: string, label = dir): Plugin {
 		}
 	}
 
+	/** Weather routes: the server is the only one to call Open-Meteo, for the place chosen in Réglages. */
+	async function weather(req: IncomingMessage, res: ServerResponse, path: string, params: URLSearchParams): Promise<void> {
+		if (req.method !== 'GET') return send(res, 405, { error: ['méthode non gérée'] });
+		try {
+			if (path === '/__weather/places') {
+				const q = cleanQuery(params.get('q'));
+				if (!q) return send(res, 400, { error: [QUERY_RULE] });
+				return send(res, 200, { places: await searchPlaces(q) });
+			}
+			if (path === '/__weather') {
+				const c = cleanCoordinates(params.get('lat'), params.get('lon'));
+				if (!c) return send(res, 400, { error: ['Coordonnées attendues.'] });
+				return send(res, 200, { weather: await weatherAt(c.lat, c.lon) });
+			}
+			return send(res, 404, { error: ['route inconnue'] });
+		} catch (e) {
+			return send(res, 502, { error: [message(e)] });
+		}
+	}
+
+	/** Data routes: the encrypted database, opened on the first call. */
+	async function data(req: IncomingMessage, res: ServerResponse, path: string, params: URLSearchParams): Promise<void> {
+		let b: DataStore;
+		try {
+			b = await getStore();
+		} catch (e) {
+			return send(res, 503, { error: 'base-indisponible', message: message(e) });
+		}
+		if (req.method === 'GET' && path === '/__data') {
+			let hasKrakenKeys = false;
+			try {
+				hasKrakenKeys = (await readKrakenKeys()) !== null;
+			} catch {
+				hasKrakenKeys = false;
+			}
+			return send(res, 200, { dir: displayPath, data: b.lireTout(), versions: b.versions(), secrets: { kraken: hasKrakenKeys } });
+		}
+		if (req.method === 'POST' && path === '/__data/documents') {
+			const name = params.get('nom') ?? '';
+			if (!name.startsWith('vehicules/') || !isValidDocumentName(name)) return send(res, 400, { error: 'nom de document refusé' });
+			const bytes = await readBytes(req, MAX_DOCUMENT);
+			if (!bytes.length) return send(res, 400, { error: 'document vide' });
+			b.ajouterDocument(name, bytes);
+			return send(res, 200, { ok: true, nom: name, octets: bytes.length });
+		}
+		if (req.method === 'POST' && path === '/__data/import') {
+			const { data } = JSON.parse(await readBody(req)) as { data?: Record<string, unknown> };
+			return send(res, 200, { written: b.importer(data ?? {}, 'navigateur (migration)') });
+		}
+		if (path === '/__data/points' || path.startsWith('/__data/points/')) {
+			const m = /^\/__data\/points(?:\/(\d+)(\/restaurer)?)?$/.exec(path);
+			if (!m) return send(res, 404, { error: 'inconnu' });
+			try {
+				if (!m[1] && req.method === 'GET') return send(res, 200, { points: b.points() });
+				if (!m[1] && req.method === 'POST') {
+					const { raison } = JSON.parse((await readBody(req)) || '{}') as { raison?: unknown };
+					return send(res, 200, { point: b.creerPoint(typeof raison === 'string' ? raison : 'point manuel') });
+				}
+				if (m[1] && !m[2] && req.method === 'GET') return send(res, 200, { data: b.lirePoint(Number(m[1])) });
+				if (m[1] && m[2] && req.method === 'POST') return send(res, 200, { avant: b.restaurerPoint(Number(m[1])) });
+			} catch (e) {
+				return send(res, 422, { error: message(e) });
+			}
+			return send(res, 405, { error: 'méthode non gérée' });
+		}
+		const key = decodeURIComponent(path.slice('/__data/'.length));
+		if (!isAllowedKey(key)) return send(res, 400, { error: 'clé refusée' });
+		const header = req.headers['x-budget-version'];
+		const expected = typeof header === 'string' ? header || null : undefined;
+		try {
+			if (req.method === 'PUT') return send(res, 200, { ok: true, version: b.ecrire(key, await readBody(req), expected) });
+			if (req.method === 'DELETE') {
+				b.supprimer(key, expected);
+				return send(res, 200, { ok: true, version: null });
+			}
+		} catch (e) {
+			if (e instanceof VersionConflict) return send(res, 409, { error: 'conflit', message: e.message, version: e.actuelle });
+			throw e;
+		}
+		return send(res, 405, { error: 'méthode non gérée' });
+	}
+
+	type Route = (req: IncomingMessage, res: ServerResponse, path: string, params: URLSearchParams) => Promise<void>;
+	/** Path prefix → handler; a prefix ending with « / » matches below it only, the others match the path itself too. */
+	const ROUTES: [string, Route][] = [
+		['/__data', data],
+		['/__secrets/', kraken],
+		['/__kraken/', kraken],
+		['/__weather', weather]
+	];
+
 	const handler: Connect.NextHandleFunction = (req, res, next) => {
-		const url = req.url ?? '';
-		const path = url.split('?')[0]!;
-		if (!ROUTES.some((r) => path === r || path.startsWith(r.endsWith('/') ? r : `${r}/`))) return next();
+		const url = new URL(req.url ?? '', 'http://localhost');
+		const path = url.pathname;
+		const route = ROUTES.find(([r]) => path === r || path.startsWith(r.endsWith('/') ? r : `${r}/`));
+		if (!route) return next();
 		void (async () => {
 			try {
 				const refusal = accessRefusal(req);
 				if (refusal) return send(res, 403, { error: 'interdit', message: refusal });
-				if (!path.startsWith('/__data')) return await kraken(req, res, path);
-				let b: DataStore;
-				try {
-					b = await getStore();
-				} catch (e) {
-					return send(res, 503, { error: 'base-indisponible', message: message(e) });
-				}
-				if (req.method === 'GET' && path === '/__data') {
-					let hasKrakenKeys = false;
-					try {
-						hasKrakenKeys = (await readKrakenKeys()) !== null;
-					} catch {
-						hasKrakenKeys = false;
-					}
-					return send(res, 200, { dir: displayPath, data: b.lireTout(), versions: b.versions(), secrets: { kraken: hasKrakenKeys } });
-				}
-				if (req.method === 'POST' && path === '/__data/documents') {
-					const name = new URLSearchParams(url.split('?')[1] ?? '').get('nom') ?? '';
-					if (!name.startsWith('vehicules/') || !isValidDocumentName(name)) return send(res, 400, { error: 'nom de document refusé' });
-					const bytes = await readBytes(req, MAX_DOCUMENT);
-					if (!bytes.length) return send(res, 400, { error: 'document vide' });
-					b.ajouterDocument(name, bytes);
-					return send(res, 200, { ok: true, nom: name, octets: bytes.length });
-				}
-				if (req.method === 'POST' && path === '/__data/import') {
-					const { data } = JSON.parse(await readBody(req)) as { data?: Record<string, unknown> };
-					return send(res, 200, { written: b.importer(data ?? {}, 'navigateur (migration)') });
-				}
-				if (path === '/__data/points' || path.startsWith('/__data/points/')) {
-					const m = /^\/__data\/points(?:\/(\d+)(\/restaurer)?)?$/.exec(path);
-					if (!m) return send(res, 404, { error: 'inconnu' });
-					try {
-						if (!m[1] && req.method === 'GET') return send(res, 200, { points: b.points() });
-						if (!m[1] && req.method === 'POST') {
-							const { raison } = JSON.parse((await readBody(req)) || '{}') as { raison?: unknown };
-							return send(res, 200, { point: b.creerPoint(typeof raison === 'string' ? raison : 'point manuel') });
-						}
-						if (m[1] && !m[2] && req.method === 'GET') return send(res, 200, { data: b.lirePoint(Number(m[1])) });
-						if (m[1] && m[2] && req.method === 'POST') return send(res, 200, { avant: b.restaurerPoint(Number(m[1])) });
-					} catch (e) {
-						return send(res, 422, { error: message(e) });
-					}
-					return send(res, 405, { error: 'méthode non gérée' });
-				}
-				const key = decodeURIComponent(path.slice('/__data/'.length));
-				if (!isAllowedKey(key)) return send(res, 400, { error: 'clé refusée' });
-				const header = req.headers['x-budget-version'];
-				const expected = typeof header === 'string' ? header || null : undefined;
-				try {
-					if (req.method === 'PUT') return send(res, 200, { ok: true, version: b.ecrire(key, await readBody(req), expected) });
-					if (req.method === 'DELETE') {
-						b.supprimer(key, expected);
-						return send(res, 200, { ok: true, version: null });
-					}
-				} catch (e) {
-					if (e instanceof VersionConflict) return send(res, 409, { error: 'conflit', message: e.message, version: e.actuelle });
-					throw e;
-				}
-				return send(res, 405, { error: 'méthode non gérée' });
+				return await route[1](req, res, path, url.searchParams);
 			} catch (e) {
 				return send(res, 500, { error: message(e) });
 			}

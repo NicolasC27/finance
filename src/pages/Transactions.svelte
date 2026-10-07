@@ -1966,7 +1966,7 @@
 						{@const newDay = sortKey === 'date' && !isPending(tx) && (rowIndex === 0 || paginated[rowIndex - 1]!.booking_date !== tx.booking_date)}
 						<!-- Sorted by date, the first row of a day carries the date in ink under a full rule: days read as groups -->
 						<tr
-							class="row row-hover press group cursor-pointer border-t transition-colors"
+							class="row row-hover press group cursor-pointer border-t transition-colors select-none"
 							class:row-cursor={cursor === rowIndex}
 							class:row-selected={isSelected}
 							class:quick-pending={tx.source === 'manual'}
@@ -2170,7 +2170,7 @@
 			{@const expanded = expandedKey === txKey(tx)}
 			{@const isSelected = selected.has(txKey(tx))}
 			<div
-				class="card press fade-slide cursor-pointer p-3"
+				class="card press fade-slide cursor-pointer p-3 select-none"
 				class:card-selected={isSelected}
 				class:quick-pending={tx.source === 'manual'}
 				style="--stagger: {Math.min(i, 10) * 30}ms;"

@@ -9,6 +9,7 @@
  */
 import type { KrakenLedgerEntry } from './csvKraken';
 import { diskState } from './diskStorage';
+import { serverError } from './localApi';
 
 /**
  * API base: through the Vite server proxy in the browser (dev AND `vite
@@ -178,13 +179,6 @@ export function savePricesCache(cache: PricesCache): void {
 }
 
 const SERVER_HEADERS = { 'x-budget-data': '1', 'content-type': 'application/json' };
-
-/** Readable message of an error response from the local server. */
-function serverError(body: { error?: unknown; message?: unknown }, status: number): string {
-	if (Array.isArray(body.error) && body.error.length) return body.error.map(String).join(', ');
-	if (typeof body.message === 'string') return body.message;
-	return `serveur local : erreur ${status}`;
-}
 
 /** API keys stored on the server side (system keyring)? */
 export function hasKeys(): boolean {

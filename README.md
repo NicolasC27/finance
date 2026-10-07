@@ -58,6 +58,7 @@ Ta banque n'est pas dans la liste ? Essaie d'abord son export OFX, QIF ou CAMT ;
 - **Kraken** : les clés API restent dans le trousseau. Le serveur signe lui-même les appels, limités à la lecture (`Balance`, `Ledgers`) ; le navigateur ne voit jamais le secret.
 - **Coffre** : tes documents d'origine (PDF, exports) sont rangés chiffrés dans la base.
 - **Sauvegardes** : une copie chiffrée par jour, les 14 dernières sont gardées. Le multi-onglet est protégé contre les écrasements.
+- **Météo** (optionnelle) : le serveur local interroge Open-Meteo, sans compte ni clé. Deux choses sortent, rien d'autre : le nom de ville tapé dans Réglages (pour la retrouver), puis les coordonnées de la ville choisie (pour sa météo, affichée en haut de l'accueil).
 - **Analyse IA** : passe par un relais local vers Claude Code (ton abonnement Claude, sans clé API), confiné dans un bac à sable sans réseau. Les données en clair sont effacées après chaque réponse.
 
 ## Installation

@@ -134,7 +134,7 @@
 							{@const g = scheduleGroup(i)}
 							{@const n = daysTo(i.date)}
 							<li class="row">
-								<a href={i.href} class="flex items-center gap-3 px-4 py-1.5 hover:bg-[var(--surface-hover)]">
+								<a href={i.href} class="flex items-center gap-3 px-4 py-1.5 select-none hover:bg-[var(--surface-hover)]">
 									<span class="w-24 shrink-0 whitespace-nowrap" title={n === 0 ? "aujourd'hui" : inDays(n)}>
 										<span class="tabular block {n === 0 ? 'font-medium' : n <= 7 ? '' : 'text-secondary'}">{weekday(i.date)}</span>
 										{#if n === 0}
