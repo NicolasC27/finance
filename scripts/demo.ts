@@ -159,6 +159,9 @@ export function generateDemo(today = '2026-10-03'): Record<string, string> {
 	for (const m of portageMonths) add(`${m.mois}-28`, m.net, 'VIR INFOPORTAGE SALAIRE', ['Revenus', 'Salaires']);
 	add('2026-08-05', -21.6, cardLabel(8, 4, 'SAN FRANCISCO', 'GITHUB COPILOT'), ['Numérique', 'Logiciel']);
 	add('2026-08-19', -40.8, cardLabel(8, 18, 'PARIS', 'JETBRAINS'), ['Numérique', 'Logiciel']);
+	add('2026-09-05', -21.6, cardLabel(9, 4, 'SAN FRANCISCO', 'GITHUB COPILOT'), ['Numérique', 'Logiciel']);
+	add('2026-09-19', -40.8, cardLabel(9, 18, 'PARIS', 'JETBRAINS'), ['Numérique', 'Logiciel']);
+	add('2026-09-23', -36, cardLabel(9, 22, 'PARIS', 'AMAZON EU SARL'));
 	const portage: PortageData = {
 		compte: {
 			periode: '2026-09',
@@ -201,6 +204,18 @@ export function generateDemo(today = '2026-10-03'): Record<string, string> {
 				lignes: [
 					{ id: '1001-1', n: 1, date: '2026-08-04', nature: 'Logiciel', type: 'Frais de fonctionnement', montant: 21.6, commentaire: 'Copilot' },
 					{ id: '1001-2', n: 2, date: '2026-08-18', nature: 'Logiciel', type: 'Frais de fonctionnement', montant: 40.8, commentaire: 'IDE' }
+				]
+			},
+			{
+				numero: '1002',
+				mois: '2026-09',
+				etat: 'Créée',
+				total: 118.4,
+				lignes: [
+					{ id: '1002-1', n: 1, date: '2026-09-04', nature: 'Logiciel', type: 'Frais de fonctionnement', montant: 21.6, commentaire: 'Copilot' },
+					{ id: '1002-2', n: 2, date: '2026-09-10', nature: 'Télétravail', type: 'Indemnité', montant: 20, commentaire: 'TT septembre' },
+					{ id: '1002-3', n: 3, date: '2026-09-18', nature: 'Logiciel', type: 'Frais de fonctionnement', montant: 40.8, commentaire: 'IDE' },
+					{ id: '1002-4', n: 4, date: '2026-09-22', nature: 'Fournitures', type: 'Frais de fonctionnement', montant: 36, commentaire: 'Câble et hub USB-C' }
 				]
 			}
 		],

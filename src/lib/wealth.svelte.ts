@@ -4,6 +4,7 @@ import { getTransactions } from './store.svelte';
 import { isPending, signedAmount, cumulativeBalance, type BalancePoint } from './data';
 import { NON_BANK_ACCOUNTS, isBankTx } from './scope';
 import { isFiat, toEur } from './fiat';
+import { closesAt, balancesAt, cryptoEurByDay, splitByAsset } from './cryptoValue';
 import { formatDate } from './format';
 import { accountState, type AccountInfo } from './accounts.svelte';
 import { detectAccountKind, type AccountKind } from './csvCore';
@@ -29,24 +30,32 @@ import { natixisState, getNatixisEstimate } from './natixisHoldings.svelte';
 export type PriceStatus = 'idle' | 'loading' | 'ok' | 'error' | 'offline';
 export type BalanceStatus = 'no-keys' | 'loading' | 'ok' | 'error';
 
-export const krakenState = $state({
-	online: typeof navigator === 'undefined' ? true : navigator.onLine,
-	hasKeys: false,
-	balances: null as Record<string, number> | null, // symbol → quantity (API, suffixed variants summed)
+/**
+ * Kraken state. Prices, candles and snapshots are raw state (hundreds of points read in loops by
+ * the history curves): every change replaces the object or the array, never mutates it in place.
+ */
+class KrakenState {
+	online = $state(typeof navigator === 'undefined' ? true : navigator.onLine);
+	hasKeys = $state(false);
+	/** symbol → quantity (API, suffixed variants summed). */
+	balances = $state.raw<Record<string, number> | null>(null);
 	/** '.HOLD' amounts from the API (pending deposits/withdrawals): shown apart, never counted. */
-	hold: {} as Record<string, number>,
-	balanceStatus: 'no-keys' as BalanceStatus,
-	balanceError: '',
-	manual: {} as Record<string, number>, // persisted manual entry
-	prices: {} as Record<string, kraken.CachedPrice>,
-	priceStatus: 'idle' as PriceStatus,
-	priceError: '',
-	pricesAt: 0,
-	ohlc: {} as Record<string, kraken.OhlcPoint[]>,
+	hold = $state.raw<Record<string, number>>({});
+	balanceStatus = $state<BalanceStatus>('no-keys');
+	balanceError = $state('');
+	/** Persisted manual entry. */
+	manual = $state.raw<Record<string, number>>({});
+	prices = $state.raw<Record<string, kraken.CachedPrice>>({});
+	priceStatus = $state<PriceStatus>('idle');
+	priceError = $state('');
+	pricesAt = $state(0);
+	ohlc = $state.raw<Record<string, kraken.OhlcPoint[]>>({});
 	/** Weekly candles (up to ~14 years): valuation at an old date (tax, flows). */
-	ohlcWeekly: {} as Record<string, kraken.OhlcPoint[]>,
-	snapshots: [] as kraken.CryptoSnapshot[]
-});
+	ohlcWeekly = $state.raw<Record<string, kraken.OhlcPoint[]>>({});
+	snapshots = $state.raw<kraken.CryptoSnapshot[]>([]);
+}
+
+export const krakenState = new KrakenState();
 
 let initialized = false;
 
@@ -491,73 +500,7 @@ function dayKey(d: Date): string {
  * Daily ledger balances per asset (crypto AND fiat), sorted: base for back-computing the
  * crypto value at a past date.
  */
-const ledgerHistoryByAsset = $derived.by((): Map<string, { date: string; balance: number }[]> => {
-	const out = new Map<string, { date: string; balance: number }[]>();
-	for (const p of krakenLedgerState.ledger.balanceHistory) {
-		if (TECHNICAL_ASSETS.has(p.asset)) continue;
-		const list = out.get(p.asset);
-		if (list) list.push({ date: p.date, balance: p.balance });
-		else out.set(p.asset, [{ date: p.date, balance: p.balance }]);
-	}
-	return out;
-});
-
-/** Balance of an asset at a date in its daily series (last point ≤ date, 0 before the first). */
-function balanceOn(series: { date: string; balance: number }[], iso: string): number {
-	let bal = 0;
-	for (const p of series) {
-		if (p.date <= iso) bal = p.balance;
-		else break;
-	}
-	return bal;
-}
-
-/**
- * Estimated crypto valuation at a date: snapshot of the day (or the latest before it), else a
- * back-computation. With a ledger: balance AT THAT TIME of each asset × close of the day (+ fiat);
- * current quantities used to be applied to past prices. Without a ledger (API keys / manual
- * entry): current quantities × close of the day (fallback, OHLC range only).
- */
-function cryptoEurAt(iso: string): number {
-	let snap: number | null = null;
-	for (const s of krakenState.snapshots) {
-		if (s.date <= iso) snap = s.eur;
-		else break;
-	}
-	if (snap !== null) return snap;
-	const ledgerSeries = ledgerHistoryByAsset;
-	if (ledgerSeries.size > 0) {
-		let total = 0;
-		for (const [asset, series] of ledgerSeries) {
-			const bal = balanceOn(series, iso);
-			if (bal <= 0) continue;
-			if (isFiat(asset)) {
-				total += toEur(bal, asset, iso) ?? 0;
-				continue;
-			}
-			const close = ohlcCloseAt(krakenState.ohlc[asset] ?? [], iso);
-			if (close !== null) total += bal * close;
-		}
-		return total;
-	}
-	let total = 0;
-	let any = false;
-	for (const a of assets) {
-		const series = krakenState.ohlc[a.symbol];
-		if (!series || series.length === 0) continue;
-		const t = new Date(`${iso}T23:59:59`).getTime();
-		let close: number | null = null;
-		for (const p of series) {
-			if (p.t <= t) close = p.close;
-			else break;
-		}
-		if (close !== null) {
-			total += a.qty * close;
-			any = true;
-		}
-	}
-	return any ? total : 0;
-}
+const ledgerHistoryByAsset = $derived(splitByAsset(krakenLedgerState.ledger.balanceHistory, (a) => TECHNICAL_ASSETS.has(a)));
 
 /** Daily net-worth series: bank (cumulative tx) + crypto (snapshots/backfill). */
 /**
@@ -573,10 +516,14 @@ const baseHistory = $derived.by((): BalancePoint[] => {
 	if (bankPoints.length === 0) return [];
 	const flowTotal = bankPoints[bankPoints.length - 1]!.balance;
 	const offset = Math.round((bankBalances.cm - flowTotal + natixisCash) * 100) / 100;
-	return bankPoints.map((p) => ({
+	const crypto = cryptoEurByDay(
+		bankPoints.map((p) => p.iso),
+		{ snapshots: krakenState.snapshots, ledger: ledgerHistoryByAsset, ohlc: krakenState.ohlc, holdings: assets, isFiat, toEur }
+	);
+	return bankPoints.map((p, k) => ({
 		date: p.date,
 		iso: p.iso,
-		balance: Math.round((p.balance + offset + cryptoEurAt(p.iso)) * 100) / 100
+		balance: Math.round((p.balance + offset + crypto[k]!) * 100) / 100
 	}));
 });
 
@@ -610,28 +557,6 @@ export interface CryptoHistoryView {
 	fallbackAsset?: string;
 }
 
-/** Balance of an asset at a date: last history point ≤ date (history sorted by date). */
-function ledgerBalanceAt(history: { date: string; asset: string; balance: number }[], asset: string, iso: string): number {
-	let bal = 0;
-	for (const p of history) {
-		if (p.asset !== asset) continue;
-		if (p.date <= iso) bal = p.balance;
-		else break;
-	}
-	return bal;
-}
-
-/** OHLC close of a symbol at a date (last point ≤ end of day). */
-function ohlcCloseAt(series: kraken.OhlcPoint[], iso: string): number | null {
-	const t = new Date(`${iso}T23:59:59`).getTime();
-	let close: number | null = null;
-	for (const p of series) {
-		if (p.t <= t) close = p.close;
-		else break;
-	}
-	return close;
-}
-
 /**
  * EUR value history of the crypto portfolio: balance of each asset per day (ledger) × OHLC
  * close of the day. Never blocking: without OHLC prices (offline…), HONEST fallback to the raw
@@ -640,31 +565,25 @@ function ohlcCloseAt(series: kraken.OhlcPoint[], iso: string): number | null {
 const cryptoHistory = $derived.by((): CryptoHistoryView => {
 	const hist = krakenLedgerState.ledger.balanceHistory.filter((p) => p.asset !== 'EUR');
 	if (hist.length === 0) return { points: [], priced: false };
-	const symbols = [...new Set(hist.map((p) => p.asset))];
+	const byAsset = splitByAsset(hist);
 	const dates = [...new Set(hist.map((p) => p.date))].sort();
-	const hasOhlc = symbols.some((s) => (krakenState.ohlc[s]?.length ?? 0) > 0);
+	const hasOhlc = [...byAsset.keys()].some((s) => (krakenState.ohlc[s]?.length ?? 0) > 0);
 
 	if (hasOhlc) {
-		const points: BalancePoint[] = dates.map((iso) => {
-			let total = 0;
-			for (const s of symbols) {
-				const bal = ledgerBalanceAt(hist, s, iso);
-				const close = ohlcCloseAt(krakenState.ohlc[s] ?? [], iso);
-				if (bal > 0 && close !== null) total += bal * close;
-			}
-			return { date: new Date(`${iso}T12:00:00`), iso, balance: Math.round(total * 100) / 100 };
-		});
-		return { points, priced: true };
+		const totals = new Array<number>(dates.length).fill(0);
+		for (const [s, series] of byAsset) {
+			const balances = balancesAt(series, dates);
+			const closes = closesAt(krakenState.ohlc[s] ?? [], dates);
+			for (let k = 0; k < dates.length; k++) if (balances[k]! > 0 && closes[k] !== null) totals[k] += balances[k]! * closes[k]!;
+		}
+		return { points: dates.map((iso, k) => ({ date: new Date(`${iso}T12:00:00`), iso, balance: Math.round(totals[k]! * 100) / 100 })), priced: true };
 	}
 
-	const lastDate = dates[dates.length - 1]!;
-	const top = symbols.sort((a, b) => ledgerBalanceAt(hist, b, lastDate) - ledgerBalanceAt(hist, a, lastDate))[0]!;
-	const points: BalancePoint[] = dates.map((iso) => ({
-		date: new Date(`${iso}T12:00:00`),
-		iso,
-		balance: ledgerBalanceAt(hist, top, iso)
-	}));
-	return { points, priced: false, fallbackAsset: top };
+	const lastBalance = (s: string) => series(s).at(-1)?.balance ?? 0;
+	const series = (s: string) => byAsset.get(s)!;
+	const top = [...byAsset.keys()].sort((a, b) => lastBalance(b) - lastBalance(a))[0]!;
+	const balances = balancesAt(series(top), dates);
+	return { points: dates.map((iso, k) => ({ date: new Date(`${iso}T12:00:00`), iso, balance: balances[k]! })), priced: false, fallbackAsset: top };
 });
 
 export function getCryptoHistory(): CryptoHistoryView {
@@ -699,15 +618,21 @@ function wantedSymbols(): string[] {
 }
 
 /** Refreshes public prices; degrades to the cache + badge on failure. */
-export async function refreshPrices(): Promise<void> {
+/** Prices fresher than this are not fetched again (a page mount or the 60-second timer asks often). */
+const PRICE_TTL_MS = 60_000;
+
+export async function refreshPrices(force = false): Promise<void> {
 	const symbols = wantedSymbols();
 	if (symbols.length === 0) return;
+	if (!force && krakenState.priceStatus === 'ok' && Date.now() - krakenState.pricesAt < PRICE_TTL_MS && symbols.every((s) => krakenState.prices[s])) return;
 	krakenState.priceStatus = 'loading';
 	krakenState.priceError = '';
 	try {
 		const quotes = await kraken.fetchPrices(symbols);
-		for (const q of quotes) {
-			krakenState.prices[q.symbol] = { price: q.price, change24h: q.change24h };
+		if (quotes.some((q) => krakenState.prices[q.symbol]?.price !== q.price || krakenState.prices[q.symbol]?.change24h !== q.change24h)) {
+			const next = { ...krakenState.prices };
+			for (const q of quotes) next[q.symbol] = { price: q.price, change24h: q.change24h };
+			krakenState.prices = next;
 		}
 		krakenState.pricesAt = Date.now();
 		krakenState.priceStatus = 'ok';
@@ -873,10 +798,12 @@ function recordSnapshot(): void {
 	const total = cryptoTotal;
 	if (total <= 0) return;
 	const date = dayKey(new Date());
+	const eur = Math.round(total * 100) / 100;
 	const list = [...krakenState.snapshots];
 	const last = list[list.length - 1];
-	if (last && last.date === date) last.eur = Math.round(total * 100) / 100;
-	else list.push({ date, eur: Math.round(total * 100) / 100 });
+	if (last && last.date === date && last.eur === eur) return;
+	if (last && last.date === date) list[list.length - 1] = { date, eur };
+	else list.push({ date, eur });
 	krakenState.snapshots = list;
 	kraken.saveSnapshots(list);
 }

@@ -117,7 +117,12 @@ function persist(store: KrakenLedgerStore): void {
 	}
 }
 
-export const krakenLedgerState = $state({ ledger: loadLedger() });
+/** The ledger (thousands of balance points) is raw state: always replaced as a whole, never mutated in place. */
+class KrakenLedgerState {
+	ledger = $state.raw(loadLedger());
+}
+
+export const krakenLedgerState = new KrakenLedgerState();
 
 export function getKrakenLedger(): KrakenLedgerSummary {
 	return krakenLedgerState.ledger;
