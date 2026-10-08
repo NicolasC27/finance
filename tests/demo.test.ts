@@ -30,8 +30,8 @@ test('demo: valid assets (car with odometer readings), matched portage and tax p
 	assert.ok(lines.length > 0, 'lignes de notes de frais');
 	assert.deepEqual(
 		lines.map((r) => [r.ligne.id, r.etat]),
-		lines.map((r) => [r.ligne.id, r.ligne.id === '1002-2' ? 'indemnite' : 'rapprochee']),
-		'chaque achat retrouvé, l’indemnité de télétravail reconnue'
+		lines.map((r) => [r.ligne.id, r.ligne.id === '1002-2' ? 'indemnite' : r.ligne.id === '1002-5' ? 'probable' : 'rapprochee']),
+		'chaque achat retrouvé, l’indemnité de télétravail reconnue, l’achat en dollars à confirmer'
 	);
 	assert.ok(portageTaxProvisions(portage).length === 4, 'taux de prélèvement bas : provision chaque mois');
 	const accounts = JSON.parse(demo['budget:accounts']!) as { balance: number; kind: string }[];

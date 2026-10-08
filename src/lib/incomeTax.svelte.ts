@@ -1,6 +1,6 @@
 import { persistJson } from './storage';
-import { portageState } from './portage.svelte';
-import { taxableBase } from './portage';
+import { portageState, setPortageYearsSource } from './portage.svelte';
+import { taxableBase, type PortageYearTax, type PortageYears } from './portage';
 import { getTransactions, getMerchantCategoryMap } from './store.svelte';
 import { budgetState } from './budget.svelte';
 import { subcategorize } from './subcategories';
@@ -129,18 +129,16 @@ export interface IncomeTaxView {
 	lastYear: { year: number; incomeTax: number } | null;
 }
 
-const view = $derived.by((): IncomeTaxView => {
-	const today = new Date().toISOString().slice(0, 10);
+/** The estimate of one income year (`auto`: the year was picked by the app). */
+function yearView(year: number, today: string, auto: boolean): IncomeTaxView {
 	const thisYear = Number(today.slice(0, 4));
 	const s = taxSettings.v;
 	const notices = getTaxNotices();
-	const autoYear = defaultTaxYear(today, notices.some((n) => n.year === thisYear - 1));
-	const year = s.year === thisYear || s.year === thisYear - 1 ? s.year : autoYear;
 	const inputs = s.years[String(year)] ?? EMPTY_YEAR;
 	const slips = portageState.data.paies
 		.filter((p) => p.pas && p.mois.startsWith(`${year}-`))
 		.map((p) => ({ month: p.mois, taxable: Math.round(taxableBase(p) * 100) / 100, rate: p.pas!.taux, withheld: p.pas!.montant }));
-	const months = projectMonths(slips, year);
+	const months = projectMonths(slips, year, today);
 	const firstMonth = months[0]?.month ?? `${year}-13`;
 	const mm = getMerchantCategoryMap();
 	const yearCredits = getTransactions().filter((t) => (t.booking_date ?? '').startsWith(`${year}-`) && signedAmount(t) > 0);
@@ -188,7 +186,7 @@ const view = $derived.by((): IncomeTaxView => {
 	return {
 		year,
 		years: [thisYear - 1, thisYear],
-		auto: year === autoYear && s.year === null,
+		auto,
 		past: year < thisYear,
 		inputs,
 		rules,
@@ -203,7 +201,74 @@ const view = $derived.by((): IncomeTaxView => {
 		notice: own ? { incomeTax: own.incomeTax, ...(own.remaining !== undefined ? { remaining: own.remaining } : {}) } : null,
 		lastYear: prev ? { year: prev.year, incomeTax: prev.incomeTax } : null
 	};
+}
+
+const view = $derived.by((): IncomeTaxView => {
+	const today = new Date().toISOString().slice(0, 10);
+	const thisYear = Number(today.slice(0, 4));
+	const s = taxSettings.v;
+	const autoYear = defaultTaxYear(today, getTaxNotices().some((n) => n.year === thisYear - 1));
+	const year = s.year === thisYear || s.year === thisYear - 1 ? s.year : autoYear;
+	return yearView(year, today, year === autoYear && s.year === null);
 });
+
+/**
+ * One income year as the Portage page sees it: what the estimate counts, the tax against what is
+ * withheld, and the average rate the portage salaries should carry for their share of the tax
+ * (the tax on other income, which may pay its own instalments, and what is withheld outside the
+ * portage taken off).
+ */
+function portageYear(year: number, today: string): PortageYearTax | null {
+	const v = yearView(year, today, false);
+	if (!v.months.length) return null;
+	const s = taxSettings.v;
+	const sum = (months: WithholdingMonth[]) => Math.round(months.reduce((total, m) => total + m.taxable, 0));
+	const future = v.months.filter((m) => m.projected);
+	const partner = s.couple ? v.inputs.partnerSalary : 0;
+	const salaries = v.before.taxable + v.benefits.taxable + v.portageTaxable + partner;
+	const all = salaries + v.inputs.otherIncome;
+	const salaryTax = all > 0 ? (v.result.netTax * salaries) / all : v.result.netTax;
+	const elsewhere = v.before.withheld + v.benefits.withheld + (s.couple ? v.inputs.partnerWithheld : 0);
+	const lastMonth = v.months.at(-1)!.month;
+	return {
+		year: v.year,
+		tax: v.result.netTax,
+		withheldSoFar: v.reg.withheldSoFar,
+		withheldToCome: v.reg.withheldToCome,
+		balance: v.reg.balance,
+		instalments: v.reg.instalments,
+		rateToAvoid: v.reg.rateToAvoid,
+		portageRate: v.portageTaxable > 0 ? Math.max(0, Math.round(((salaryTax - elsewhere) / v.portageTaxable) * 10000) / 100) : null,
+		income: { before: v.before.taxable, benefits: v.benefits.taxable, portage: sum(v.months.filter((m) => !m.projected)), projected: sum(future), partner, other: v.inputs.otherIncome },
+		projectedMonths: future.length,
+		otherTax: Math.round(v.result.netTax - salaryTax),
+		household: { couple: s.couple, children: s.children },
+		stoppedAt: lastMonth < `${year}-12` ? lastMonth : null,
+		exactRules: v.rules.exact
+	};
+}
+
+let lastYearsKey = '';
+let lastYears: PortageYears = new Map();
+
+/** The last two income years with payslips, estimated (the same map while nothing changes, so the budget is not rebuilt for nothing). */
+const portageYears = $derived.by((): PortageYears => {
+	const today = new Date().toISOString().slice(0, 10);
+	const years = [...new Set(portageState.data.paies.filter((p) => p.pas).map((p) => Number(p.mois.slice(0, 4))))].sort((a, b) => b - a).slice(0, 2);
+	const out = new Map<number, PortageYearTax>();
+	for (const y of years) {
+		const estimate = portageYear(y, today);
+		if (estimate) out.set(y, estimate);
+	}
+	const key = JSON.stringify([...out]);
+	if (key !== lastYearsKey) {
+		lastYearsKey = key;
+		lastYears = out;
+	}
+	return lastYears;
+});
+
+setPortageYearsSource(() => portageYears);
 
 /** Estimate of the income year shown, recomputed from the data and the settings. */
 export function getIncomeTax(): IncomeTaxView {

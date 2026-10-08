@@ -32,6 +32,7 @@
 	import { initTransactions, txState } from '$lib/store.svelte';
 	import '$lib/vacations.svelte'; // hooks the 'Vacances' reclassification into categorize()
 	import '$lib/amazon.svelte'; // hooks the subcategory derived from Amazon orders
+	import '$lib/incomeTax.svelte'; // hooks the year's tax estimate into the portage alert and provision
 	import { initKraken } from '$lib/wealth.svelte';
 	import { uiState, showToast, togglePrivacy } from '$lib/ui.svelte';
 	import { PREF_KEYS } from '$lib/prefs';
