@@ -1400,6 +1400,16 @@
 		cursor = Math.min(paginated.length - 1, Math.max(0, cursor < 0 ? (delta > 0 ? 0 : paginated.length - 1) : cursor + delta));
 		rowEl(cursor)?.scrollIntoView({ block: 'nearest' });
 	}
+	let listTop = $state<HTMLElement | null>(null);
+	/** Previous or next page from the keyboard: false on the first or last page; the cursor is cleared and the list shows its top. */
+	function turnPage(delta: number): boolean {
+		const next = Math.min(pageCount, Math.max(1, page + delta));
+		if (next === page) return false;
+		page = next;
+		cursor = -1;
+		listTop?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+		return true;
+	}
 	function openNote(tx: Transaction) {
 		expandedKey = txKey(tx);
 		noteDraft = tx.note ?? '';
@@ -1434,6 +1444,10 @@
 				e.preventDefault();
 				shiftCalMonth(e.key === 'ArrowLeft' ? -1 : 1);
 			}
+			return;
+		}
+		if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+			if (turnPage(e.key === 'ArrowLeft' ? -1 : 1)) e.preventDefault();
 			return;
 		}
 		const k = e.key.toLowerCase();
@@ -1910,7 +1924,8 @@
 		</div>
 	{/if}
 
-	<!-- Desktop table (≥ md) -->
+	<!-- Desktop table (≥ md); the anchor above it is where ← → paging scrolls back to -->
+	<div bind:this={listTop} class="scroll-mt-3" aria-hidden="true"></div>
 	<section class="card hero-in-3 mb-3 hidden overflow-hidden md:block">
 		<div class="overflow-x-auto">
 			<table class="w-full min-w-[760px] border-collapse text-[12px]">
@@ -2284,6 +2299,7 @@
 				style="border-color: var(--border);"
 				disabled={page <= 1}
 				aria-label="Page précédente"
+				title="Page précédente (←)"
 				onclick={() => (page = Math.max(1, page - 1))}
 			>
 				‹
@@ -2313,6 +2329,7 @@
 				style="border-color: var(--border);"
 				disabled={page >= pageCount}
 				aria-label="Page suivante"
+				title="Page suivante (→)"
 				onclick={() => (page = Math.min(pageCount, page + 1))}
 			>
 				›

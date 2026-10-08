@@ -55,7 +55,21 @@ export function getCategory(id: CategoryId): Category {
  * The rank of a strict duplicate in the same batch is appended (missing =
  * first occurrence: historical keys unchanged).
  */
+const keyCache = new WeakMap<Transaction, { dup: number | undefined; key: string }>();
+
+/**
+ * Stable key of an operation. Memoised per object: an operation is never mutated once stored (an
+ * edit replaces it), only `dup_index` may be set right after parsing, hence the check.
+ */
 export function txKey(tx: Transaction): string {
+	const hit = keyCache.get(tx);
+	if (hit && hit.dup === tx.dup_index) return hit.key;
+	const key = computeTxKey(tx);
+	keyCache.set(tx, { dup: tx.dup_index, key });
+	return key;
+}
+
+function computeTxKey(tx: Transaction): string {
 	const canonicalLabel = tx.remittance_information.join(' ').replace(/\s+/g, '');
 	const dup = tx.dup_index ? `|#${tx.dup_index}` : '';
 	const raw = `${tx.booking_date}|${tx.value_date}|${tx.transaction_amount.amount}|${tx.credit_debit_indicator}|${canonicalLabel}${dup}`;
@@ -183,12 +197,18 @@ export function saveCatRuleStore(store: CatRuleStore): void {
  * the oldest: « VILLE EPICERIE DU PORT → Alimentation » beats
  * « VILLE → Loisirs ».
  */
+const ruleCache = new WeakMap<Transaction, { rules: readonly CatRule[]; rule: CatRule | undefined }>();
+
+/** Longest rule whose keyword the merchant key includes; memoised per operation and rule list (rules are replaced as a whole on every change). */
 export function ruleFor(tx: Transaction, rules: CatRule[]): CatRule | undefined {
+	const hit = ruleCache.get(tx);
+	if (hit && hit.rules === rules) return hit.rule;
 	const key = merchantKey(tx.remittance_information);
 	let best: CatRule | undefined;
 	for (const r of rules) {
 		if (keyIncludesKeyword(key, r.keyword) && (!best || r.keyword.length > best.keyword.length)) best = r;
 	}
+	ruleCache.set(tx, { rules, rule: best });
 	return best;
 }
 
@@ -391,7 +411,18 @@ export function naturalCategory(tx: Transaction, merchantMap?: MerchantCategoryM
  *   salary paid). TotalEnergies is an energy supplier by direct debit but a
  *   fuel station when paid by card.
  */
+const baseCache = new WeakMap<Transaction, { map: MerchantCategoryMap | undefined; category: CategoryId }>();
+
+/** Natural category, memoised per operation and merchant map (the map is rebuilt as a whole when the votes change). */
 function baseCategory(tx: Transaction, merchantMap?: MerchantCategoryMap): CategoryId {
+	const hit = baseCache.get(tx);
+	if (hit && hit.map === merchantMap) return hit.category;
+	const category = computeBaseCategory(tx, merchantMap);
+	baseCache.set(tx, { map: merchantMap, category });
+	return category;
+}
+
+function computeBaseCategory(tx: Transaction, merchantMap?: MerchantCategoryMap): CategoryId {
 	if (/^REM(ISE)?\s+CHQ\b|^REMISE\s+CHEQUE\b/i.test(tx.remittance_information.join(' '))) return 'revenus';
 
 	if (/^MENSUALITE\s+PRELEVEE/i.test(tx.remittance_information.join(' '))) return 'autre';

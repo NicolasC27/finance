@@ -183,11 +183,17 @@ export function linreg(ys: number[]): { slope: number; intercept: number; r2: nu
  * removed — otherwise each month of the same insurance was a distinct
  * operation and the recurrence never showed up.
  */
+const labelCache = new WeakMap<Transaction, string>();
+
 export function normalizeLabel(tx: Transaction): string {
-	return normalizeLabelKey(tx.remittance_information)
+	const hit = labelCache.get(tx);
+	if (hit !== undefined) return hit;
+	const label = normalizeLabelKey(tx.remittance_information)
 		.replace(/\b[A-Z]+\d{5,}[A-Z0-9]*\b/g, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();
+	labelCache.set(tx, label);
+	return label;
 }
 
 /** Window a recurrence is judged on: its last 13 months (old prices and pauses no longer count). */

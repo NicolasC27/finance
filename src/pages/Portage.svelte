@@ -5,6 +5,7 @@
 	import ModuleOptionsButton from '$lib/components/ModuleOptionsButton.svelte';
 	import { clearModuleActions, setModuleActions } from '$lib/sidePanel.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
+	import PortageHero from '$lib/components/PortageHero.svelte';
 	import Block from '$lib/components/Block.svelte';
 	import TileCanvas from '$lib/components/TileCanvas.svelte';
 	import type { BlockElement } from '$lib/layoutModel';
@@ -52,8 +53,6 @@
 	const totalProvisions = $derived(provisions.reduce((s, p) => s + p.montant, 0));
 	const rateText = $derived(targetRate === undefined ? '' : targetRate.toLocaleString('fr-FR'));
 	const matches = $derived(getMatches());
-	const latest = $derived(data.paies[data.paies.length - 1]);
-	const latestActivity = $derived(latest ? statement?.mois.find((m) => m.mois === latest.mois) : undefined);
 	const isEmpty = $derived(!statement && data.paies.length === 0 && data.notes.length === 0);
 
 	/** Table rows: months of the activity statement and of the payslips. */
@@ -170,22 +169,31 @@
 		creditOpen = false;
 	}
 
-	/** Customisable blocks of the page (default order). */
-	const BLOCKS = ['alertes', 'impot', 'dernier', 'attente', 'mois', 'notes', 'titres', 'cheques', 'regles'] as const;
+	/** Customisable blocks of the page (default order): the last month's header first. */
+	const BLOCKS = ['dernier', 'alertes', 'impot', 'attente', 'mois', 'notes', 'titres', 'cheques', 'regles'] as const;
+	/** Months with a known net salary (payslip, else statement), newest first: the header shows the first one. */
+	const netMonths = $derived(
+		monthRows.flatMap((r) => {
+			const net = r.p?.netPaye ?? r.a?.netApresImpot;
+			return net === undefined ? [] : [{ mois: r.mois, net, a: r.a, p: r.p }];
+		})
+	);
+	const latestRow = $derived(netMonths[0]);
+	const netRows = $derived([...netMonths].reverse().map((r) => ({ mois: r.mois, net: r.net })));
 
 	/** Optional elements of each block, all shown by default. */
 	const ALERTS_ELEMENTS: BlockElement[] = [
 		{ id: 'details', label: 'Explication de chaque alerte' },
 		{ id: 'infos', label: "Messages d'information (pas seulement les alertes)" }
 	];
+	const LATEST_ELEMENTS: BlockElement[] = [
+		{ id: 'versement', label: 'Jours, date de versement et frais remboursés' },
+		{ id: 'barres', label: 'Net par mois' },
+		{ id: 'flux', label: 'Où part la facture' }
+	];
 	const TAX_ELEMENTS: BlockElement[] = [
 		{ id: 'taux', label: 'Taux visé' },
 		{ id: 'detail', label: 'Provisions mois par mois' }
-	];
-	const LATEST_ELEMENTS: BlockElement[] = [
-		{ id: 'versement', label: 'Date de versement et frais remboursés' },
-		{ id: 'ca', label: 'CA et part nette' },
-		{ id: 'retenues', label: 'Impôt et titres-restaurant' }
 	];
 	const PENDING_ELEMENTS: BlockElement[] = [
 		{ id: 'salaires', label: 'Salaires en route' },
@@ -258,13 +266,6 @@
 	<header class="mb-4 flex flex-wrap items-end justify-between gap-3">
 		<div>
 			<PageTitle title="Portage" />
-			{#if statement || latest}
-				<p class="meta-xs mt-1">
-					InfoPortage{latest?.emploi ? ` · ${latest.emploi}` : ''}{statement?.tjm ? ` · TJM ${formatEUR(statement.tjm)}` : ''}{statement?.client
-						? ` · ${statement.client}${statement.clientFinal ? ` → ${statement.clientFinal}` : ''}`
-						: ''}{statement?.dateEntree ? ` · depuis le ${formatDate(statement.dateEntree)}` : ''}
-				</p>
-			{/if}
 		</div>
 		<div class="flex items-center gap-2">
 			<input
@@ -312,7 +313,15 @@
 		<!-- Customisable blocks: 12 columns on large screens, one column below -->
 		<TileCanvas page="portage" defaults={BLOCKS}>
 			{#each orderedIds('portage', BLOCKS) as id (id)}
-				{#if id === 'alertes'}
+				{#if id === 'dernier'}
+					{#if latestRow}
+						<Block page="portage" {id} defaults={BLOCKS} title="Dernier mois" size="XL" sizes={['L', 'XL']} elements={LATEST_ELEMENTS} bare>
+							{#snippet children(show)}
+								<PortageHero {statement} row={latestRow} rows={netRows} {show} />
+							{/snippet}
+						</Block>
+					{/if}
+				{:else if id === 'alertes'}
 					{#if alerts.length}
 						<Block page="portage" {id} defaults={BLOCKS} title={alertsTitle} size="XL" sizes={['M', 'L', 'XL']} elements={ALERTS_ELEMENTS}>
 							{#snippet children(show)}
@@ -381,32 +390,6 @@
 										</span>
 									{/if}
 								</div>
-							{/snippet}
-						</Block>
-					{/if}
-				{:else if id === 'dernier'}
-					{#if latest}
-						<Block page="portage" {id} defaults={BLOCKS} title="Dernier mois" size="M" sizes={['S', 'M', 'L']} elements={LATEST_ELEMENTS}>
-							{#snippet children(show)}
-								<h2 class="label-xs">{formatMonth(latest.mois)}</h2>
-								<p class="amount-md tabular mt-2">{formatEUR(latest.netPaye)}</p>
-								<p class="meta-xs mt-1">
-									net versé{#if show('versement')}{latest.datePaiement ? ` le ${formatDate(latest.datePaiement)}` : ''}{latest.rembFrais > 0 ? ` · dont ${formatEUR(latest.rembFrais)} de frais remboursés` : ''}{/if}
-								</p>
-								{#if (show('ca') && latestActivity?.ca) || (show('retenues') && (latest.pas || latest.titresRestaurant))}
-									<dl class="mt-3 space-y-1 border-t pt-3 text-[13px]" style="border-color: var(--border-subtle);">
-										{#if show('ca') && latestActivity?.ca}
-											<div class="chiffre"><dt class="text-secondary">CA HT</dt><dd class="tabular">{formatEUR(latestActivity.ca)}{latestActivity.jours ? ` · ${latestActivity.jours} j` : ''}</dd></div>
-											<div class="chiffre"><dt class="text-secondary">Net / CA</dt><dd class="tabular">{Math.round(((latest.netPaye - latest.rembFrais) / latestActivity.ca) * 100)} %</dd></div>
-										{/if}
-										{#if show('retenues') && latest.pas}
-											<div class="chiffre"><dt class="text-secondary">Prélèvement à la source</dt><dd class="tabular">{formatEUR(latest.pas.montant)} · {latest.pas.taux.toLocaleString('fr-FR')} %</dd></div>
-										{/if}
-										{#if show('retenues') && latest.titresRestaurant}
-											<div class="chiffre"><dt class="text-secondary">Titres-restaurant</dt><dd class="tabular">{latest.titresRestaurant.nombre} · {formatEUR(latest.titresRestaurant.partSalariale + latest.titresRestaurant.partPatronale)}</dd></div>
-										{/if}
-									</dl>
-								{/if}
 							{/snippet}
 						</Block>
 					{/if}
@@ -710,18 +693,6 @@
 </section>
 
 <style>
-	/* Label and value on one line, the value under its label when the tile is too narrow */
-	.chiffre {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		justify-content: space-between;
-		column-gap: 0.75rem;
-	}
-	.chiffre dd {
-		margin-left: auto;
-		text-align: right;
-	}
 	/* Month column kept in view while the table scrolls sideways */
 	.colle {
 		position: sticky;

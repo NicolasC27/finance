@@ -27,7 +27,12 @@ test('demo: valid assets (car with odometer readings), matched portage and tax p
 	for (const b of assets) assert.equal(typeof validateAsset(b), 'object', JSON.stringify(b).slice(0, 60));
 	const portage = JSON.parse(demo['budget:portage']!) as PortageData;
 	const lines = [...matchAllReports(portage, txs, txKey).values()].flat();
-	assert.ok(lines.length > 0 && lines.every((r) => r.etat === 'rapprochee'), JSON.stringify(lines.map((r) => r.etat)));
+	assert.ok(lines.length > 0, 'lignes de notes de frais');
+	assert.deepEqual(
+		lines.map((r) => [r.ligne.id, r.etat]),
+		lines.map((r) => [r.ligne.id, r.ligne.id === '1002-2' ? 'indemnite' : 'rapprochee']),
+		'chaque achat retrouvé, l’indemnité de télétravail reconnue'
+	);
 	assert.ok(portageTaxProvisions(portage).length === 4, 'taux de prélèvement bas : provision chaque mois');
 	const accounts = JSON.parse(demo['budget:accounts']!) as { balance: number; kind: string }[];
 	assert.ok(accounts.every((c) => (c.kind === 'pret' ? c.balance < 0 : c.balance > 0)), JSON.stringify(accounts));

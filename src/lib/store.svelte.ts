@@ -66,16 +66,23 @@ function loadDeleted(): string[] {
 }
 
 /** Global reactive state (Svelte 5 runes). */
-export const txState = $state({
-	demo: [] as Transaction[],
-	imported: loadImported(),
-	deletedKeys: loadDeleted(),
-	loaded: false,
-	loadError: '',
-	feedback: null as ImportFeedback | null,
+/**
+ * The transaction arrays are raw state: thousands of operations read in loops on every page would
+ * otherwise go through a deep proxy on each field (measured at a third of a page switch). Every
+ * change replaces the array (`txState.imported = next`), never mutates it in place.
+ */
+class TxState {
+	demo = $state.raw<Transaction[]>([]);
+	imported = $state.raw<Transaction[]>(loadImported());
+	deletedKeys = $state.raw<string[]>(loadDeleted());
+	loaded = $state(false);
+	loadError = $state('');
+	feedback = $state<ImportFeedback | null>(null);
 	/** Quick entries replaced by the latest import, with the category moved to the bank operation (undo). */
-	lastQuickMatches: [] as { manual: Transaction; bankKey: string; category?: CategoryId }[]
-});
+	lastQuickMatches = $state.raw<{ manual: Transaction; bankKey: string; category?: CategoryId }[]>([]);
+}
+
+export const txState = new TxState();
 
 /** Persists the imported transactions; false if the write failed (quota: reported by a toast). */
 function persistImported(): boolean {
