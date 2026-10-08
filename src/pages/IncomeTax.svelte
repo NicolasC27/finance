@@ -97,8 +97,8 @@
 					</tr>
 				{/if}
 				{#each v.months as m (m.month)}
-					<tr class="border-t {m.projected ? 'text-secondary italic' : ''}" style="border-color: var(--border-subtle);" title={m.projected ? 'Projeté au niveau de la dernière fiche de paie' : 'Lu sur la fiche de paie'}>
-						<td class="py-1">{monthLabel(m.month)}{#if m.projected} <span class="meta-xs not-italic">projeté</span>{/if}</td>
+					<tr class="border-t {m.projected || m.missing ? 'text-secondary italic' : ''}" style="border-color: var(--border-subtle);" title={m.projected ? 'Projeté au niveau de la dernière fiche de paie' : m.missing ? 'Fiche de paie absente : estimé comme le mois d’avant' : 'Lu sur la fiche de paie'}>
+						<td class="py-1">{monthLabel(m.month)}{#if m.projected} <span class="meta-xs not-italic">projeté</span>{:else if m.missing} <span class="meta-xs not-italic">fiche manquante</span>{/if}</td>
 						<td class="text-right">{formatEUR(m.taxable)}</td>
 						<td class="text-right">{pct(m.rate)}</td>
 						<td class="text-right">{formatEUR(m.withheld)}</td>

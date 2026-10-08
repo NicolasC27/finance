@@ -120,3 +120,48 @@ test('isUnemploymentBenefit: France Travail and Pôle emploi credits', () => {
 	assert.equal(isUnemploymentBenefit('VIREMENT SALAIRE ACME'), false);
 	assert.equal(isUnemploymentBenefit('Travail Temporaire Interim'), false);
 });
+
+test('projectMonths with today: a missing month is past, months to come are projected, nothing after an old last payslip', () => {
+	const slips = [
+		{ month: '2026-03', taxable: 4000, rate: 6, withheld: 240 },
+		{ month: '2026-05', taxable: 4000, rate: 6, withheld: 240 }
+	];
+	const months = projectMonths(slips, 2026, '2026-06-10');
+	assert.deepEqual(
+		months.map((m) => [m.month.slice(5), m.projected, m.missing ?? false]),
+		[
+			['03', false, false],
+			['04', false, true],
+			['05', false, false],
+			['06', true, false],
+			['07', true, false],
+			['08', true, false],
+			['09', true, false],
+			['10', true, false],
+			['11', true, false],
+			['12', true, false]
+		]
+	);
+	const reg = regularisation(3000, months, { withheld: 0 });
+	assert.equal(reg.withheldSoFar, 720, 'the missing April counts as withheld');
+	assert.equal(reg.remainingTaxable, 28000, 'only the months to come can change rate');
+	assert.deepEqual(
+		projectMonths(slips, 2026, '2026-08-01').map((m) => m.month.slice(5)),
+		['03', '04', '05'],
+		'no payslip for three months: the estimate stops'
+	);
+	const late = projectMonths([{ month: '2025-11', taxable: 4000, rate: 6, withheld: 240 }], 2025, '2026-01-10');
+	assert.deepEqual(
+		late.map((m) => [m.month.slice(5), m.projected, m.missing ?? false]),
+		[
+			['11', false, false],
+			['12', false, true]
+		],
+		'a year over projects nothing'
+	);
+	assert.deepEqual(
+		projectMonths(slips, 2026).map((m) => m.missing ?? false),
+		[false, true, false, false, false, false, false, false, false, false],
+		'without today, a gap is still a missing month'
+	);
+});

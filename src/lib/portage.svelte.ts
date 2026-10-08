@@ -9,7 +9,7 @@ import { persistJson } from './storage';
 import { categorize, txKey } from './categories';
 import { budgetState } from './budget.svelte';
 import { getMerchantCategoryMap, getTransactions } from './store.svelte';
-import { taxAlerts, pendingMoney, portageEntries, mergePortageDocument, readPortageDocument, emptyPortage, portageTaxProvisions, matchAllReports, targetRate, type ExpenseLine, type ExpenseReport, type PortageData, type TaxSetting, SWILE_DAILY_CAP } from './portage';
+import { taxAlerts, pendingMoney, portageEntries, mergePortageDocument, readPortageDocument, emptyPortage, portageTaxProvisions, matchAllReports, lastTarget, lastWithholding, type PortageYears, type ExpenseLine, type ExpenseReport, type PortageData, type TaxSetting, SWILE_DAILY_CAP } from './portage';
 
 export const PORTAGE_KEY = 'budget:portage';
 
@@ -50,29 +50,51 @@ function persist(): void {
 
 const catOf = (tx: Parameters<typeof categorize>[0]): CategoryId => categorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap());
 
-const entries = $derived(portageEntries(portageState.data, getTransactions(), txKey, catOf));
+/**
+ * The Impôt page's estimate of each year with payslips, hooked in by incomeTax.svelte.ts when it
+ * loads (App imports it at start): the alert and the automatic provision follow it when known.
+ */
+let yearsSource = $state.raw<(() => PortageYears) | null>(null);
+
+export function setPortageYearsSource(source: () => PortageYears): void {
+	yearsSource = source;
+}
+
+const years = $derived(yearsSource ? yearsSource() : null);
+
+const entries = $derived(portageEntries(portageState.data, getTransactions(), txKey, catOf, years));
 const matches = $derived(matchAllReports(portageState.data, getTransactions(), txKey));
 const pending = $derived(pendingMoney(portageState.data, getTransactions()));
-const provisions = $derived(portageTaxProvisions(portageState.data));
-const target = $derived(targetRate(portageState.data));
-const alerts = $derived(taxAlerts(portageState.data.paies, { provisions }));
+const provisions = $derived(portageTaxProvisions(portageState.data, years));
+const target = $derived(lastTarget(portageState.data, years));
+const alerts = $derived(taxAlerts(portageState.data.paies, { provisions, years }));
+/** The estimate of the last payslip's year, the one the page shows. */
+const yearTax = $derived.by(() => {
+	const last = lastWithholding(portageState.data.paies);
+	return last ? (years?.get(Number(last.mois.slice(0, 4))) ?? null) : null;
+});
 
-/** Alerts on the withholding tax (rate increase, rate too low for the salary). */
+/** Alerts on the withholding tax: the year's estimate when known (with the last rate change), else rate change and rate too low for the salary. */
 export function getTaxAlerts() {
 	return alerts;
 }
 
-/** Tax set aside each month when the withheld rate is too low ('Impôts' expense in the budget). */
+/** Tax set aside each month when the withheld rate is too low, or given back ('Impôts' in the budget). */
 export function getPortageTaxProvisions() {
 	return provisions;
 }
 
-/** Target rate of the provision (setting, else neutral rate of the last salary). */
-export function getTargetRate() {
+/** Target rate of the provision and where it comes from (typed by hand, the year's average, the neutral rate of the last salary). */
+export function getTarget() {
 	return target;
 }
 
-/** Provision setting: `taux: null` = back to the automatic neutral rate. */
+/** The last payslip's year as the Impôt page estimates it, null when unknown. */
+export function getPortageYearTax() {
+	return yearTax;
+}
+
+/** Provision setting: `taux: null` = back to the automatic rate (the year's average, else the neutral rate). */
 export function setTaxSetting(r: { provision?: boolean; taux?: number | null }): void {
 	const tax: TaxSetting = { ...portageState.data.impot };
 	if (r.provision !== undefined) tax.provision = r.provision;

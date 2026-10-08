@@ -6,6 +6,7 @@
 	import { clearModuleActions, setModuleActions } from '$lib/sidePanel.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import PortageHero from '$lib/components/PortageHero.svelte';
+	import PortageTaxYear from '$lib/components/PortageTaxYear.svelte';
 	import Block from '$lib/components/Block.svelte';
 	import TileCanvas from '$lib/components/TileCanvas.svelte';
 	import type { BlockElement } from '$lib/layoutModel';
@@ -16,14 +17,16 @@
 	import { cleanLabel, formatDate, formatEUR, formatMonth, maskAmounts } from '$lib/sensitiveFormat';
 	import { getTransactions } from '$lib/store.svelte';
 	import { showToast } from '$lib/ui.svelte';
-	import { purchaseDateFromLabel, shiftPortageMonth, salaryTransfer, type MatchedLine } from '$lib/portage';
+	import { lastRateChange, lastWithholding, purchaseDateFromLabel, shiftPortageMonth, salaryTransfer, type MatchedLine } from '$lib/portage';
+	import { setTaxSettings } from '$lib/incomeTax.svelte';
 	import {
 		portageState,
 		getMatches,
 		getPendingMoney,
 		getTaxAlerts,
 		getPortageTaxProvisions,
-		getTargetRate,
+		getTarget,
+		getPortageYearTax,
 		setTaxSetting,
 		importPortagePdf,
 		chooseMatch,
@@ -49,9 +52,19 @@
 	const pending = $derived(getPendingMoney());
 	const alerts = $derived(getTaxAlerts());
 	const provisions = $derived(getPortageTaxProvisions());
-	const targetRate = $derived(getTargetRate());
+	const targetRate = $derived(getTarget()?.rate);
+	const targetSource = $derived(getTarget()?.source);
+	const yearTax = $derived(getPortageYearTax());
+	/** The last payslip's rate change, when it belongs to the year shown (it is told inside the year's block). */
+	const rateChange = $derived.by(() => {
+		const c = lastRateChange(data.paies);
+		return c && yearTax && c.month.startsWith(`${yearTax.year}-`) ? c : null;
+	});
+	/** Rate of the last payslip, and what the budget set aside for the estimated year. */
+	const lastRate = $derived(lastWithholding(data.paies)?.pas.taux ?? 0);
+	const yearProvisioned = $derived(yearTax ? provisions.filter((p) => p.mois.startsWith(`${yearTax.year}-`)).reduce((s, p) => s + p.montant, 0) : 0);
 	const totalProvisions = $derived(provisions.reduce((s, p) => s + p.montant, 0));
-	const rateText = $derived(targetRate === undefined ? '' : targetRate.toLocaleString('fr-FR'));
+	const rateText = $derived(targetRate === undefined ? '' : targetRate.toLocaleString('fr-FR', { maximumFractionDigits: 1 }));
 	const matches = $derived(getMatches());
 	const isEmpty = $derived(!statement && data.paies.length === 0 && data.notes.length === 0);
 
@@ -131,6 +144,51 @@
 		introuvable: { label: 'achat introuvable', cls: 'chip-amber' }
 	};
 
+	/** Line whose manual choice is open. */
+	let editing = $state<string | null>(null);
+	/** The choice stored for the line is the one in force (a purchase that disappeared falls back to automatic). */
+	function manualApplied(r: MatchedLine): boolean {
+		const c = choiceValue(r);
+		if (!c) return false;
+		if (c === 'indemnite' || c === 'aucune') return r.etat === c;
+		return !!r.tx && txKey(r.tx) === c;
+	}
+	const focusOnMount = (node: HTMLElement) => node.focus();
+	/** Lines still to confirm or without any purchase found, for the report header. */
+	const lineTally = (lines: MatchedLine[]) => ({ toConfirm: lines.filter((r) => r.etat === 'probable').length, missing: lines.filter((r) => r.etat === 'introuvable').length });
+
+	/** Reports newest first; the rail shows one at a time (the newest by default) with a dot per month saying whether something is left to do. */
+	const notesDesc = $derived([...data.notes].reverse());
+	let noteSel = $state<string | null>(null);
+	const currentNote = $derived(notesDesc.find((n) => n.numero === noteSel) ?? notesDesc[0]);
+	const monthShort = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: '2-digit' });
+	const noteLabel = (mois: string) => (/^\d{4}-(0[1-9]|1[0-2])$/.test(mois) ? monthShort.format(new Date(`${mois}-15T12:00:00`)) : mois);
+	/** Something left on the report: a line to confirm or a purchase not found. */
+	const noteTodo = (numero: string) => {
+		const t = lineTally(matches.get(numero) ?? []);
+		return t.toConfirm + t.missing > 0;
+	};
+	function stepNote(delta: -1 | 1) {
+		const at = notesDesc.findIndex((n) => n.numero === currentNote?.numero);
+		const next = notesDesc[at - delta];
+		if (next) noteSel = next.numero;
+	}
+	function onRailKey(e: KeyboardEvent) {
+		if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+			e.preventDefault();
+			stepNote(e.key === 'ArrowLeft' ? -1 : 1);
+		}
+	}
+	/** The month shown stays in view in the rail; when the rail has the keyboard, the focus follows it. */
+	$effect(() => {
+		const numero = currentNote?.numero;
+		if (!numero) return;
+		const chip = document.querySelector<HTMLElement>(`.ndf-rail-chip[data-note="${CSS.escape(numero)}"]`);
+		if (!chip) return;
+		chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+		if (chip.parentElement?.contains(document.activeElement)) chip.focus();
+	});
+
 	// ---------- Culture vouchers ----------
 	const today = () => new Date().toISOString().slice(0, 10);
 	let cDate = $state(today());
@@ -184,6 +242,7 @@
 	/** Optional elements of each block, all shown by default. */
 	const ALERTS_ELEMENTS: BlockElement[] = [
 		{ id: 'details', label: 'Explication de chaque alerte' },
+		{ id: 'annee', label: 'Ton année en un coup d’œil (revenu et impôt)' },
 		{ id: 'infos', label: "Messages d'information (pas seulement les alertes)" }
 	];
 	const LATEST_ELEMENTS: BlockElement[] = [
@@ -211,7 +270,8 @@
 		{ id: 'commentaires', label: 'Commentaires des lignes' },
 		{ id: 'devises', label: 'Montants en devise' },
 		{ id: 'achat', label: 'Achat CB retrouvé' },
-		{ id: 'choix', label: 'Choix manuel du rapprochement' }
+		{ id: 'choix', label: 'Choix manuel du rapprochement' },
+		{ id: 'unparun', label: 'Un mois à la fois (sinon toutes les notes à la suite)' }
 	];
 	const MEAL_VOUCHERS_ELEMENTS: BlockElement[] = [
 		{ id: 'tickets', label: 'Nombre et valeur des tickets' },
@@ -337,14 +397,17 @@
 												style="border-left-color: {a.niveau === 'alerte' ? 'var(--amber)' : 'var(--accent)'};"
 											>
 												<p class="font-medium" style={a.niveau === 'alerte' ? 'color: var(--amber);' : ''}>{a.niveau === 'alerte' ? '⚠ ' : ''}{maskAmounts(a.titre)}</p>
-												{#if show('details')}<p class="meta-xs mt-0.5">{maskAmounts(a.detail)}</p>{/if}
+												{#if show('details') && !(a.annee && show('annee'))}<p class="meta-xs mt-0.5">{maskAmounts(a.detail)}</p>{/if}
 											</div>
 										{/each}
 									</div>
 								{:else}
 									<p class="meta-xs mt-1">Aucune alerte : {alerts.length} message{alerts.length > 1 ? 's' : ''} d'information masqué{alerts.length > 1 ? 's' : ''}.</p>
 								{/if}
-								<a href="/impot" class="meta-xs mt-2 inline-block underline">Estimer l'impôt de l'année et la régularisation →</a>
+								{#if show('annee') && yearTax}
+									<PortageTaxYear year={yearTax} rate={lastRate} provisioned={yearProvisioned} change={rateChange} />
+								{/if}
+								<a href="/impot" class="meta-xs mt-2 inline-block underline" onclick={() => yearTax && setTaxSettings({ year: yearTax.year })}>{yearTax ? `Détail du calcul de ${yearTax.year} sur la page Impôt →` : 'Estimer l’impôt de l’année et la régularisation →'}</a>
 							{/snippet}
 						</Block>
 					{/if}
@@ -373,7 +436,9 @@
 											%
 										</label>
 										{#if data.impot?.taux !== undefined}
-											<button type="button" class="btn btn-ghost btn-sm" onclick={() => setTaxSetting({ taux: null })}>revenir au taux neutre</button>
+											<button type="button" class="btn btn-ghost btn-sm" onclick={() => setTaxSetting({ taux: null })}>{yearTax?.portageRate != null ? 'revenir au taux de l’année' : 'revenir au taux neutre'}</button>
+										{:else if targetSource === 'annee'}
+											<span class="meta-xs">= moyenne de ton année {yearTax?.year} : sa part d’impôt ÷ tes salaires du portage (page Impôt)</span>
 										{:else}
 											<span class="meta-xs">= taux neutre de ton dernier salaire</span>
 										{/if}
@@ -509,43 +574,63 @@
 							{#snippet children(show)}
 								{@const showPurchase = show('achat')}
 								{@const showChoice = show('choix')}
-								<h2 class="label-xs">Notes de frais</h2>
-								{#each [...data.notes].reverse() as note (note.numero)}
+								{@const oneByOne = show('unparun') && notesDesc.length > 1}
+								<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+									<h2 class="label-xs">Notes de frais</h2>
+									{#if oneByOne}
+										<!-- One month at a time: a rail of months, a dot on those with something left to do, arrows and ← → to move -->
+										<nav class="ndf-rail" aria-label="Mois des notes de frais">
+											<button type="button" class="ndf-rail-arrow" aria-label="Mois précédent" disabled={currentNote?.numero === notesDesc[notesDesc.length - 1]?.numero} onclick={() => stepNote(-1)}>‹</button>
+											<div class="ndf-rail-months" role="tablist" aria-label="Choisir le mois" tabindex="-1" onkeydown={onRailKey}>
+												{#each [...notesDesc].reverse() as n (n.numero)}
+													{@const todo = noteTodo(n.numero)}
+													<button type="button" role="tab" data-note={n.numero} class="ndf-rail-chip {n.numero === currentNote?.numero ? 'is-current' : ''}" aria-selected={n.numero === currentNote?.numero} tabindex={n.numero === currentNote?.numero ? 0 : -1} title="{formatMonth(n.mois)} · {formatEUR(n.total)}{todo ? ' · à traiter' : ''}" onclick={() => (noteSel = n.numero)}>
+														{noteLabel(n.mois)}{#if todo}<i class="ndf-rail-dot" aria-label="à traiter"></i>{/if}
+													</button>
+												{/each}
+											</div>
+											<button type="button" class="ndf-rail-arrow" aria-label="Mois suivant" disabled={currentNote?.numero === notesDesc[0]?.numero} onclick={() => stepNote(1)}>›</button>
+										</nav>
+									{/if}
+								</div>
+								{#each oneByOne ? (currentNote ? [currentNote] : []) : notesDesc as note (note.numero)}
 									{@const lines = matches.get(note.numero) ?? []}
-									<div class="mt-3 @container">
-										<p class="flex flex-wrap items-baseline gap-x-2 text-[13px]">
+									{@const tally = lineTally(lines)}
+									<div class="mt-3 @container" role={oneByOne ? 'tabpanel' : undefined}>
+										<p class="ndf-head">
 											<span class="font-medium">{formatMonth(note.mois)}</span>
-											<span class="meta-xs min-w-0 flex-1">· n° {note.numero}{note.etat ? ` · ${note.etat.toLowerCase()}` : ''} · remboursée avec le salaire {ofMonth(shiftPortageMonth(note.mois, 1))}</span>
+											<span class="meta-xs min-w-0 flex-1">n° {note.numero}{note.etat ? ` · ${note.etat.toLowerCase()}` : ''} · remboursée avec le salaire {ofMonth(shiftPortageMonth(note.mois, 1))}</span>
+											{#if tally.toConfirm}<span class="chip chip-amber px-1.5 py-0 text-[10px]">{tally.toConfirm} à confirmer</span>{/if}
+											{#if tally.missing}<span class="chip chip-amber px-1.5 py-0 text-[10px]">{tally.missing} introuvable{tally.missing > 1 ? 's' : ''}</span>{/if}
 											<span class="tabular font-medium">{formatEUR(note.total)}</span>
 										</p>
-										<!-- One line per expense: a row from 44rem of tile width, stacked below -->
-										<ul class="mt-1.5 divide-y divide-[var(--border-subtle)] text-[12px]">
+										<!-- One calm row per expense: the purchase found (or the state) on the right, the manual choice behind « modifier » -->
+										<ul class="divide-y divide-[var(--border-subtle)] text-[12px]">
 											{#each lines as r (r.ligne.id)}
-												{@const status = STATUSES[r.etat]!}
+												{@const manual = manualApplied(r)}
+												{@const open = editing === r.ligne.id}
 												<li class="ligne-ndf">
 													<span class="ndf-date tabular whitespace-nowrap text-secondary">{formatDate(r.ligne.date)}</span>
-													<span class="ndf-nature min-w-0">
-														{r.ligne.nature}{#if show('commentaires') && r.ligne.commentaire}{' '}<span class="meta-xs">· {r.ligne.commentaire}</span>{/if}
-													</span>
-													<span class="ndf-montant tabular text-right">
-														{formatEUR(r.ligne.montant)}{#if show('devises') && r.ligne.devise}<span class="meta-xs block">{r.ligne.devise.montant.toLocaleString('fr-FR')} {r.ligne.devise.code}</span>{/if}
-													</span>
-													<span class="ndf-etat"><span class="chip {status.cls} px-1.5 py-0 text-[10px]">{status.label}</span></span>
-													{#if (showPurchase && r.tx && (r.etat === 'rapprochee' || r.etat === 'probable')) || (showPurchase && r.etat === 'indemnite') || (r.etat === 'probable' && r.tx) || showChoice}
-														<div class="ndf-actions flex min-w-0 flex-wrap items-center gap-2">
-															{#if showPurchase}
-																{#if r.tx && (r.etat === 'rapprochee' || r.etat === 'probable')}
-																	<span class="meta-xs min-w-0 truncate" title={r.tx.remittance_information.join(' ')}>{txSummary(r.tx)}</span>
-																{:else if r.etat === 'indemnite'}
-																	<span class="meta-xs">sans achat : reste un revenu</span>
-																{/if}
-															{/if}
-															{#if r.etat === 'probable' && r.tx}
-																<button type="button" class="btn btn-primary btn-sm" onclick={() => chooseMatch(r.ligne.id, txKey(r.tx!))}>Confirmer</button>
-															{/if}
-															{#if showChoice}
+													<span class="ndf-nature min-w-0 truncate" title={r.ligne.commentaire ? `${r.ligne.nature} · ${r.ligne.commentaire}` : r.ligne.nature}>{r.ligne.nature}{#if show('commentaires') && r.ligne.commentaire}<span class="meta-xs"> · {r.ligne.commentaire}</span>{/if}</span>
+													<span class="ndf-montant tabular text-right">{formatEUR(r.ligne.montant)}{#if show('devises') && r.ligne.devise}<span class="meta-xs"> · {r.ligne.devise.montant.toLocaleString('fr-FR')} {r.ligne.devise.code}</span>{/if}</span>
+													<span class="ndf-achat">
+														{#if r.etat === 'rapprochee' && r.tx}
+															<span class="ndf-ok" role="img" aria-label="rapprochée">✓</span>
+															{#if showPurchase}<span class="meta-xs min-w-0 truncate" title={r.tx.remittance_information.join(' ')}>{txSummary(r.tx)}</span>{/if}
+														{:else if r.etat === 'probable' && r.tx}
+															<span class="chip chip-amber flex-none px-1.5 py-0 text-[10px]">à confirmer</span>
+															{#if showPurchase}<span class="meta-xs min-w-0 truncate" title={r.tx.remittance_information.join(' ')}>{txSummary(r.tx)}</span>{/if}
+															<button type="button" class="btn btn-secondary btn-sm flex-none" onclick={() => chooseMatch(r.ligne.id, txKey(r.tx!))}>Confirmer</button>
+														{:else}
+															<span class="chip {STATUSES[r.etat]!.cls} flex-none px-1.5 py-0 text-[10px]">{STATUSES[r.etat]!.label}</span>
+															{#if showPurchase && r.etat === 'indemnite'}<span class="meta-xs">reste un revenu</span>{/if}
+														{/if}
+														{#if manual && !open}<span class="meta-xs flex-none">· choix manuel</span>{/if}
+														{#if showChoice}
+															{#if open}
 																<select
-																	class="input-surface w-full max-w-56 min-w-0 cursor-pointer text-[12px]"
+																	class="input-surface ndf-select cursor-pointer"
+																	use:focusOnMount
 																	value={choiceValue(r)}
 																	aria-label="Rapprochement de la ligne {r.ligne.n}"
 																	onchange={(e) => {
@@ -560,9 +645,12 @@
 																	<option value="indemnite">Indemnité (sans achat)</option>
 																	<option value="aucune">Pas d'achat CB</option>
 																</select>
+																<button type="button" class="ndf-tool is-open" onclick={() => (editing = null)}>fermer</button>
+															{:else}
+																<button type="button" class="ndf-tool" onclick={() => (editing = r.ligne.id)} aria-label="Modifier le rapprochement de la ligne {r.ligne.n}">modifier</button>
 															{/if}
-														</div>
-													{/if}
+														{/if}
+													</span>
 												</li>
 											{/each}
 										</ul>
@@ -700,23 +788,31 @@
 		z-index: 1;
 		background-color: var(--surface);
 	}
-	/* Expense report line: stacked in a narrow tile, one row from 44rem of tile width */
+	.ndf-head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.25rem 0.5rem;
+		padding-bottom: 0.25rem;
+		font-size: 13px;
+	}
+	/* Expense line: stacked in a narrow tile, one row from 44rem of tile width */
 	.ligne-ndf {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) auto;
 		grid-template-areas:
 			'nature montant'
-			'date etat'
-			'actions actions';
+			'date date'
+			'achat achat';
 		align-items: center;
 		column-gap: 0.75rem;
-		row-gap: 0.25rem;
-		padding: 0.375rem 0;
+		row-gap: 0.2rem;
+		padding: 0.3rem 0;
 	}
 	@container (min-width: 44rem) {
 		.ligne-ndf {
-			grid-template-columns: 6rem minmax(8rem, 1fr) 7rem 6.5rem minmax(14rem, 1.4fr);
-			grid-template-areas: 'date nature montant etat actions';
+			grid-template-columns: 5.5rem minmax(8rem, 1fr) 8.5rem minmax(14rem, 1.5fr);
+			grid-template-areas: 'date nature montant achat';
 		}
 	}
 	.ndf-date {
@@ -728,17 +824,118 @@
 	.ndf-montant {
 		grid-area: montant;
 	}
-	.ndf-etat {
-		grid-area: etat;
-		justify-self: end;
+	.ndf-achat {
+		grid-area: achat;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 0;
 	}
-	@container (min-width: 44rem) {
-		.ndf-etat {
-			justify-self: start;
+	.ndf-ok {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1rem;
+		height: 1rem;
+		border-radius: 9999px;
+		color: var(--accent);
+		font-weight: 600;
+		font-size: 10px;
+		line-height: 1;
+	}
+	.ndf-select {
+		max-width: 16rem;
+		min-width: 0;
+		padding-top: 1px;
+		padding-bottom: 1px;
+		font-size: 11px;
+	}
+	/* « modifier » waits for the pointer (or the keyboard) on the row */
+	.ndf-tool {
+		flex: none;
+		color: var(--text-2);
+		font-size: 11px;
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity var(--motion-fast) ease;
+	}
+	.ndf-tool:hover {
+		color: var(--accent);
+		text-decoration: underline;
+	}
+	.ligne-ndf:hover .ndf-tool,
+	.ligne-ndf:focus-within .ndf-tool,
+	.ndf-tool.is-open {
+		opacity: 1;
+	}
+	@media (hover: none) {
+		.ndf-tool {
+			opacity: 0.7;
 		}
 	}
-	.ndf-actions {
-		grid-area: actions;
+	/* Month rail of the expense reports */
+	.ndf-rail {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		min-width: 0;
+	}
+	.ndf-rail-months {
+		display: flex;
+		gap: 2px;
+		max-width: 28rem;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+	.ndf-rail-chip {
+		position: relative;
+		flex: none;
+		padding: 2px 8px 2px 8px;
+		border-radius: 9999px;
+		color: var(--text-2);
+		font-size: 11px;
+		white-space: nowrap;
+		cursor: pointer;
+		transition:
+			background-color var(--motion-fast) ease,
+			color var(--motion-fast) ease;
+	}
+	.ndf-rail-chip:hover {
+		background: var(--surface-2);
+		color: var(--text);
+	}
+	.ndf-rail-chip.is-current {
+		background: var(--accent);
+		color: var(--surface);
+		font-weight: 500;
+	}
+	.ndf-rail-dot {
+		display: inline-block;
+		width: 6px;
+		height: 6px;
+		margin-left: 4px;
+		border-radius: 9999px;
+		background: var(--amber);
+		vertical-align: 1px;
+	}
+	.ndf-rail-arrow {
+		flex: none;
+		width: 1.4rem;
+		height: 1.4rem;
+		border-radius: 9999px;
+		color: var(--text-2);
+		font-size: 15px;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.ndf-rail-arrow:hover:not(:disabled) {
+		background: var(--surface-2);
+		color: var(--text);
+	}
+	.ndf-rail-arrow:disabled {
+		opacity: 0.3;
+		cursor: default;
 	}
 	.drop-active {
 		outline: 2px dashed var(--accent);

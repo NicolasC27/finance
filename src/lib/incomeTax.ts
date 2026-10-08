@@ -154,26 +154,44 @@ export interface WithholdingMonth {
 	taxable: number;
 	rate: number;
 	withheld: number;
-	/** Read from a payslip, or projected at the last payslip until December. */
+	/** Still to come: projected at the last payslip until December (its rate can still change). */
 	projected: boolean;
+	/** Already past but without payslip (missing between two, or not imported yet): estimated like the month before. */
+	missing?: boolean;
 }
 
+/** Months without payslip after which the estimate stops (the contract has probably ended). */
+const STALE_MONTHS = 3;
+
+const monthIndex = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7));
+
 /**
- * Months of the year from the first payslip to December: each payslip as read, months after the
- * last one projected with its net taxable and rate (a missing month in between too).
+ * Months of the year from the first payslip to December: each payslip as read; a month without
+ * payslip before the last one, or after it but already past, estimated like the month before
+ * (`missing`); months still to come projected at the last payslip (`projected`). Given `today`,
+ * nothing is counted after a payslip three months old or more: the contract has probably ended
+ * (a year already over then stops at its last payslip).
  */
-export function projectMonths(payslips: readonly { month: string; taxable: number; rate: number; withheld: number }[], year: number): WithholdingMonth[] {
+export function projectMonths(payslips: readonly { month: string; taxable: number; rate: number; withheld: number }[], year: number, today?: string): WithholdingMonth[] {
 	const own = payslips.filter((p) => p.month.startsWith(`${year}-`)).sort((a, b) => a.month.localeCompare(b.month));
 	if (!own.length) return [];
-	const first = Number(own[0]!.month.slice(5, 7));
+	const lastRead = own[own.length - 1]!.month;
+	const current = today ? today.slice(0, 7) : null;
+	const stale = current !== null && monthIndex(current) - monthIndex(lastRead) >= STALE_MONTHS;
 	const out: WithholdingMonth[] = [];
 	let last = own[0]!;
-	for (let m = first; m <= 12; m++) {
+	for (let m = Number(own[0]!.month.slice(5, 7)); m <= 12; m++) {
 		const month = `${year}-${String(m).padStart(2, '0')}`;
 		const p = own.find((x) => x.month === month);
-		if (p) last = p;
-		const src = p ?? last;
-		out.push({ month, taxable: src.taxable, rate: src.rate, withheld: p ? p.withheld : Math.round(src.taxable * src.rate) / 100, projected: !p });
+		if (p) {
+			last = p;
+			out.push({ month, taxable: p.taxable, rate: p.rate, withheld: p.withheld, projected: false });
+			continue;
+		}
+		if (month > lastRead && stale) break;
+		const estimate = { month, taxable: last.taxable, rate: last.rate, withheld: Math.round(last.taxable * last.rate) / 100 };
+		const past = month < lastRead || (current !== null && month < current);
+		out.push(past ? { ...estimate, projected: false, missing: true } : { ...estimate, projected: true });
 	}
 	return out;
 }

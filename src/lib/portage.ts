@@ -495,7 +495,7 @@ function entry(date: string, signedAmount: number, label: string, category: Cate
  * neutralised in its own category in the month of the purchase; the reimbursement included in
  * the next month's salary is not income.
  */
-export function portageEntries(data: PortageData, txs: Transaction[], txKey: (tx: Transaction) => string, categoryOf: (tx: Transaction) => CategoryId): Transaction[] {
+export function portageEntries(data: PortageData, txs: Transaction[], txKey: (tx: Transaction) => string, categoryOf: (tx: Transaction) => CategoryId, years?: PortageYears | null): Transaction[] {
 	const out: Transaction[] = [];
 	for (const p of data.paies) {
 		const tr = p.titresRestaurant;
@@ -509,11 +509,12 @@ export function portageEntries(data: PortageData, txs: Transaction[], txKey: (tx
 		}
 	}
 	for (const s of data.swile ?? []) out.push(entry(s.date, -s.montant, `Payé en Swile : ${s.libelle}`, s.categoryId, 'Repas payé avec la carte Swile (saisie rapide)', s.subId));
-	for (const pr of portageTaxProvisions(data)) {
+	for (const pr of portageTaxProvisions(data, years)) {
 		const payslip = data.paies.find((p) => p.mois === pr.mois)!;
 		const date = salaryTransfer(payslip, txs)?.booking_date ?? payslip.datePaiement ?? endOfMonth(pr.mois);
 		const adjustmentMonth = `septembre ${Number(pr.mois.slice(0, 4)) + 1}`;
-		out.push(entry(date, -pr.montant, `Provision impôt · ${monthName(pr.mois)}`, 'impots', `Prélevé à ${pct(pr.tauxPreleve)} au lieu de ≈ ${pct(pr.tauxVise)} sur ${eur(pr.base)} imposables : mis de côté pour la régularisation de ${adjustmentMonth}. Quand elle sera prélevée, exclus-la du budget pour ne pas la compter deux fois.`));
+		if (pr.montant < 0) out.push(entry(date, -pr.montant, `Reprise de provision impôt · ${monthName(pr.mois)}`, 'impots', `Prélevé à ${pct(pr.tauxPreleve)}, plus que les ≈ ${pct(pr.tauxVise)} de l'année : ce surplus paie l'impôt mis de côté les mois d'avant, ${eur(-pr.montant)} rendus au budget.`));
+		else out.push(entry(date, -pr.montant, `Provision impôt · ${monthName(pr.mois)}`, 'impots', `Prélevé à ${pct(pr.tauxPreleve)} au lieu de ≈ ${pct(pr.tauxVise)} sur ${eur(pr.base)} imposables : mis de côté pour la régularisation de ${adjustmentMonth}. Quand elle sera prélevée, exclus-la du budget pour ne pas la compter deux fois.`));
 	}
 	for (const c of data.cheques.credits) out.push(entry(c.date, c.montant, `Chèques culture · ${c.libelle}`, 'revenus', 'Porte-monnaie chèques culture (onglet Portage)'));
 	for (const d of data.cheques.depenses) out.push(entry(d.date, -d.montant, `Payé en chèques culture : ${d.libelle}`, d.categoryId, 'Dépense en chèques culture (onglet Portage)', d.subId));
@@ -579,10 +580,65 @@ export function neutralRate(monthlyBase: number): number {
 	return 43;
 }
 
+/**
+ * One year of withholding as the income-tax estimate sees it (Impôt page, incomeTax.svelte.ts):
+ * the alert and the automatic provision follow it for the months of that year.
+ */
+export interface PortageYearTax {
+	year: number;
+	/** Estimated tax of the year (the household's in a couple). */
+	tax: number;
+	/** Withheld so far (payslips read, estimated missing months, the months before them), and still to come at the current rate until December. */
+	withheldSoFar: number;
+	withheldToCome: number;
+	/** Tax − everything withheld: > 0 to pay from September of the next year, < 0 refunded in the summer. */
+	balance: number;
+	/** Paid in four instalments (September → December) when over 300 €. */
+	instalments: number;
+	/** Rate on the months left that brings the balance to zero, null when no month is left. */
+	rateToAvoid: number | null;
+	/** Average rate the portage salaries of the year should carry for their share of the tax (what is withheld elsewhere taken off). */
+	portageRate: number | null;
+	/** Taxable income counted, by source; `projected` = portage months still to come, until December. */
+	income: { before: number; benefits: number; portage: number; projected: number; partner: number; other: number };
+	projectedMonths: number;
+	/** Part of the tax due to the other income (it may pay its own instalments: left out of the portage's provision). */
+	otherTax: number;
+	household: { couple: boolean; children: number };
+	/** Last payslip when the estimate stops before December (no payslip for three months: contract probably over). */
+	stoppedAt: string | null;
+	/** The scale is the year's own (false: the closest year the app knows). */
+	exactRules: boolean;
+}
+
+/** One estimate per income year with payslips. */
+export type PortageYears = ReadonlyMap<number, PortageYearTax>;
+
+/** Balance under which the withholding is said to match the year (€). */
+export const YEAR_TOLERANCE = 150;
+
+type Withheld = Payslip & { pas: NonNullable<Payslip['pas']> };
+
+const withRateSorted = (payslips: readonly Payslip[]): Withheld[] => payslips.filter((p): p is Withheld => !!p.pas && p.pas.taux >= 0).sort((a, b) => a.mois.localeCompare(b.mois));
+
+/** The last payslip with withholding. */
+export const lastWithholding = (payslips: readonly Payslip[]): Withheld | undefined => withRateSorted(payslips).at(-1);
+
+/** The rate change between the last two payslips, null when the rate did not move. */
+export function lastRateChange(payslips: readonly Payslip[]): { from: number; to: number; month: string; base: number } | null {
+	const sorted = withRateSorted(payslips);
+	const last = sorted.at(-1);
+	const prev = sorted.at(-2);
+	if (!last || !prev || Math.abs(last.pas.taux - prev.pas.taux) < 0.05) return null;
+	return { from: prev.pas.taux, to: last.pas.taux, month: last.mois, base: taxableBase(last) };
+}
+
 export interface TaxAlert {
 	niveau: 'alerte' | 'info';
 	titre: string;
 	detail: string;
+	/** Drawn from the year's estimate (the page can show its bars instead of the detail). */
+	annee?: boolean;
 }
 
 const pct = (n: number) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
@@ -593,12 +649,27 @@ const reaches = (gap: number, threshold: number) => gap + 1e-9 >= threshold;
 /** Net taxable amount of the month: base from the payslip, else amount ÷ rate (old imports). */
 export const taxableBase = (p: Payslip) => (p.pas ? (p.pas.base ?? (p.pas.taux > 0 ? p.pas.montant / (p.pas.taux / 100) : 0)) : 0);
 
-/** Target rate for the provision: chosen by hand, else the neutral rate of the last salary. */
-export function targetRate(data: PortageData): number | undefined {
-	if (data.impot?.taux !== undefined) return data.impot.taux;
-	const last = data.paies.filter((p) => p.pas).sort((a, b) => a.mois.localeCompare(b.mois)).pop();
+export type TargetSource = 'manuel' | 'annee' | 'neutre';
+
+/** Rate the provision aims at for a month: typed by hand, else the average rate of the month's year when it is estimated, else the neutral rate of the last salary. */
+function monthTarget(data: PortageData, month: string, years?: PortageYears | null): { rate: number; source: TargetSource } | undefined {
+	if (data.impot?.taux !== undefined) return { rate: data.impot.taux, source: 'manuel' };
+	const year = years?.get(Number(month.slice(0, 4)));
+	if (year && year.portageRate !== null) return { rate: year.portageRate, source: 'annee' };
+	const last = lastWithholding(data.paies);
 	const b = last ? taxableBase(last) : 0;
-	return b > 0 ? neutralRate(b) : undefined;
+	return b > 0 ? { rate: neutralRate(b), source: 'neutre' } : undefined;
+}
+
+/** Target of the last payslip's month, and where it comes from (typed by hand, the year's estimate, the neutral rate). */
+export function lastTarget(data: PortageData, years?: PortageYears | null): { rate: number; source: TargetSource } | undefined {
+	const last = lastWithholding(data.paies);
+	return last ? monthTarget(data, last.mois, years) : data.impot?.taux !== undefined ? { rate: data.impot.taux, source: 'manuel' } : undefined;
+}
+
+/** Target rate of the provision (that of the last payslip's month). */
+export function targetRate(data: PortageData, years?: PortageYears | null): number | undefined {
+	return lastTarget(data, years)?.rate;
 }
 
 export interface PortageTaxProvision {
@@ -606,23 +677,40 @@ export interface PortageTaxProvision {
 	base: number;
 	tauxPreleve: number;
 	tauxVise: number;
+	/** Set aside (> 0), or given back (< 0) when the month withheld more than the year needs. */
 	montant: number;
 }
 
 /**
- * Tax not withheld yet, to set aside every month: (target rate − withheld rate) × net taxable.
- * In automatic mode only from a 2-point gap (like the alert); with a rate chosen by hand, from
- * 0.1 point.
+ * Tax not withheld yet, to set aside every month.
+ * - Months of an estimated year: (the year's average rate − withheld rate) × net taxable, counted
+ *   as a running total over the year that never goes below zero. A month withheld above the
+ *   average gives back what earlier months set aside, so the year's total is what September will
+ *   ask (nothing when the year is refunded): the tax is never counted twice.
+ * - Otherwise: from a 2-point gap with the neutral rate of the last salary, from 0.1 point with a
+ *   rate typed by hand (which also wins over the year's).
  */
-export function portageTaxProvisions(data: PortageData): PortageTaxProvision[] {
-	const target = data.impot?.provision === false ? undefined : targetRate(data);
-	if (target === undefined) return [];
-	const threshold = data.impot?.taux !== undefined ? 0.1 : 2;
+export function portageTaxProvisions(data: PortageData, years?: PortageYears | null): PortageTaxProvision[] {
+	if (data.impot?.provision === false) return [];
 	const out: PortageTaxProvision[] = [];
-	for (const p of data.paies) {
+	const running = new Map<number, number>();
+	const booked = new Map<number, number>();
+	for (const p of [...data.paies].sort((a, b) => a.mois.localeCompare(b.mois))) {
 		const base = taxableBase(p);
-		if (!p.pas || base <= 0 || !reaches(target - p.pas.taux, threshold)) continue;
-		out.push({ mois: p.mois, base: r2(base), tauxPreleve: p.pas.taux, tauxVise: target, montant: r2(((target - p.pas.taux) / 100) * base) });
+		const target = monthTarget(data, p.mois, years);
+		if (!p.pas || base <= 0 || !target) continue;
+		if (target.source === 'annee') {
+			const y = Number(p.mois.slice(0, 4));
+			const total = (running.get(y) ?? 0) + ((target.rate - p.pas.taux) / 100) * base;
+			running.set(y, total);
+			const amount = r2(Math.max(0, total) - (booked.get(y) ?? 0));
+			if (Math.abs(amount) < 1) continue;
+			booked.set(y, r2((booked.get(y) ?? 0) + amount));
+			out.push({ mois: p.mois, base: r2(base), tauxPreleve: p.pas.taux, tauxVise: target.rate, montant: amount });
+			continue;
+		}
+		if (!reaches(target.rate - p.pas.taux, target.source === 'manuel' ? 0.1 : 2)) continue;
+		out.push({ mois: p.mois, base: r2(base), tauxPreleve: p.pas.taux, tauxVise: target.rate, montant: r2(((target.rate - p.pas.taux) / 100) * base) });
 	}
 	return out;
 }
@@ -632,7 +720,7 @@ export function portageTaxProvisions(data: PortageData): PortageTaxProvision[] {
  * too low for the current salary (gap ≥ 2 points with the neutral rate) → regularisation to
  * expect (August to December of the next year; the reminder avoids counting it twice).
  */
-export function taxAlerts(payslips: Payslip[], opts: { provisions?: PortageTaxProvision[]; aujourdhui?: string } = {}): TaxAlert[] {
+export function taxAlerts(payslips: Payslip[], opts: { provisions?: PortageTaxProvision[]; aujourdhui?: string; years?: PortageYears | null } = {}): TaxAlert[] {
 	const withRate = payslips.filter((p) => p.pas && p.pas.taux >= 0).sort((a, b) => a.mois.localeCompare(b.mois));
 	const last = withRate[withRate.length - 1];
 	if (!last?.pas) return [];
@@ -653,6 +741,11 @@ export function taxAlerts(payslips: Payslip[], opts: { provisions?: PortageTaxPr
 				detail: `Ton budget a provisionné ${eur(total)} en ${year}. Quand la régularisation sera prélevée (souvent en septembre), exclus cette opération du budget : sinon la même dépense compte deux fois.`
 			});
 		}
+	}
+	const estimate = opts.years?.get(Number(last.mois.slice(0, 4)));
+	if (estimate) {
+		out.push(yearAlert(estimate, last.pas.taux, (opts.provisions ?? []).filter((x) => x.mois.startsWith(`${estimate.year}-`)).reduce((s, x) => s + x.montant, 0), lastRateChange(payslips)));
+		return out;
 	}
 	if (prev?.pas && Math.abs(last.pas.taux - prev.pas.taux) >= 0.05) {
 		const rising = last.pas.taux > prev.pas.taux;
@@ -676,6 +769,66 @@ export function taxAlerts(payslips: Payslip[], opts: { provisions?: PortageTaxPr
 		});
 	}
 	return out;
+}
+
+/** When the balance is settled: refunded in the summer, paid in September or in four instalments. */
+export function settlementText(y: Pick<PortageYearTax, 'year' | 'balance' | 'instalments'>): string {
+	const next = y.year + 1;
+	if (y.balance < 0) return `à l'été ${next}`;
+	return y.instalments > 1 ? `de septembre à décembre ${next}` : `en septembre ${next}`;
+}
+
+/** What the estimate counts, in words: « salaire avant le portage 15 430 €, portage 28 813 € dont 3 mois projetés ». */
+function yearIncomeText(y: PortageYearTax): string {
+	const parts = [
+		y.income.before > 0 ? `salaire avant le portage ${eur(y.income.before)}` : '',
+		y.income.benefits > 0 ? `chômage ${eur(y.income.benefits)}` : '',
+		`portage ${eur(y.income.portage + y.income.projected)}${y.projectedMonths ? ` dont ${y.projectedMonths} mois projeté${y.projectedMonths > 1 ? 's' : ''} jusqu'en décembre` : ''}`,
+		y.income.partner > 0 ? `salaire du conjoint ${eur(y.income.partner)}` : '',
+		y.income.other > 0 ? `autres revenus ${eur(y.income.other)}` : ''
+	];
+	return parts.filter(Boolean).join(', ');
+}
+
+/** The household the estimate assumes (set on the Impôt page). */
+export function householdText(h: PortageYearTax['household']): string {
+	return `${h.couple ? 'couple' : 'célibataire'}, ${h.children ? `${h.children} enfant${h.children > 1 ? 's' : ''}` : 'sans enfant'}`;
+}
+
+/** The year's alert: to pay, refunded, or matching; with the rate change of the last payslip, the rate that clears the year and what the budget set aside. */
+export function yearAlert(y: PortageYearTax, rate: number, provisioned: number, change: { from: number; to: number; month: string } | null = null): TaxAlert {
+	const when = settlementText(y);
+	const notes = [
+		change ? `Ton taux est passé de ${pct(change.from)} à ${pct(change.to)} en ${monthName(change.month)}.` : '',
+		`Impôt ${y.year} estimé ≈ ${eur(y.tax)} sur ${y.household.couple ? 'les revenus du foyer' : 'tout ton revenu imposable'} de l'année (${yearIncomeText(y)} ; foyer ${householdText(y.household)}, à régler sur la page Impôt).`,
+		y.projectedMonths > 0 ? `Déjà prélevé ${eur(y.withheldSoFar)}, encore ≈ ${eur(y.withheldToCome)} d'ici décembre à ${pct(rate)}.` : `Prélevé sur l'année : ${eur(y.withheldSoFar)}.`,
+		y.stoppedAt ? `Pas de fiche de paie après ${monthName(y.stoppedAt)} : l'estimation s'arrête là.` : '',
+		y.otherTax > 0 ? `Dont ≈ ${eur(y.otherTax)} sur tes autres revenus, hors provision du portage.` : '',
+		y.exactRules ? '' : `Barème ${y.year} pas encore dans l'app : estimation sur le plus proche.`
+	];
+	if (y.balance > YEAR_TOLERANCE) {
+		const advice = y.rateToAvoid === null ? '' : y.rateToAvoid === 0 ? 'Plus aucun prélèvement ne serait nécessaire d’ici décembre.' : `Pour ne rien devoir, passe ton taux à ≈ ${pct(y.rateToAvoid)} sur impots.gouv.fr.`;
+		return {
+			annee: true,
+			niveau: 'alerte',
+			titre: `Prélèvement trop bas pour ton année ${y.year} : ≈ ${eur(y.balance)} à payer ${when}`,
+			detail: [...notes, advice, provisioned > 0 ? `Ton budget a déjà mis de côté ${eur(provisioned)}.` : ''].filter(Boolean).join(' ')
+		};
+	}
+	if (y.balance < -YEAR_TOLERANCE) {
+		return {
+			annee: true,
+			niveau: 'info',
+			titre: `Prélèvement trop haut pour ton année ${y.year} : ≈ ${eur(-y.balance)} remboursés ${when}`,
+			detail: [...notes, y.rateToAvoid !== null ? `Un taux de ≈ ${pct(y.rateToAvoid)} suffirait d'ici décembre.` : ''].filter(Boolean).join(' ')
+		};
+	}
+	return {
+		annee: true,
+		niveau: 'info',
+		titre: `Ton taux colle à ton année ${y.year} : écart ≈ ${eur(Math.abs(y.balance))}`,
+		detail: notes.filter(Boolean).join(' ')
+	};
 }
 
 /* ---------- Merging an imported document ---------- */
