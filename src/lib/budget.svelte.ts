@@ -111,6 +111,44 @@ export function setSubOverride(tx: Transaction, subId: string | null, scope: 'tx
 	budgetState.overrides = { ...budgetState.overrides };
 }
 
+/** Subcategories of several operations at once (`scope: 'tx'`), one write. */
+export function setTxSubOverrides(list: readonly { tx: Transaction; subId: string | null }[]): void {
+	if (!list.length) return;
+	const byTx = { ...budgetState.subOverrides.byTx };
+	for (const { tx, subId } of list) byTx[txKey(tx)] = subId;
+	budgetState.subOverrides = { ...budgetState.subOverrides, byTx };
+	saveSubOverrides(budgetState.subOverrides);
+	setSubOverridesSource(budgetState.subOverrides);
+	budgetState.overrides = { ...budgetState.overrides };
+}
+
+/**
+ * Hands the category and subcategory chosen for one operation (`fromKey`) over to `to`: a quick
+ * entry whose key changes, or the bank operation that replaces it. What `to` already has is kept;
+ * `fromKey` loses them.
+ */
+export function moveTxOverrides(fromKey: string, to: Transaction): void {
+	const toKey = txKey(to);
+	if (fromKey in budgetState.overrides) {
+		const next = { ...budgetState.overrides };
+		const category = next[fromKey]!;
+		delete next[fromKey];
+		if (!(toKey in next)) next[toKey] = category;
+		budgetState.overrides = next;
+		saveOverrides(next);
+	}
+	if (fromKey in budgetState.subOverrides.byTx) {
+		const byTx = { ...budgetState.subOverrides.byTx };
+		const subId = byTx[fromKey] ?? null;
+		delete byTx[fromKey];
+		if (!(toKey in byTx)) byTx[toKey] = subId;
+		budgetState.subOverrides = { ...budgetState.subOverrides, byTx };
+		saveSubOverrides(budgetState.subOverrides);
+		setSubOverridesSource(budgetState.subOverrides);
+		budgetState.overrides = { ...budgetState.overrides };
+	}
+}
+
 /** Moves to the previous/next month, bounded by the list of available months. */
 export function shiftMonth(availableMonths: string[], delta: number): void {
 	const idx = availableMonths.indexOf(budgetState.selectedMonth);

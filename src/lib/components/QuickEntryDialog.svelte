@@ -6,7 +6,7 @@
 	import { segmented } from '$lib/actions/segmented';
 	import { parseQuickEntry, type QuickDraft } from '$lib/quickEntry';
 	import { askRelay, defaultPayment, QUICK_CATEGORIES, QUICK_SUBCATEGORIES, quickAccounts, relayConfig, saveQuickPayment, suggestCategory, voucherAvailable, voucherOptions } from '$lib/quickEntry.svelte';
-	import { splitVoucherPayment, type QuickPayment } from '$lib/quickEntry';
+	import { instalmentPlan, instalmentText, splitVoucherPayment, type QuickPayment } from '$lib/quickEntry';
 	import { formatEUR, formatDate } from '$lib/format';
 	import { todayIso } from '$lib/forecast';
 	import DateField from './DateField.svelte';
@@ -14,8 +14,9 @@
 	/**
 	 * Quick expense entry: one field (« leboncoin 20,25 € », « restaurant hier 34 € »), read as you
 	 * type by the local parser; Enter asks the AI relay when it is set (then Enter again saves). The
-	 * preview stays editable (label, amount, direction, category, date, account). The operation is
-	 * counted at once and replaced by the bank operation when the statement is imported.
+	 * preview stays editable (label, amount, direction, category, date, account, instalments). The
+	 * operation is counted at once and replaced by the bank operation when the statement is imported;
+	 * in several times, the next instalments wait for their bank debit.
 	 */
 
 	const today = todayIso;
@@ -24,7 +25,7 @@
 	let aiFor = $state('');
 	let asking = $state(false);
 	let aiFailed = $state(false);
-	let edits = $state<{ label?: string; amount?: string; credit?: boolean; categoryId?: CategoryId; subId?: string | null; date?: string; payment?: QuickPayment }>({});
+	let edits = $state<{ label?: string; amount?: string; credit?: boolean; categoryId?: CategoryId; subId?: string | null; date?: string; payment?: QuickPayment; instalments?: number }>({});
 	let account = $state('');
 	let saveBtn = $state<HTMLButtonElement | null>(null);
 
@@ -48,6 +49,9 @@
 	const named = $derived('error' in local ? undefined : local.payment);
 	const payment = $derived<QuickPayment>(credit ? 'card' : (edits.payment ?? defaultPayment(named)));
 	const split = $derived(payment === 'card' ? null : splitVoucherPayment(amount, voucherAvailable(payment, date)));
+	const instalments = $derived(credit || payment !== 'card' ? 1 : (edits.instalments ?? ('error' in local ? undefined : local.instalments) ?? 1));
+	const plan = $derived(instalments > 1 && amount > 0 ? instalmentPlan({ label, amount, credit, date, instalments }, today()) : null);
+	const times = $derived([...new Set([1, 3, 4, instalments])].sort((a, b) => a - b));
 	const ready = $derived(!!base && label.trim().length > 0 && amount > 0 && amount < 1_000_000);
 
 	$effect(() => {
@@ -78,14 +82,14 @@
 		if (d) {
 			aiDraft = d;
 			aiFor = asked;
-			edits = {};
+			edits = edits.instalments ? { instalments: edits.instalments } : {};
 			saveBtn?.focus();
 		} else aiFailed = true;
 	}
 
 	function save() {
 		if (!ready) return;
-		const draft: QuickDraft = { label: label.trim(), amount: Math.round(amount * 100) / 100, credit, date };
+		const draft: QuickDraft = { label: label.trim(), amount: Math.round(amount * 100) / 100, credit, date, ...(plan ? { instalments } : {}) };
 		const r = saveQuickPayment(draft, account, categoryId, subId, payment);
 		close();
 		showSuccess(`${credit ? 'Rentrée' : 'Dépense'} ajoutée : ${draft.label} ${credit ? '+' : '−'}${formatEUR(draft.amount)}, ${r.summary}`, 'Annuler', r.undo);
@@ -185,6 +189,17 @@
 										{#if split.voucher === 0}<span style="color: var(--amber);">{payment === 'swile' ? 'plafond Swile du jour atteint' : 'plus de chèques culture'} : tout sur ta carte</span>{:else if split.card > 0}{formatEUR(split.voucher)} en {payment === 'swile' ? 'Swile' : 'chèques'} + <span style="color: var(--accent);">{formatEUR(split.card)} sur ta carte</span>{payment === 'swile' ? ' (plafond du jour)' : ''}{:else}tout en {payment === 'swile' ? 'Swile' : 'chèques culture'}{/if}
 									</span>
 								{/if}
+							</div>
+						{/if}
+						{#if !credit && payment === 'card'}
+							<span class="meta-xs">En</span>
+							<div class="flex flex-wrap items-center gap-2">
+								<div class="flex gap-1" role="group" aria-label="Nombre d'échéances" use:segmented>
+									{#each times as t (t)}
+										<button type="button" class="chip cursor-pointer {instalments === t ? 'chip-accent' : 'chip-muted'}" aria-pressed={instalments === t} onclick={() => (edits = { ...edits, instalments: t })}>{t} fois</button>
+									{/each}
+								</div>
+								{#if plan}<span class="meta-xs" title="Les échéances suivantes comptent quand la banque les prélève ; elles sont dans l'échéancier">{instalmentText(plan, today())}</span>{/if}
 							</div>
 						{/if}
 						{#if accounts.length > 1}

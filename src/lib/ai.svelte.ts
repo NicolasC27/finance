@@ -1,7 +1,7 @@
 import type { CategoryId, Transaction } from './types';
 import { CATEGORIES, categorize, getCategory, saveOverrides, txKey } from './categories';
 import { flowKind } from './flow';
-import { signedAmount } from './data';
+import { isPlannedInstalment, signedAmount } from './data';
 import { merchantLabel } from './merchant';
 import { subcategorize } from './subcategories';
 import { accountLabel } from './accounts.svelte';
@@ -181,7 +181,7 @@ export function buildSnapshot(): Record<string, unknown> {
 	const merchantMap = getMerchantCategoryMap();
 	const overrides = budgetState.overrides;
 	const rules = rulesState.rules;
-	const transactions = getTransactions().map((tx) => {
+	const transactions = getTransactions().filter((tx) => !isPlannedInstalment(tx)).map((tx) => {
 		const key = txKey(tx);
 		const category = categorize(tx, overrides, rules, merchantMap);
 		return {

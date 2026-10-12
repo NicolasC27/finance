@@ -1,5 +1,7 @@
 import type { CategoryId, Transaction } from './types';
 import { signedAmount } from './data';
+import { formatEUR } from './format';
+import { addMonths } from './schedule';
 
 /**
  * Quick expense entry (pure, testable): a sentence typed when the money is spent (« leboncoin
@@ -21,6 +23,8 @@ export interface QuickDraft {
 	subId?: string;
 	/** Payment named in the sentence (« swile », « chèques culture »); the card otherwise. */
 	payment?: 'swile' | 'culture';
+	/** Number of instalments of a card payment (« en 3 fois », « 4x »); one payment when absent. */
+	instalments?: number;
 }
 
 const DAY = 86_400_000;
@@ -78,7 +82,13 @@ export function parseQuickEntry(text: string, today: string): QuickDraft | { err
 	const typed = text.replace(/\s+/g, ' ').trim();
 	if (!typed) return { error: 'Écris par exemple « leboncoin 20,25 € ».' };
 	const pay = PAYMENT_WORDS.find((p) => p.re.test(typed));
-	const raw = typed.replace(/\s*\b(en|par|avec)?\s*(swile|ch[eè]ques?[- ]culture|carte|cb)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+	const times = INSTALMENTS_RE.exec(typed);
+	const count = times ? Number(times[1] ?? times[2] ?? times[3]) : 0;
+	const raw = typed
+		.replace(INSTALMENTS_RE, ' ')
+		.replace(/\s*\b(en|par|avec)?\s*(swile|ch[eè]ques?[- ]culture|carte|cb)\b/gi, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
 	const { date, used } = readDate(raw, today);
 	let rest = raw;
 	for (const u of used) rest = rest.replace(new RegExp(u.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'), 'i'), ' ');
@@ -93,8 +103,15 @@ export function parseQuickEntry(text: string, today: string): QuickDraft | { err
 		.replace(/^[\s,;:–-]+|[\s,;:–-]+$/g, '')
 		.trim();
 	const credit = pick[1] === '+' || CREDIT_WORDS.test(raw);
-	return { label: label || 'Dépense', amount: Math.round(amount * 100) / 100, credit, date, ...(pay ? { payment: pay.payment } : {}) };
+	const instalments = credit ? 0 : count;
+	return { label: label || 'Dépense', amount: Math.round(amount * 100) / 100, credit, date, ...(pay ? { payment: pay.payment } : {}), ...(instalments > 1 ? { instalments } : {}) };
 }
+
+/**
+ * « en 3 fois », « payé en 4x », « 3x », « 3 fois sans frais » (2 to 12). Without « en » nor a glued
+ * « x », a number right after reads as a product (« 2 x 15 € », « 2 fois 9 € »).
+ */
+const INSTALMENTS_RE = /(?:\bpay[ée]e?s?\s+)?(?:\ben\s+(1[0-2]|[2-9])\s*(?:fois|x)\b|\b(1[0-2]|[2-9])x\b|\b(1[0-2]|[2-9])\s*(?:fois|x)\b(?!\s*\d))(?:\s+sans\s+frais)?/i;
 
 /** Payment means a sentence can name (the bank card is the default and needs no word). */
 const PAYMENT_WORDS: readonly { re: RegExp; payment: 'swile' | 'culture' }[] = [
@@ -134,6 +151,64 @@ export function draftToTransaction(d: QuickDraft, account: string): Transaction 
 		account,
 		source: 'manual'
 	};
+}
+
+// ---------- Payment in several instalments ----------
+
+export interface Instalment {
+	/** 1 for the first. */
+	n: number;
+	of: number;
+	date: string;
+	amount: number;
+	/** Date reached: counted at once like a quick entry; later ones wait for the bank debit. */
+	due: boolean;
+}
+
+/** Same day of the months after `date` (the last day when the month is shorter). */
+export function instalmentDates(date: string, count: number): string[] {
+	return Array.from({ length: count }, (_, i) => addMonths(date, i));
+}
+
+/** Amount split to the cent, the first instalment taking the odd cents (100 € → 33,34 + 33,33 + 33,33). */
+export function splitInstalments(amount: number, count: number): number[] {
+	const cents = Math.round(amount * 100);
+	const part = Math.floor(cents / count);
+	return Array.from({ length: count }, (_, i) => (i === 0 ? cents - part * (count - 1) : part) / 100);
+}
+
+/** Instalments of a draft (a single one when it is not split, for money received, or below a cent each). */
+export function instalmentPlan(draft: QuickDraft, today: string): Instalment[] {
+	const asked = !draft.credit && draft.instalments && draft.instalments > 1 ? Math.min(12, Math.floor(draft.instalments)) : 1;
+	const count = Math.max(1, Math.min(asked, Math.round(draft.amount * 100)));
+	const dates = instalmentDates(draft.date, count);
+	return splitInstalments(draft.amount, count).map((amount, i) => ({ n: i + 1, of: count, date: dates[i]!, amount, due: dates[i]! <= today }));
+}
+
+const shortDate = (iso: string) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
+
+/** « 100,00 € aujourd'hui, puis 100,00 € le 12 nov. et le 12 déc. » (the later instalments share one amount). */
+export function instalmentText(plan: readonly Instalment[], today: string): string {
+	const [first, ...rest] = plan;
+	if (!first) return '';
+	const when = (iso: string) => (iso === today ? "aujourd'hui" : `le ${shortDate(iso)}`);
+	if (!rest.length) return `${formatEUR(first.amount)} ${when(first.date)}`;
+	const dates = rest.map((p) => when(p.date));
+	const list = dates.length > 1 ? `${dates.slice(0, -1).join(', ')} et ${dates.at(-1)}` : dates[0];
+	return `${formatEUR(first.amount)} ${when(first.date)}, puis ${formatEUR(rest[0]!.amount)} ${list}`;
+}
+
+/**
+ * Operations of a split payment: today's instalment is counted at once; the others wait without a
+ * value date, the future ones until their date, the past ones until they are settled (paired with a
+ * bank debit already imported, or counted from their date).
+ */
+export function instalmentTransactions(draft: QuickDraft, account: string, today: string): Transaction[] {
+	return instalmentPlan(draft, today).map((p) => ({
+		...draftToTransaction({ ...draft, amount: p.amount, date: p.date }, account),
+		...(p.date === today ? {} : { value_date: '' }),
+		instalment: { n: p.n, of: p.of }
+	}));
 }
 
 /** Words of a label worth comparing (lowercase, no accents, 3+ letters, no card/date noise). */

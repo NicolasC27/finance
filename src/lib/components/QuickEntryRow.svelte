@@ -3,7 +3,7 @@
 	import { getCategory } from '$lib/categories';
 	import { todayIso } from '$lib/forecast';
 	import { formatDate, formatEUR } from '$lib/format';
-	import { parseQuickEntry, type QuickDraft } from '$lib/quickEntry';
+	import { instalmentPlan, instalmentText, parseQuickEntry, type QuickDraft } from '$lib/quickEntry';
 	import { QUICK_SUBCATEGORIES, quickAccounts, saveQuickPayment, suggestCategory } from '$lib/quickEntry.svelte';
 	import { showSuccess, uiState } from '$lib/ui.svelte';
 	import CategoryMark from './CategoryMark.svelte';
@@ -14,7 +14,8 @@
 	 * and the amount show at the right. Enter saves it on the spot (card, first current account,
 	 * suggested category) when nothing needs a look; a named voucher, an unknown category or a
 	 * future date open the full dialog instead, as Shift+Enter always does, with the sentence
-	 * handed over and handed back if the dialog is cancelled. `compact`: the dashboard card.
+	 * handed over and handed back if the dialog is cancelled. « en 3 fois » shows one dot per
+	 * instalment (filled: counted today). `compact`: the dashboard card.
 	 */
 	let { compact = false }: { compact?: boolean } = $props();
 
@@ -31,13 +32,14 @@
 		const auto = draft?.categoryId === categoryId && draft?.subId ? draft.subId : suggestion?.categoryId === categoryId ? suggestion.subId : null;
 		return auto && QUICK_SUBCATEGORIES.some((s) => s.id === auto && s.categoryId === categoryId) ? auto : null;
 	});
+	const plan = $derived(draft?.instalments && !draft.credit && !draft.payment ? instalmentPlan(draft, todayIso()) : null);
 	const ready = $derived(!!draft && draft.label.trim().length > 0 && draft.amount > 0 && draft.amount < 1_000_000);
 	/** What Enter needs the dialog for: a voucher to split, a category to choose, a date to check. */
 	const needsALook = $derived(!!draft && (draft.payment !== undefined || (!draft.categoryId && suggestion?.source === 'none') || draft.date > todayIso()));
 
 	function save() {
 		if (!draft || !ready) return;
-		const entry: QuickDraft = { label: draft.label.trim(), amount: Math.round(draft.amount * 100) / 100, credit: draft.credit, date: draft.date };
+		const entry: QuickDraft = { label: draft.label.trim(), amount: Math.round(draft.amount * 100) / 100, credit: draft.credit, date: draft.date, ...(plan ? { instalments: plan.length } : {}) };
 		const account = quickAccounts()[0]?.id ?? 'cm';
 		const r = saveQuickPayment(entry, account, categoryId, subId, 'card');
 		text = '';
@@ -91,10 +93,37 @@
 		<span class="meta-xs hidden shrink-0 items-center gap-1.5 sm:flex">
 			<CategoryMark id={categoryId} size={16} />
 			{getCategory(categoryId).label}{draft.date !== todayIso() ? ` · ${formatDate(draft.date)}` : ''}
+			{#if plan}
+				<span class="instalments" title={instalmentText(plan, todayIso())}>
+					· en {plan.length} fois
+					{#each plan as p (p.n)}<i class:due={p.due} aria-hidden="true"></i>{/each}
+					<span class="sr-only">: {instalmentText(plan, todayIso())}</span>
+				</span>
+			{/if}
 		</span>
 		<span class="tabular shrink-0 text-[13px] font-medium {draft.credit ? 'text-accent' : 'text-debit'}">{draft.credit ? '+' : '−'}{formatEUR(draft.amount)}</span>
-		{#if !compact}<span class="meta-xs hidden shrink-0 xl:inline">{needsALook ? '↵ vérifier' : '↵ enregistrer · ⇧↵ détails'}</span>{/if}
+		{#if !compact}<span class="meta-xs hidden shrink-0 xl:inline">{needsALook ? '↵ vérifier' : plan ? `↵ enregistrer les ${plan.length} échéances` : '↵ enregistrer · ⇧↵ détails'}</span>{/if}
 	{:else if text.trim()}
 		<span class="meta-xs shrink-0">et le montant ?</span>
 	{/if}
 </div>
+
+<style>
+	.instalments {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+	}
+	.instalments i {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		border: 1px solid var(--accent);
+	}
+	.instalments i:first-of-type {
+		margin-left: 3px;
+	}
+	.instalments i.due {
+		background-color: var(--accent);
+	}
+</style>

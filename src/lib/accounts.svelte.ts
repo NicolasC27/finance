@@ -19,8 +19,9 @@ export interface AccountInfo {
 	balance?: number; // DECLARED balance (XLSX summary sheet, reconciliation); undefined → computed balance
 	/**
 	 * ISO date at which the declared balance was true: later operations are
-	 * added to it (patrimoine.computeAccounts). Missing on entries older than
-	 * this field: the declared balance is used as is.
+	 * added to it (accountBalances.computeAccounts). Missing on entries older
+	 * than this field: the declared balance is then only a fallback for an
+	 * account without any statement balance.
 	 */
 	balanceAt?: string;
 	currency?: string; // 'EUR'

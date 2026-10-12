@@ -3,7 +3,7 @@
 	import EmergencyFundCard from '$lib/components/EmergencyFundCard.svelte';
 	import { segmented } from '$lib/actions/segmented';
 	import type { CategoryId, Transaction } from '$lib/types';
-	import { isPending, signedAmount, spendAmount, cumulativeBalance, type BalancePoint, isBankTx } from '$lib/data';
+	import { isPending, isPlannedInstalment, signedAmount, spendAmount, cumulativeBalance, type BalancePoint, isBankTx } from '$lib/data';
 	import { accountOf } from '$lib/scope';
 	import { flowKind } from '$lib/flow';
 	import { monthTotals, monthCutoffDay, lastFlowDate, isBudgetFlow, daysInMonth } from '$lib/totals';
@@ -239,7 +239,7 @@
 	/** Recent operations OF THE DISPLAYED MONTH (+ pending ones), most recent first. */
 	const recent = $derived(
 		getTransactions()
-			.filter((tx) => isPending(tx) || monthKeyOf(tx.booking_date) === currentMonth)
+			.filter((tx) => (isPending(tx) && !isPlannedInstalment(tx)) || (!isPending(tx) && monthKeyOf(tx.booking_date) === currentMonth))
 			.sort((a, b) => {
 				if (isPending(a) !== isPending(b)) return isPending(a) ? -1 : 1;
 				return b.booking_date.localeCompare(a.booking_date);

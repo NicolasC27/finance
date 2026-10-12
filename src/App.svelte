@@ -29,7 +29,8 @@
 	import type { Component } from 'svelte';
 	import { route, navigate, initRouter, type RoutePath } from '$lib/router.svelte';
 	import { initTheme, applyTheme, type Theme } from '$lib/theme';
-	import { initTransactions, txState } from '$lib/store.svelte';
+	import { initTransactions, settleDueInstalments, txState } from '$lib/store.svelte';
+	import { todayIso } from '$lib/forecast';
 	import '$lib/vacations.svelte'; // hooks the 'Vacances' reclassification into categorize()
 	import '$lib/amazon.svelte'; // hooks the subcategory derived from Amazon orders
 	import '$lib/incomeTax.svelte'; // hooks the year's tax estimate into the portage alert and provision
@@ -153,6 +154,11 @@
 	/** Refund credits are moved into their expense's category once they are matched (net expense in the budget). */
 	$effect(() => {
 		if (txState.loaded) syncRefundCategories();
+	});
+
+	/** Instalments of a payment in several times whose date is reached: paired with the bank debit, or counted. */
+	$effect(() => {
+		if (txState.loaded) settleDueInstalments(todayIso());
 	});
 
 	/** Display preferences: a change in another tab never threatens data. */
