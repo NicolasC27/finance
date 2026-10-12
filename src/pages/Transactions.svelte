@@ -12,7 +12,7 @@
 	import { setOverrideAndPrompt } from '$lib/rules.svelte';
 	import RulesCard from '$lib/components/RulesCard.svelte';
 	import { getTransactions, getMerchantCategoryMap, txState, addImported, resetImported, restoreImported, deleteTransactions, restoreTransactions, deletedCount, resetDeletedTombstones, updateImported, updateImportedMany, undoQuickMatches } from '$lib/store.svelte';
-	import { isPending, signedAmount } from '$lib/data';
+	import { isPending, isPlannedInstalment, signedAmount } from '$lib/data';
 	import { isBudgetFlow } from '$lib/totals';
 	import { flowKind } from '$lib/flow';
 	import { cleanLabel, formatDate, formatEUR, formatEURCompact, formatMonth, monthKeyOf, maskAmounts } from '$lib/format';
@@ -56,6 +56,7 @@
 	import { navigate } from '$lib/router.svelte';
 	import ImportMapperModal, { type MapperSource } from '$lib/components/ImportMapperModal.svelte';
 	import MerchantMark from '$lib/components/MerchantMark.svelte';
+	import InstalmentChip from '$lib/components/InstalmentChip.svelte';
 	import RowsToggle from '$lib/components/RowsToggle.svelte';
 	import QuickEntryRow from '$lib/components/QuickEntryRow.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
@@ -267,7 +268,7 @@
 		let last = '';
 		for (const tx of allTxs) {
 			const d = purchaseDate(tx);
-			if (!d) continue;
+			if (!d || isPlannedInstalment(tx)) continue;
 			if (!first || d < first) first = d;
 			if (d > last) last = d;
 		}
@@ -459,12 +460,13 @@
 
 	/**
 	 * Sorting: date (desc by default) or debit/credit (absolute value); pending rows and empty cells
-	 * last.
+	 * last, except the expected instalments of a payment in several times, sorted by their date.
 	 */
 	const sorted = $derived.by(() => {
 		const dir = sortDir === 'asc' ? 1 : -1;
+		const last = (tx: Transaction) => isPending(tx) && !isPlannedInstalment(tx);
 		return [...filtered].sort((a, b) => {
-			if (isPending(a) !== isPending(b)) return isPending(a) ? 1 : -1;
+			if (last(a) !== last(b)) return last(a) ? 1 : -1;
 			if (sortKey === 'date') return a.booking_date.localeCompare(b.booking_date) * dir;
 			const va = columnSortValue(a, sortKey);
 			const vb = columnSortValue(b, sortKey);
@@ -2026,16 +2028,17 @@
 										{@const badge = accountBadge(tx)!}
 										<span class="chip chip-muted ml-2" title={badge.title} aria-label={badge.title}>{badge.label}</span>
 									{/if}
-									{#if isPending(tx)}
+									{#if isPending(tx) && !isPlannedInstalment(tx)}
 										<span class="chip chip-amber ml-2">En cours</span>
 									{/if}
+									<InstalmentChip {tx} class="ml-2" />
 									{#if refundOf(txKey(tx))}
 										{@const r = refundOf(txKey(tx))!}
 										<span class="chip {r.state === 'refunded' ? 'chip-accent' : r.state === 'overdue' ? 'chip-amber' : 'chip-outline'} ml-2" title="Remboursement attendu de {r.claim.who} : {formatEUR(r.refunded)} reçus sur {formatEUR(r.claim.expected)}">{r.state === 'refunded' ? 'remboursé' : r.state === 'overdue' ? 'remboursement en retard' : r.state === 'closed' ? 'soldé' : 'à rembourser'}</span>
 									{:else if refundedBy(txKey(tx)).length}
 										<span class="chip chip-accent ml-2" title="Rembourse une dépense : compté en déduction de sa catégorie">remboursement</span>
 									{/if}
-									{#if tx.source === 'manual'}
+									{#if tx.source === 'manual' && !isPlannedInstalment(tx)}
 										{#if quickEntryStale(tx)}
 											<span class="chip chip-amber ml-2" title="Saisie rapide absente du relevé alors qu'il couvre plus d'une semaine après : montant, compte ou date différents ?">absente du relevé</span>
 										{:else}
@@ -2221,10 +2224,11 @@
 								{@const badge = accountBadge(tx)!}
 								<span class="chip chip-muted ml-1.5" title={badge.title} aria-label={badge.title}>{badge.label}</span>
 							{/if}
-							{#if isPending(tx)}
+							{#if isPending(tx) && !isPlannedInstalment(tx)}
 								<span class="chip chip-amber ml-1.5">En cours</span>
 							{/if}
-							{#if tx.source === 'manual'}
+							<InstalmentChip {tx} class="ml-1.5" />
+							{#if tx.source === 'manual' && !isPlannedInstalment(tx)}
 								<span class="chip {quickEntryStale(tx) ? 'chip-amber' : 'chip-outline'} ml-1.5">{quickEntryStale(tx) ? 'absente du relevé' : 'à rapprocher'}</span>
 							{/if}
 						</p>

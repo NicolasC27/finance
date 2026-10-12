@@ -9,6 +9,7 @@
 	import { deleteTransactions, restoreTransactions, getMerchantCategoryMap } from '$lib/store.svelte';
 	import { showToast } from '$lib/ui.svelte';
 	import MerchantMark from './MerchantMark.svelte';
+	import InstalmentChip from './InstalmentChip.svelte';
 
 	/**
 	 * Transaction row: category mark, cleaned label, editable category, date, signed amount. `compact`
@@ -58,6 +59,7 @@
 			{#if pending}
 				<span class="chip chip-amber ml-2">En cours</span>
 			{/if}
+			<InstalmentChip {tx} class="ml-2" />
 			{#if tx.source === 'manual'}
 				<span class="chip chip-outline ml-2" title="Saisie rapide : remplacée par l'opération de la banque à l'import du relevé">à rapprocher</span>
 			{/if}

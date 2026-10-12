@@ -2,12 +2,12 @@ import { restorePoint } from './history.svelte';
 import type { Transaction } from './types';
 import { getTransactions } from './store.svelte';
 import { isPending, signedAmount, cumulativeBalance, type BalancePoint } from './data';
-import { NON_BANK_ACCOUNTS, isBankTx } from './scope';
+import { isBankTx } from './scope';
+import { computeAccounts, isImplicitDemo, type AccountView } from './accountBalances';
 import { isFiat, toEur } from './fiat';
 import { closesAt, balancesAt, cryptoEurByDay, splitByAsset } from './cryptoValue';
 import { formatDate } from './format';
-import { accountState, type AccountInfo } from './accounts.svelte';
-import { detectAccountKind, type AccountKind } from './csvCore';
+import { accountState } from './accounts.svelte';
 import { getLoanViews } from './loans.svelte';
 import * as kraken from './kraken';
 import { krakenLedgerState, mergeKrakenLedger, ledgerNeedsFullResync, getLedgerEntries, markApiSynced } from './krakenLedger.svelte';
@@ -210,125 +210,13 @@ export function getCryptoTotal(): number {
 /** Rounds to the cent (cumulative flows drift in floating point). */
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 
-/** Sources of a real bank statement (Crédit Mutuel CSV/XLSX, OFX/QIF/CAMT statements). */
-const IMPORTED_BANK_SOURCES: ReadonlySet<Transaction['source']> = new Set(['cm-csv', 'cm-xlsx', 'ofx', 'qif', 'camt']);
-
-/**
- * Transaction of the implicit generic account ('cm') outside imports: demo data, excluded
- * from the detected accounts (it still contributes to the total through the generic flows).
- */
-function isImplicitDemo(tx: Transaction): boolean {
-	return (tx.account ?? 'cm') === 'cm' && !IMPORTED_BANK_SOURCES.has(tx.source);
-}
-
 function txAmount(tx: Transaction): number {
 	return isPending(tx) ? 0 : signedAmount(tx);
 }
 
 // ---------- Detected accounts (v9: kinds, declared balances) ----------
 
-export interface AccountView {
-	id: string;
-	label: string;
-	last4: string;
-	kind: AccountKind;
-	/** DECLARED balance (XLSX summary sheet / reconciliation) + flows after its date; undefined if unknown. */
-	declared?: number;
-	/** Computed balance: last known balance_after, else cumulative flows. */
-	computed: number;
-	/** Where the computation comes from: the statement Balance column, or the plain sum of imported flows. */
-	computedFrom: 'balance' | 'flow';
-	/** Balance used: declared wins over computed. */
-	balance: number;
-	/** Signed sum of the current month. */
-	monthVar: number;
-	txCount: number;
-}
-
-/** Readable fallback label when the registry does not know the id. */
-function fallbackAccountLabel(id: string): string {
-	if (id === 'cm') return 'Compte Courant';
-	const m = /^cm-(?:\d{7})(\d{4})$/.exec(id);
-	if (m) return `Compte ••${m[1]}`;
-	if (id.startsWith('cm-')) return `Compte ${id.slice(3)}`;
-	return id;
-}
-
-/**
- * Detected-accounts view (PURE function, testable outside the browser): distinct ids of
- * imported transactions ∪ registry (implicit demo and Natixis/Kraken excluded: they have their
- * own cards), kind + declared balance from the registry, computed balance (last balance_after,
- * else cumulative flows), current-month change and number of operations. A registry account
- * with no remaining transaction shows 0 operations (entry kept).
- *
- * The latest balance_after wins by date; on equal dates the FIRST one met wins (CM exports are
- * reverse-chronological). A dated declared balance is moved forward by the operations booked
- * after it; an undated one (old registry) is used as is. Non-bank accounts (Kraken, Natixis,
- * Krak card) never come from the registry: the Krak card used to show up as a phantom account.
- */
-export function computeAccounts(txs: Transaction[], registry: AccountInfo[], now = new Date()): AccountView[] {
-	const nowKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-	interface Acc {
-		flow: number;
-		monthVar: number;
-		txCount: number;
-		lastAt: string;
-		lastBalance: number | null;
-		afterDeclared: number;
-	}
-	const byAccount = new Map<string, Acc>();
-	const ensure = (id: string): Acc => {
-		let acc = byAccount.get(id);
-		if (!acc) {
-			acc = { flow: 0, monthVar: 0, txCount: 0, lastAt: '', lastBalance: null, afterDeclared: 0 };
-			byAccount.set(id, acc);
-		}
-		return acc;
-	};
-	const declaredAt = new Map<string, string>();
-	for (const info of registry) if (info.balance !== undefined && info.balanceAt) declaredAt.set(info.id, info.balanceAt);
-	for (const tx of txs) {
-		if (!isBankTx(tx)) continue;
-		if (isImplicitDemo(tx)) continue;
-		const acc = ensure(tx.account ?? 'cm');
-		if (isPending(tx)) continue;
-		const amount = signedAmount(tx);
-		acc.txCount++;
-		acc.flow = r2(acc.flow + amount);
-		if (tx.booking_date.slice(0, 7) === nowKey) acc.monthVar = r2(acc.monthVar + amount);
-		const declDate = declaredAt.get(tx.account ?? 'cm');
-		if (declDate && tx.booking_date > declDate) acc.afterDeclared = r2(acc.afterDeclared + amount);
-		if (tx.balance_after !== undefined && tx.booking_date > acc.lastAt) {
-			acc.lastAt = tx.booking_date;
-			acc.lastBalance = tx.balance_after;
-		}
-	}
-	for (const info of registry) {
-		if (NON_BANK_ACCOUNTS.has(info.id)) continue;
-		ensure(info.id);
-	}
-	return [...byAccount.entries()]
-		.map(([id, acc]) => {
-			const reg = registry.find((a) => a.id === id);
-			const label = reg?.label ?? fallbackAccountLabel(id);
-			const computed = acc.lastBalance ?? acc.flow;
-			const last4 = reg?.last4 ?? (/^cm-(?:\d{7})(\d{4})$/.exec(id)?.[1] || '••••');
-			const declared = reg?.balance !== undefined ? (reg.balanceAt ? r2(reg.balance + acc.afterDeclared) : reg.balance) : undefined;
-			return {
-				id,
-				label,
-				last4,
-				kind: reg?.kind ?? detectAccountKind(label, id),
-				...(declared !== undefined ? { declared } : {}),
-				computed,
-				computedFrom: (acc.lastBalance !== null ? 'balance' : 'flow') as AccountView['computedFrom'],
-				balance: declared ?? computed,
-				monthVar: acc.monthVar,
-				txCount: acc.txCount
-			};
-		})
-		.sort((a, b) => b.balance - a.balance);
-}
+export { computeAccounts, type AccountView } from './accountBalances';
 
 /**
  * Reactive detected accounts (transactions ∪ persisted registry).

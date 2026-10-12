@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addMonths, buildSchedule, isLoanLabel, rentItems, rentSource, VARIABLE_SUBS, carItems, goalItems, loanItems, recurringItems, savingsItems, scheduleTotal, taxItems, GROUP_ORDER, groupColor, groupLabel, scheduleGroup, type ScheduleGroup, type ScheduleItem } from '../src/lib/schedule';
+import { addMonths, buildSchedule, instalmentItems, isLoanLabel, rentItems, rentSource, VARIABLE_SUBS, carItems, goalItems, loanItems, recurringItems, savingsItems, scheduleTotal, taxItems, GROUP_ORDER, groupColor, groupLabel, scheduleGroup, type ScheduleGroup, type ScheduleItem } from '../src/lib/schedule';
 import { CATEGORIES, getCategory } from '../src/lib/categories';
 import { isExpenseCategory } from '../src/lib/flow';
 import type { CategoryId } from '../src/lib/types';
@@ -188,4 +188,20 @@ test('groups: each one listed once with its label, own colours never shared with
 	const spending = CATEGORIES.filter((c) => isExpenseCategory(c.id)).map((c) => c.color);
 	for (const g of own) assert.ok(!spending.includes(groupColor(g)), g);
 	assert.equal(new Set(own.map(groupColor)).size, own.length);
+});
+
+test('instalmentItems: expected instalments in the horizon, under their category, hiding the detected debit of the same amount', () => {
+	const from = '2026-10-12';
+	const to = '2027-10-12';
+	const inst = instalmentItems(
+		[
+			{ key: 'k4', date: '2026-11-12', label: 'fnac', amount: 100, n: 4, of: 4, categoryId: 'loisirs' },
+			{ key: 'old', date: '2026-09-12', label: 'fnac', amount: 100, n: 1, of: 4, categoryId: 'loisirs' }
+		],
+		from,
+		to
+	);
+	assert.deepEqual(inst.map((i) => [i.id, i.label, i.detail, i.categoryId]), [['instalment:k4', 'fnac · 4/4', 'paiement en 4 fois', 'loisirs']]);
+	const twin: ScheduleItem = { id: 'debit:fnac:2026-11-13', date: '2026-11-13', kind: 'debit', categoryId: 'loisirs', label: 'Fnac', amount: 100, href: '/transactions' };
+	assert.deepEqual(buildSchedule([inst, [twin]], from, to).map((i) => i.id), ['instalment:k4']);
 });

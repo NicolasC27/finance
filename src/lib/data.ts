@@ -20,6 +20,14 @@ export function isPending(tx: Transaction): boolean {
 	return !tx.booking_date || !tx.value_date;
 }
 
+/**
+ * Expected instalment of a payment in several times: a quick entry waiting, without a value date,
+ * for its date or its bank debit. Pending like a bank operation « en cours », but dated.
+ */
+export function isPlannedInstalment(tx: Transaction): boolean {
+	return tx.source === 'manual' && !!tx.instalment && !tx.value_date;
+}
+
 /** Signed amount: positive for a credit, negative for a debit. */
 export function signedAmount(tx: Transaction): number {
 	const value = Number(tx.transaction_amount.amount);

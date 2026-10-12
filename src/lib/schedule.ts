@@ -1,6 +1,6 @@
 /**
  * Single schedule (pure, testable): every dated deadline the app knows — recurring direct debits,
- * loan instalments and end dates, tax balances, car milestones and insurance anniversary, employee
+ * payments in several times, loan instalments and end dates, tax balances, car milestones and insurance anniversary, employee
  * savings releases, savings goals — merged into one chronological list without duplicates.
  */
 
@@ -255,6 +255,24 @@ export function goalItems(goals: readonly GoalSource[], from: string, to: string
 		.map((g) => ({ id: `goal:${g.id}`, date: g.targetDate!, kind: 'goal' as const, label: `Objectif · ${g.name}`, detail: 'date visée', amount: Math.round((g.targetAmount - g.currentAmount) * 100) / 100, href: '/budget', sensitive: true }));
 }
 
+/** Expected instalment of a payment in several times (quick entry waiting for the bank debit). */
+export interface InstalmentSource {
+	key: string;
+	date: string;
+	label: string;
+	amount: number;
+	n: number;
+	of: number;
+	categoryId: CategoryId;
+}
+
+/** Next instalments of the payments in several times, under their budget category. */
+export function instalmentItems(list: readonly InstalmentSource[], from: string, to: string): ScheduleItem[] {
+	return list
+		.filter((i) => i.date >= from && i.date <= to)
+		.map((i) => ({ id: `instalment:${i.key}`, date: i.date, kind: 'debit' as const, categoryId: i.categoryId, label: `${i.label} · ${i.n}/${i.of}`, detail: `paiement en ${i.of} fois`, amount: i.amount, href: '/transactions' }));
+}
+
 /** Subcategories of variable spending: never a deadline, even when a debit looks regular (toll badge, fuel card…). */
 export const VARIABLE_SUBS: ReadonlySet<string> = new Set(['peages-parkings', 'carburant', 'courses', 'restaurants', 'petits-commercants', 'vtc-taxi', 'transports-commun', 'shopping', 'pharmacie']);
 
@@ -313,15 +331,15 @@ function sameAmountNearDate(a: ScheduleItem, b: ScheduleItem): boolean {
 
 /**
  * Merged schedule between `from` and `to`: one item per id, a detected direct debit dropped when a
- * more precise source (loan instalment, tax balance) has the same amount within 4 days; sorted by
- * date, then kind, then label.
+ * more precise source (loan instalment, tax balance, rent, expected instalment of a payment in
+ * several times) has the same amount within 4 days; sorted by date, then kind, then label.
  */
 export function buildSchedule(parts: readonly (readonly ScheduleItem[])[], from: string, to: string): ScheduleItem[] {
 	const lead = addDays(from, -5);
 	const byId = new Map<string, ScheduleItem>();
 	for (const item of parts.flat()) if (item.date >= lead && item.date <= to && !byId.has(item.id)) byId.set(item.id, item);
 	const all = [...byId.values()];
-	const precise = all.filter((i) => (i.kind === 'loan' || i.kind === 'tax' || i.id.startsWith('rent:')) && !i.id.startsWith('debit:'));
+	const precise = all.filter((i) => (i.kind === 'loan' || i.kind === 'tax' || i.id.startsWith('rent:') || i.id.startsWith('instalment:')) && !i.id.startsWith('debit:'));
 	const kept: ScheduleItem[] = [];
 	for (const i of all) {
 		if (!i.id.startsWith('debit:')) {

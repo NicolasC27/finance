@@ -28,6 +28,11 @@ export interface Transaction {
 	 */
 	quick_keep?: boolean;
 	/**
+	 * Instalment of a quick entry paid in several times (« en 3 fois »): rank and count. The next ones
+	 * wait without a value date (not counted) until the bank debit replaces them.
+	 */
+	instalment?: { n: number; of: number };
+	/**
 	 * Computed entry outside the bank (source 'portage': meal vouchers, culture vouchers, reimbursed
 	 * expenses): imposed category, never in the balances.
 	 */

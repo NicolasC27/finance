@@ -4,10 +4,12 @@ import { subcategorize } from './subcategories';
 import { SUBCATEGORIES } from './subDict';
 import { classifyItemName } from './amazonOrders';
 import { persistJson } from './storage';
-import { budgetState, setOverride, setSubOverride } from './budget.svelte';
-import { getMerchantCategoryMap, getTransactions, addQuickEntry, removeQuickEntry } from './store.svelte';
+import { budgetState, patchOverrides, setTxSubOverrides } from './budget.svelte';
+import { getMerchantCategoryMap, getTransactions, addQuickEntries, removeQuickEntry, removeQuickEntries, settleDueInstalments } from './store.svelte';
 import { accountState } from './accounts.svelte';
-import { draftToTransaction, everydayCategory, isStale, learnQuick, splitVoucherPayment, suggestFromMemory, type QuickDraft, type QuickMemory, type QuickPayment } from './quickEntry';
+import { draftToTransaction, everydayCategory, instalmentPlan, instalmentText, instalmentTransactions, isStale, learnQuick, splitVoucherPayment, suggestFromMemory, type QuickDraft, type QuickMemory, type QuickPayment } from './quickEntry';
+import { todayIso } from './forecast';
+import { formatEUR } from './format';
 import { addSwileSpend, addVoucherSpend, cultureVoucherBalance, hasSwile, removeSwileSpend, removeVoucher, swileCap, swileSpentOn } from './portage.svelte';
 
 /**
@@ -120,13 +122,26 @@ export function quickAccounts(): { id: string; label: string }[] {
  * ones) and remembers the choice for the next entries. Returns its key.
  */
 export function saveQuickEntry(draft: QuickDraft, account: string, categoryId: CategoryId, subId: string | null): string {
-	const tx = draftToTransaction(draft, account);
-	const key = addQuickEntry(tx);
-	const mm = getMerchantCategoryMap();
-	if (categoryId !== categorize(tx, budgetState.overrides, undefined, mm)) setOverride(key, categoryId);
-	if (subId !== subcategorize(tx, budgetState.overrides, undefined, mm)) setSubOverride(tx, subId, 'tx');
+	const key = keepEntry(draftToTransaction(draft, account), categoryId, subId);
 	rememberQuick(draft.label, categoryId, subId);
 	return key;
+}
+
+function keepEntry(tx: Transaction, categoryId: CategoryId, subId: string | null): string {
+	return keepEntries([tx], categoryId, subId)[0]!;
+}
+
+/** Adds entries with the chosen category and subcategory (stored only where they differ from the automatic ones), one write each. */
+function keepEntries(txs: readonly Transaction[], categoryId: CategoryId, subId: string | null): string[] {
+	const keys = addQuickEntries(txs);
+	const mm = getMerchantCategoryMap();
+	const patch: Record<string, CategoryId> = {};
+	txs.forEach((tx, i) => {
+		if (categoryId !== categorize(tx, budgetState.overrides, undefined, mm)) patch[keys[i]!] = categoryId;
+	});
+	if (Object.keys(patch).length) patchOverrides(patch);
+	setTxSubOverrides(txs.filter((tx) => subId !== subcategorize(tx, budgetState.overrides, undefined, mm)).map((tx) => ({ tx, subId })));
+	return keys;
 }
 
 export { removeQuickEntry, txKey };
@@ -156,6 +171,17 @@ export function defaultPayment(named: 'swile' | 'culture' | undefined): QuickPay
  */
 export function saveQuickPayment(draft: QuickDraft, account: string, categoryId: CategoryId, subId: string | null, payment: QuickPayment): { summary: string; undo: () => void } {
 	if (payment === 'card') {
+		const today = todayIso();
+		const plan = instalmentPlan(draft, today);
+		if (plan.length > 1) {
+			const keys = keepEntries(instalmentTransactions(draft, account, today), categoryId, subId);
+			rememberQuick(draft.label, categoryId, subId);
+			const settled = settleDueInstalments(today);
+			const paid = keys.filter((k) => settled.get(k) === null).length;
+			const left = keys.map((k) => (settled.has(k) ? settled.get(k)! : k)).filter((k): k is string => k !== null);
+			const already = paid ? ` (${paid} déjà sur le relevé)` : '';
+			return { summary: `en ${plan.length} fois : ${instalmentText(plan, today)}${already}`, undo: () => removeQuickEntries(left) };
+		}
 		const key = saveQuickEntry(draft, account, categoryId, subId);
 		return { summary: 'à rapprocher du relevé', undo: () => removeQuickEntry(key) };
 	}
@@ -165,9 +191,8 @@ export function saveQuickPayment(draft: QuickDraft, account: string, categoryId:
 	const name = payment === 'swile' ? 'Swile' : 'chèques culture';
 	const key = split.card > 0 ? saveQuickEntry({ ...draft, label: `${draft.label} (complément ${name})`, amount: split.card }, account, categoryId, subId) : null;
 	if (!key) rememberQuick(draft.label, categoryId, subId);
-	const eur = (n: number) => `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 	return {
-		summary: key ? `${eur(split.voucher)} en ${name}, ${eur(split.card)} sur ta carte à rapprocher` : `payé en ${name}`,
+		summary: key ? `${formatEUR(split.voucher)} en ${name}, ${formatEUR(split.card)} sur ta carte à rapprocher` : `payé en ${name}`,
 		undo: () => {
 			if (id) (payment === 'swile' ? removeSwileSpend : removeVoucher)(id);
 			if (key) removeQuickEntry(key);

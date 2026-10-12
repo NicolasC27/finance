@@ -7,6 +7,7 @@
 	import { orderedIds, isFullscreen } from '$lib/layout.svelte';
 	import type { BlockElement } from '$lib/layoutModel';
 	import { getTransactions, txState } from '$lib/store.svelte';
+	import { isPlannedInstalment } from '$lib/data';
 	import { formatEUR, formatMonth, formatDate, formatPct } from '$lib/sensitiveFormat';
 	import { getLoanViews, setMonthlyOverride, clearMonthlyOverride } from '$lib/loans.svelte';
 	import { navigate } from '$lib/router.svelte';
@@ -187,7 +188,7 @@
 		const v = Number(reconcileDraft.replace(/\s/g, '').replace(',', '.'));
 		if (!Number.isFinite(v)) return;
 		const gap = Math.round((v - acc.computed) * 100) / 100;
-		const pending = getTransactions().filter((tx) => (tx.account ?? 'cm') === acc.id && !tx.value_date).length;
+		const pending = getTransactions().filter((tx) => (tx.account ?? 'cm') === acc.id && !tx.value_date && !isPlannedInstalment(tx)).length;
 		registerAccounts([{ id: acc.id, label: acc.label, last4: acc.last4, kind: acc.kind, balance: v, currency: 'EUR' }]);
 		reconciled = { ...reconciled, [acc.id]: new Date().toISOString() };
 		try {
@@ -631,7 +632,7 @@
 																{#if loan}
 																	estimé au {formatDate(loan.estimatedAt)}
 																{:else}
-																	{acc.declared !== undefined ? 'solde déclaré' : 'solde estimé'}{#if reconciled[acc.id]} · pointé le {formatDate(reconciled[acc.id]!.slice(0, 10))}{/if}
+																	{acc.declared !== undefined ? 'solde déclaré' : acc.computedFrom === 'balance' ? 'solde du relevé' : 'solde estimé'}{#if reconciled[acc.id]} · pointé le {formatDate(reconciled[acc.id]!.slice(0, 10))}{/if}
 																	{#if acc.kind !== 'pret' && reconcileId !== acc.id}
 																		· <button type="button" class="cursor-pointer hover:underline" title="Saisir le solde affiché par la banque : l'écart avec le calcul est signalé" onclick={() => { reconcileId = acc.id; reconcileDraft = ''; }}>pointer</button>
 																	{/if}

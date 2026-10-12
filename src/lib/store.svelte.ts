@@ -1,11 +1,11 @@
 import type { CategoryId, Transaction } from './types';
 import { txKey, bankCategoryFor, assignDupIndexes, type MerchantCategoryMap } from './categories';
 import { merchantKey } from './merchant';
-import { loadDemoTransactions } from './data';
+import { isPending, isPlannedInstalment, loadDemoTransactions } from './data';
 import { persistJson } from './storage';
 import { isStatementSource, skipKnownMovements } from './duplicateGuard';
-import { matchQuickEntries } from './quickEntry';
-import { budgetState, clearOverride, setOverride } from './budget.svelte';
+import { labelsMatch, matchQuickEntries } from './quickEntry';
+import { budgetState, clearOverride, moveTxOverrides, setOverride } from './budget.svelte';
 
 /**
  * Global transaction store: demo (JSON) ∪ imported (CSV/XLSX), deduplicated by txKey. Imported
@@ -295,21 +295,78 @@ export function addImported(
  * the bank operation when the statement is imported. Returns its key.
  */
 export function addQuickEntry(tx: Transaction): string {
-	const entry: Transaction = { ...tx, source: 'manual' };
-	const key = txKey(entry);
-	if (!keySet.has(key)) {
-		txState.imported = [...txState.imported, entry];
+	return addQuickEntries([tx])[0]!;
+}
+
+/** Several quick entries in one write (a payment in several times). Returns their keys, in order. */
+export function addQuickEntries(txs: readonly Transaction[]): string[] {
+	const entries = txs.map((tx): Transaction => ({ ...tx, source: 'manual' }));
+	const keys = entries.map((tx) => txKey(tx));
+	const seen = new Set(keySet);
+	const fresh: Transaction[] = [];
+	entries.forEach((tx, i) => {
+		if (seen.has(keys[i]!)) return;
+		seen.add(keys[i]!);
+		fresh.push(tx);
+	});
+	if (fresh.length) {
+		txState.imported = [...txState.imported, ...fresh];
 		persistImported();
 	}
-	return key;
+	return keys;
 }
 
 /** Removes a quick entry without a tombstone (undo right after saving: typing it again still works). */
 export function removeQuickEntry(key: string): void {
-	const next = txState.imported.filter((tx) => !(tx.source === 'manual' && txKey(tx) === key));
+	removeQuickEntries([key]);
+}
+
+/** Several quick entries removed in one write. */
+export function removeQuickEntries(keys: readonly string[]): void {
+	const drop = new Set(keys);
+	const next = txState.imported.filter((tx) => !(tx.source === 'manual' && drop.has(txKey(tx))));
 	if (next.length === txState.imported.length) return;
 	txState.imported = next;
 	persistImported();
+}
+
+/**
+ * Expected instalments whose date is reached (`today` included): the bank debit already imported
+ * replaces one when it matches (same pairing as an import, but the label must match too: the whole
+ * history holds many debits of the same amount; category handed over); otherwise it is
+ * counted from its date like any quick entry, its category following its new key. Returns the old
+ * key of each settled instalment → its new key, or null when the bank debit replaced it.
+ */
+export function settleDueInstalments(today: string): Map<string, string | null> {
+	const out = new Map<string, string | null>();
+	const due = txState.imported.map((tx, i) => ({ tx, i })).filter((x) => isPlannedInstalment(x.tx) && x.tx.booking_date <= today);
+	if (!due.length) return out;
+	const bank = allTransactions.filter((tx) => tx.source !== 'manual' && !isPending(tx));
+	const label = (tx: Transaction) => tx.remittance_information.join(' ');
+	const paired = new Map(
+		matchQuickEntries(due.map((x) => x.tx), bank, (tx) => !!tx.quick_keep)
+			.filter((m) => labelsMatch(label(due[m.manual]!.tx), label(bank[m.incoming]!)))
+			.map((m) => [m.manual, bank[m.incoming]!])
+	);
+	const next = [...txState.imported];
+	const drop = new Set<number>();
+	due.forEach(({ tx, i }, j) => {
+		const key = txKey(tx);
+		const debit = paired.get(j);
+		if (debit) {
+			moveTxOverrides(key, debit);
+			drop.add(i);
+			out.set(key, null);
+			return;
+		}
+		const counted: Transaction = { ...tx, value_date: tx.booking_date };
+		moveTxOverrides(key, counted);
+		next[i] = counted;
+		out.set(key, txKey(counted));
+	});
+	txState.imported = next.filter((_, i) => !drop.has(i));
+	persistImported();
+	return out;
 }
 
 /**
