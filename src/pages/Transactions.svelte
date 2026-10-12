@@ -4,7 +4,7 @@
 	import { restorePoint } from '$lib/history.svelte';
 	import { quickEntryStale } from '$lib/quickEntry.svelte';
 	import { segmented } from '$lib/actions/segmented';
-	import { onMount } from 'svelte';
+	import { flushSync, onMount } from 'svelte';
 	import type { CategoryId, Transaction } from '$lib/types';
 	import { CATEGORIES, categorize, getCategory, isWealthMovement, txKey, VACATION_ELIGIBLE } from '$lib/categories';
 	import { getSubcategory, subcategorize, subcategoriesFor } from '$lib/subcategories';
@@ -57,6 +57,7 @@
 	import ImportMapperModal, { type MapperSource } from '$lib/components/ImportMapperModal.svelte';
 	import MerchantMark from '$lib/components/MerchantMark.svelte';
 	import InstalmentChip from '$lib/components/InstalmentChip.svelte';
+	import { edgeScrollStep, LONG_PRESS, paintRange, TOUCH_SLOP } from '$lib/dragSelect';
 	import RowsToggle from '$lib/components/RowsToggle.svelte';
 	import QuickEntryRow from '$lib/components/QuickEntryRow.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
@@ -558,6 +559,7 @@
 	}
 
 	function exitSelect() {
+		endDrag();
 		selectMode = false;
 		selected = new Set();
 		lastToggled = -1;
@@ -566,7 +568,7 @@
 	/** Checks/unchecks a row of the page; Shift+click: the whole range from the previous one. */
 	function toggleSelected(tx: Transaction, index: number, range = false) {
 		if (!selectable(tx)) return;
-		selectMode = true;
+		enterSelect(visibleRow(index));
 		const next = new Set(selected);
 		const key = txKey(tx);
 		const on = !next.has(key);
@@ -579,6 +581,224 @@
 		selected = next;
 		lastToggled = index;
 	}
+
+	// ---- Press and slide (mouse: a few pixels onto another row; touch and pen: after a long press) ----
+
+	interface Drag {
+		pointerId: number;
+		start: number;
+		/** Row pressed: kept under the pointer when the selection bar appears above the list. */
+		el: HTMLElement;
+		/** Page rows at the press: a page turn, a sort or a filter ends the slide. */
+		keys: string;
+		on: boolean;
+		/** Selection and selection mode before the slide: Escape gives them back. */
+		base: Set<string>;
+		wasSelecting: boolean;
+		active: boolean;
+		touch: boolean;
+		last: number;
+		x0: number;
+		y0: number;
+		x: number;
+		y: number;
+		timer: number;
+	}
+	let drag: Drag | null = null;
+	let swallowClick = false;
+	let scrollFrame = 0;
+
+	const pageKeys = $derived(paginated.map((tx) => (selectable(tx) ? txKey(tx) : null)));
+	const pageSignature = () => pageKeys.join('|');
+
+	/** Row under a point (clamped inside the window), through what floats above the list (phone tab bar, sticky selection bar). */
+	function rowIndexAt(x: number, y: number): number | null {
+		const cx = Math.min(Math.max(x, 0), window.innerWidth - 1);
+		const cy = Math.min(Math.max(y, 0), window.innerHeight - 1);
+		for (const node of document.elementsFromPoint(cx, cy)) {
+			const el = node.closest<HTMLElement>('[data-row-index]');
+			if (el) return Number(el.dataset.rowIndex);
+		}
+		return null;
+	}
+
+	/** Visible element of a page row: the table row on a wide screen, the card on a phone. */
+	function visibleRow(index: number): HTMLElement | null {
+		return [...document.querySelectorAll<HTMLElement>(`[data-row-index="${index}"]`)].find((el) => el.offsetParent !== null) ?? null;
+	}
+
+	/**
+	 * Selection mode on without moving the list under the pointer or the keyboard cursor: the bar and
+	 * the checkboxes appear at once and the page scrolls by the height they add above `anchor`.
+	 */
+	function enterSelect(anchor: HTMLElement | null) {
+		if (selectMode) return;
+		const top = anchor?.getBoundingClientRect().top ?? 0;
+		flushSync(() => (selectMode = true));
+		const shift = anchor ? anchor.getBoundingClientRect().top - top : 0;
+		if (shift) window.scrollBy(0, shift);
+	}
+
+	/** First row reached: the slide paints the opposite of the start row's state over the rows passed. */
+	function startPaint(index: number) {
+		if (!drag) return;
+		if (drag.keys !== pageSignature()) {
+			endDrag('held');
+			return;
+		}
+		const key = pageKeys[drag.start];
+		drag.on = !(key && selected.has(key));
+		drag.base = new Set(selected);
+		drag.wasSelecting = selectMode;
+		drag.active = true;
+		enterSelect(drag.el);
+		paintTo(index);
+	}
+
+	function paintTo(index: number) {
+		if (!drag?.active || index === drag.last) return;
+		if (drag.keys !== pageSignature()) {
+			endDrag('held');
+			return;
+		}
+		selected = paintRange(drag.base, pageKeys, drag.start, index, drag.on);
+		drag.last = index;
+		lastToggled = index;
+	}
+
+	/** Escape during a slide: the selection and the selection mode go back to what they were before it. */
+	function cancelSlide(): boolean {
+		if (!drag?.active) return false;
+		selected = drag.base;
+		selectMode = drag.wasSelecting;
+		endDrag('held');
+		return true;
+	}
+
+	function onRowPointerDown(e: PointerEvent, index: number) {
+		swallowClick = false;
+		window.removeEventListener('pointerup', armSwallow);
+		if (!e.isPrimary || e.button !== 0 || (e.target as HTMLElement).closest('input, select, button, a, textarea, label, [contenteditable], [data-no-slide]')) return;
+		endDrag();
+		const touch = e.pointerType !== 'mouse';
+		drag = { pointerId: e.pointerId, start: index, el: e.currentTarget as HTMLElement, keys: pageSignature(), on: true, base: selected, wasSelecting: selectMode, active: false, touch, last: -1, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, timer: 0 };
+		if (touch) {
+			drag.timer = window.setTimeout(() => {
+				if (!drag || drag.active) return;
+				startPaint(drag.start);
+				navigator.vibrate?.(10);
+			}, LONG_PRESS);
+		}
+		window.addEventListener('pointermove', onDragMove);
+		window.addEventListener('pointerup', onDragEnd);
+		window.addEventListener('pointercancel', onDragEnd);
+		window.addEventListener('blur', onDragBlur);
+	}
+
+	function onDragMove(e: PointerEvent) {
+		if (!drag || e.pointerId !== drag.pointerId) return;
+		if (!drag.touch && !(e.buttons & 1)) {
+			endDrag();
+			return;
+		}
+		drag.x = e.clientX;
+		drag.y = e.clientY;
+		const far = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > TOUCH_SLOP;
+		if (!drag.active) {
+			if (drag.touch) {
+				if (far) endDrag();
+				return;
+			}
+			if (!far) return;
+			const index = rowIndexAt(e.clientX, e.clientY);
+			if (index !== null && index !== drag.start) startPaint(index);
+			return;
+		}
+		const index = rowIndexAt(e.clientX, e.clientY);
+		if (index !== null) paintTo(index);
+		if (!scrollFrame) scrollFrame = requestAnimationFrame(autoScroll);
+	}
+
+	/** Near the top or bottom of the window the page scrolls by itself and the selection follows, until it cannot scroll further. */
+	function autoScroll() {
+		scrollFrame = 0;
+		if (!drag?.active) return;
+		const step = edgeScrollStep(drag.y, window.innerHeight);
+		if (!step) return;
+		const before = window.scrollY;
+		window.scrollBy(0, step);
+		if (window.scrollY === before) return;
+		const index = rowIndexAt(drag.x, drag.y);
+		if (index !== null) paintTo(index);
+		scrollFrame = requestAnimationFrame(autoScroll);
+	}
+
+	function onDragEnd(e: PointerEvent) {
+		if (drag && e.pointerId !== drag.pointerId) return;
+		endDrag(e.type === 'pointerup' ? 'up' : 'cancel');
+	}
+
+	function onDragBlur() {
+		endDrag();
+	}
+
+	/** The click of the release that ends a slide does nothing. */
+	function armSwallow() {
+		swallowClick = true;
+		window.setTimeout(() => (swallowClick = false), 400);
+	}
+
+	/**
+	 * Ends the gesture. `up`: released, the click that follows is swallowed; `held`: stopped while the
+	 * button is still down (Escape, page turn), the click of its release is swallowed; `cancel`: no click
+	 * will follow (pointer cancelled, window left, button released unseen).
+	 */
+	function endDrag(how: 'up' | 'held' | 'cancel' = 'cancel') {
+		if (drag) {
+			window.clearTimeout(drag.timer);
+			if (drag.active && how === 'up') armSwallow();
+			else if (drag.active && how === 'held') window.addEventListener('pointerup', armSwallow, { once: true });
+		}
+		drag = null;
+		cancelAnimationFrame(scrollFrame);
+		scrollFrame = 0;
+		window.removeEventListener('pointermove', onDragMove);
+		window.removeEventListener('pointerup', onDragEnd);
+		window.removeEventListener('pointercancel', onDragEnd);
+		window.removeEventListener('blur', onDragBlur);
+	}
+
+	/**
+	 * List surface: once the long press fired, sliding selects instead of scrolling (touch listener set
+	 * before the gesture, not passive), and a logo dragged from a row never starts a native drag (fields
+	 * keep theirs).
+	 */
+	function slideSurface(node: HTMLElement) {
+		const block = (e: TouchEvent) => {
+			if (drag?.active) e.preventDefault();
+		};
+		const noDrag = (e: DragEvent) => {
+			const t = e.target instanceof Element ? e.target : null;
+			if (t?.closest('[data-row-index]') && !t.closest('input, textarea, [contenteditable], [data-no-slide]')) e.preventDefault();
+		};
+		node.addEventListener('touchmove', block, { passive: false });
+		node.addEventListener('dragstart', noDrag);
+		return {
+			destroy: () => {
+				node.removeEventListener('touchmove', block);
+				node.removeEventListener('dragstart', noDrag);
+			}
+		};
+	}
+
+	function onRowContextMenu(e: MouseEvent) {
+		if (drag?.touch) e.preventDefault();
+	}
+
+	onMount(() => () => {
+		endDrag();
+		window.removeEventListener('pointerup', armSwallow);
+	});
 
 	const selectableFiltered = $derived(filtered.filter(selectable));
 	const pageSelectable = $derived(paginated.filter(selectable));
@@ -609,6 +829,35 @@
 	});
 
 	const selectedTxs = $derived(selected.size > 0 ? allTxs.filter((tx) => selected.has(txKey(tx))) : []);
+	/** Counted like the page totals: no pending row, no hidden or internal transfer. */
+	const countedFlow = (tx: Transaction) => isBudgetFlow(tx) && !isExcluded(txKey(tx));
+
+	/** Net of the selection, shown in the bar and updated while sliding. */
+	const selectedTotal = $derived(Math.round(selectedTxs.filter(countedFlow).reduce((sum, tx) => sum + signedAmount(tx), 0) * 100) / 100);
+
+	/** Sorted by date: rows listed under each day, and their net counted like the page totals (shown when a day has 2+ rows). */
+	const dayTotals = $derived.by(() => {
+		if (sortKey !== 'date') return null;
+		const m = new Map<string, { net: number; count: number }>();
+		for (const tx of filtered) {
+			const day = dayOf(tx);
+			if (!day) continue;
+			const d = m.get(day) ?? { net: 0, count: 0 };
+			d.count++;
+			if (countedFlow(tx)) d.net = Math.round((d.net + signedAmount(tx)) * 100) / 100;
+			m.set(day, d);
+		}
+		return m;
+	});
+	const signedCompact = (n: number) => `${n > 0 ? '+' : ''}${Math.abs(n) < 0.5 ? formatEUR(n) : formatEURCompact(n)}`;
+
+	/** Day a row belongs to in the date sort: its booking date, or one group for the « en cours » rows. */
+	function dayOf(tx: Transaction): string {
+		return isPending(tx) && !isPlannedInstalment(tx) ? '' : tx.booking_date;
+	}
+
+	/** Sorted by date, the rows that open a day on the page (the first row of a page always does). */
+	const dayStarts = $derived(paginated.map((tx, i) => sortKey === 'date' && (i === 0 || dayOf(paginated[i - 1]!) !== dayOf(tx))));
 	/** Tags present in the selection ('− Tag'), most frequent first. */
 	const selectedTagCounts = $derived(tagInventory(selectedTxs));
 
@@ -1388,11 +1637,12 @@
 	let cursor = $state(-1);
 	let noteDraft = $state('');
 	let noteInput = $state<HTMLInputElement | null>(null);
-	/** A Shift+click range never spans two pages. */
+	/** A Shift+click range or a slide never spans two pages. */
 	$effect(() => {
 		void page;
 		cursor = -1;
 		lastToggled = -1;
+		endDrag('held');
 	});
 	function rowEl(i: number): HTMLElement | null {
 		return document.querySelector(`[data-row-index="${i}"]`);
@@ -1429,6 +1679,7 @@
 	function onListKeydown(e: KeyboardEvent) {
 		if (uiState.paletteOpen || uiState.shortcutsOpen || uiState.backupDialogOpen || uiState.dialogDepth > 0 || mapper) return;
 		const t = e.target as HTMLElement;
+		if (e.key === 'Escape' && cancelSlide()) return;
 		if (e.key === 'Escape' && selectMode) {
 			exitSelect();
 			return;
@@ -1502,8 +1753,12 @@
 		}
 	}
 
-	/** Click on a row: checks it in selection mode, otherwise opens the detail. */
+	/** Click on a row: checks it in selection mode, otherwise opens the detail; the click ending a slide does nothing. */
 	function onRowClick(tx: Transaction, e: MouseEvent, index: number) {
+		if (swallowClick) {
+			swallowClick = false;
+			return;
+		}
 		if (selectMode && selectable(tx)) toggleSelected(tx, index, e.shiftKey);
 		else toggleDetail(tx);
 	}
@@ -1859,6 +2114,9 @@
 		<!-- Selection actions: bar stuck to the top of the screen while scrolling (the 'Annuler' toast stays visible at the bottom) -->
 		<div class="bulk-bar card mb-3 flex flex-wrap items-center gap-2 px-3 py-2 text-[12px]" role="toolbar" aria-label="Actions sur la sélection">
 			<span class="font-medium"><span class="tabular">{selected.size}</span> sélectionnée{selected.size > 1 ? 's' : ''}</span>
+			{#if selected.size > 0}
+				<span class="tabular {selectedTotal > 0 ? 'text-accent' : 'text-secondary'}" title="Net des opérations sélectionnées, comptées comme les totaux de la page : sans les opérations en cours ni les virements masqués">{selectedTotal > 0 ? '+' : selectedTotal < 0 ? '−' : ''}{formatEUR(Math.abs(selectedTotal))}</span>
+			{/if}
 			{#if selected.size < selectableFiltered.length}
 				<button type="button" class="meta-xs cursor-pointer hover:underline" onclick={selectAllFiltered}>tout sélectionner ({selectableFiltered.length})</button>
 			{/if}
@@ -1928,7 +2186,7 @@
 
 	<!-- Desktop table (≥ md); the anchor above it is where ← → paging scrolls back to -->
 	<div bind:this={listTop} class="scroll-mt-3" aria-hidden="true"></div>
-	<section class="card hero-in-3 mb-3 hidden overflow-hidden md:block">
+	<section class="card hero-in-3 no-callout mb-3 hidden overflow-hidden md:block" use:slideSurface>
 		<div class="overflow-x-auto">
 			<table class="w-full min-w-[760px] border-collapse text-[12px]">
 				<thead>
@@ -1980,8 +2238,10 @@
 						{@const sub = getSubcategory(subcategorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap()) ?? '')}
 						{@const expanded = expandedKey === txKey(tx)}
 						{@const isSelected = selected.has(txKey(tx))}
-						{@const newDay = sortKey === 'date' && !isPending(tx) && (rowIndex === 0 || paginated[rowIndex - 1]!.booking_date !== tx.booking_date)}
-						<!-- Sorted by date, the first row of a day carries the date in ink under a full rule: days read as groups -->
+						{@const newDay = dayStarts[rowIndex] ?? false}
+						{@const showDate = sortKey !== 'date' || newDay || !dayOf(tx)}
+						{@const day = newDay && dayOf(tx) ? dayTotals?.get(dayOf(tx)) : undefined}
+						<!-- Sorted by date, the date is written once per day (and on the first row of a page), with the day's net when it has 2+ rows, under a full rule -->
 						<tr
 							class="row row-hover press group cursor-pointer border-t transition-colors select-none"
 							class:row-cursor={cursor === rowIndex}
@@ -1994,6 +2254,8 @@
 							aria-selected={selectMode ? isSelected : undefined}
 							onclick={(e) => onRowClick(tx, e, rowIndex)}
 							onkeydown={(e) => onRowKeydown(tx, e, rowIndex)}
+							onpointerdown={(e) => onRowPointerDown(e, rowIndex)}
+							oncontextmenu={onRowContextMenu}
 						>
 							{#if selectMode}
 								<td class="w-8 py-1 pr-0 pl-4">
@@ -2011,8 +2273,13 @@
 									{/if}
 								</td>
 							{/if}
-							<td class="tabular px-4 py-1 whitespace-nowrap {newDay ? 'font-medium' : 'text-secondary'}">
-								{tx.booking_date ? formatDate(tx.booking_date) : '—'}
+							<td class="tabular px-4 py-1 whitespace-nowrap {newDay && dayOf(tx) ? 'font-medium' : 'text-secondary'}">
+								{#if showDate}
+									{tx.booking_date ? formatDate(tx.booking_date) : '—'}
+									{#if day && day.count > 1}<span class="meta-xs ml-1.5 font-normal" title="{day.count} opérations ce jour, net sans les opérations en cours ni les virements masqués : {formatEUR(day.net)}"><span class="sr-only">net du jour : </span>{signedCompact(day.net)}</span>{/if}
+								{:else}
+									<span class="sr-only">{tx.booking_date ? formatDate(tx.booking_date) : 'en cours'}</span>
+								{/if}
 							</td>
 							<td class="w-px py-1 pr-0 pl-4">
 								<MerchantMark label={displayLabel(tx)} id={catId} size={22} title />
@@ -2179,7 +2446,7 @@
 	</section>
 
 	<!-- Mobile: stacked cards -->
-	<section class="mb-3 space-y-2 md:hidden">
+	<section class="no-callout mb-3 space-y-2 md:hidden" use:slideSurface>
 		<div class="card p-1"><QuickEntryRow compact /></div>
 		{#each paginated as tx, i (txKey(tx))}
 			{@const amount = signedAmount(tx)}
@@ -2187,6 +2454,14 @@
 			{@const sub = getSubcategory(subcategorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap()) ?? '')}
 			{@const expanded = expandedKey === txKey(tx)}
 			{@const isSelected = selected.has(txKey(tx))}
+			{@const dayHead = dayStarts[i] ?? false}
+			{#if dayHead}
+				{@const day = dayOf(tx) ? dayTotals?.get(dayOf(tx)) : undefined}
+				<p class="meta-xs flex items-baseline justify-between px-1 pt-1">
+					<span class="font-medium" style="color: var(--text);">{dayOf(tx) ? formatDate(tx.booking_date) : 'En cours'}</span>
+					{#if day && day.count > 1}<span class="tabular" title="{day.count} opérations ce jour, net sans les opérations en cours ni les virements masqués : {formatEUR(day.net)}"><span class="sr-only">net du jour : </span>{signedCompact(day.net)}</span>{/if}
+				</p>
+			{/if}
 			<div
 				class="card press fade-slide cursor-pointer p-3 select-none"
 				class:card-selected={isSelected}
@@ -2196,8 +2471,11 @@
 				role="button"
 				aria-expanded={expanded}
 				aria-pressed={selectMode ? isSelected : undefined}
+				data-row-index={i}
 				onclick={(e) => onRowClick(tx, e, i)}
 				onkeydown={(e) => onRowKeydown(tx, e, i)}
+				onpointerdown={(e) => onRowPointerDown(e, i)}
+				oncontextmenu={onRowContextMenu}
 			>
 				<div class="flex items-start gap-3">
 					{#if selectMode && selectable(tx)}
@@ -2233,7 +2511,7 @@
 							{/if}
 						</p>
 						<p class="meta-xs mt-0.5">
-							{tx.booking_date ? formatDate(tx.booking_date) : 'En attente'} · {getCategory(catId).label}{#if sub}&nbsp;· {sub.label}{/if}
+							{#if sortKey !== 'date' || !dayOf(tx)}{tx.booking_date ? formatDate(tx.booking_date) : 'En attente'} ·{' '}{:else}<span class="sr-only">{tx.booking_date ? formatDate(tx.booking_date) : 'en cours'}, </span>{/if}{getCategory(catId).label}{#if sub}&nbsp;· {sub.label}{/if}
 							{#if tx.checked}<span style="color: var(--accent);"> · ✓ pointée</span>{/if}
 						</p>
 						{#if tx.note}
@@ -2266,7 +2544,7 @@
 				</div>
 				{#if expanded}
 					<!-- Clicks inside the panel (note, tags, selects): the card does not collapse -->
-					<div class="mt-3 border-t pt-3" style="border-color: var(--border-subtle);" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+					<div class="mt-3 border-t pt-3" style="border-color: var(--border-subtle);" role="presentation" data-no-slide onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 						{@render detailContent(tx)}
 					</div>
 				{/if}
@@ -2835,6 +3113,11 @@
 {/if}
 
 <style>
+	/* Long press on a row starts a selection: no system callout on it */
+	.no-callout {
+		-webkit-touch-callout: none;
+	}
+
 	/* Checked row / card (bulk edit) */
 	.row-selected {
 		background-color: var(--accent-soft);
