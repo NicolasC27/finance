@@ -8,6 +8,8 @@
 	import { askRelay, defaultPayment, QUICK_CATEGORIES, QUICK_SUBCATEGORIES, quickAccounts, relayConfig, saveQuickPayment, suggestCategory, voucherAvailable, voucherOptions } from '$lib/quickEntry.svelte';
 	import { instalmentPlan, instalmentText, splitVoucherPayment, type QuickPayment } from '$lib/quickEntry';
 	import { formatEUR, formatDate } from '$lib/format';
+	import { knownPeople } from '$lib/refunds.svelte';
+	import { shareRange } from '$lib/refunds';
 	import { todayIso } from '$lib/forecast';
 	import DateField from './DateField.svelte';
 
@@ -25,12 +27,13 @@
 	let aiFor = $state('');
 	let asking = $state(false);
 	let aiFailed = $state(false);
-	let edits = $state<{ label?: string; amount?: string; credit?: boolean; categoryId?: CategoryId; subId?: string | null; date?: string; payment?: QuickPayment; instalments?: number }>({});
+	let edits = $state<{ label?: string; amount?: string; credit?: boolean; categoryId?: CategoryId; subId?: string | null; date?: string; payment?: QuickPayment; instalments?: number; forWhom?: string }>({});
 	let account = $state('');
 	let saveBtn = $state<HTMLButtonElement | null>(null);
 
 	const hasRelay = $derived(uiState.quickEntryOpen && relayConfig() !== null);
-	const local = $derived(parseQuickEntry(text, today()));
+	const people = $derived(uiState.quickEntryOpen ? knownPeople() : []);
+	const local = $derived(parseQuickEntry(text, today(), people));
 	const base = $derived(aiDraft && aiFor === text ? aiDraft : 'error' in local ? null : local);
 	const accounts = $derived(uiState.quickEntryOpen ? quickAccounts() : []);
 	const label = $derived(edits.label ?? base?.label ?? '');
@@ -53,6 +56,10 @@
 	const plan = $derived(instalments > 1 && amount > 0 ? instalmentPlan({ label, amount, credit, date, instalments }, today()) : null);
 	const times = $derived([...new Set([1, 3, 4, instalments])].sort((a, b) => a - b));
 	const ready = $derived(!!base && label.trim().length > 0 && amount > 0 && amount < 1_000_000);
+	const forWhom = $derived(edits.forWhom ?? ('error' in local ? '' : (local.forWhom ?? '')));
+	const canShare = $derived(!credit && !plan);
+	const showFor = $derived(canShare && (forWhom !== '' || edits.forWhom !== undefined));
+	const range = $derived(shareRange(amount > 0 ? amount : 0));
 
 	$effect(() => {
 		if (!uiState.quickEntryOpen) return;
@@ -82,14 +89,15 @@
 		if (d) {
 			aiDraft = d;
 			aiFor = asked;
-			edits = edits.instalments ? { instalments: edits.instalments } : {};
+			edits = { ...(edits.instalments ? { instalments: edits.instalments } : {}), ...(edits.forWhom !== undefined ? { forWhom: edits.forWhom } : {}) };
 			saveBtn?.focus();
 		} else aiFailed = true;
 	}
 
 	function save() {
 		if (!ready) return;
-		const draft: QuickDraft = { label: label.trim(), amount: Math.round(amount * 100) / 100, credit, date, ...(plan ? { instalments } : {}) };
+		const who = canShare ? forWhom.trim() : '';
+		const draft: QuickDraft = { label: label.trim(), amount: Math.round(amount * 100) / 100, credit, date, ...(plan ? { instalments } : {}), ...(who ? { forWhom: who } : {}) };
 		const r = saveQuickPayment(draft, account, categoryId, subId, payment);
 		close();
 		showSuccess(`${credit ? 'Rentrée' : 'Dépense'} ajoutée : ${draft.label} ${credit ? '+' : '−'}${formatEUR(draft.amount)}, ${r.summary}`, 'Annuler', r.undo);
@@ -175,7 +183,15 @@
 						<div class="flex items-center gap-2">
 							<DateField label="Date de la dépense" bind:value={() => date, (v) => (edits = { ...edits, date: v || today() })} max={today()} clearable={false} />
 							<span class="meta-xs">{date === today() ? "aujourd'hui" : formatDate(date)}</span>
+							{#if canShare && !showFor}<button type="button" class="meta-xs ml-auto cursor-pointer hover:underline" onclick={() => (edits = { ...edits, forWhom: '' })}>pour quelqu'un…</button>{/if}
 						</div>
+						{#if showFor}
+							<span class="meta-xs">Pour</span>
+							<div class="flex flex-wrap items-center gap-2">
+								<input type="text" class="input-surface w-40" value={forWhom} maxlength="60" placeholder="qui te rend sa part" aria-label="Pour qui (te rend sa part)" oninput={(e) => (edits = { ...edits, forWhom: (e.target as HTMLInputElement).value })} />
+								{#if forWhom.trim() && amount > 0}<span class="meta-xs" title="Dépense partagée : un virement de cette personne entre 40 % et 110 % de la dépense la solde, et va dans sa catégorie">son virement de {formatEUR(range.min)} à {formatEUR(range.max)} sera reconnu</span>{/if}
+							</div>
+						{/if}
 						{#if !credit && (options.swile || options.culture)}
 							<span class="meta-xs">Payé avec</span>
 							<div class="flex flex-wrap items-center gap-2">

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { refundOf, refundedBy } from '$lib/refunds.svelte';
+	import { shareRange } from '$lib/refunds';
 	import RefundControl from '$lib/components/RefundControl.svelte';
 	import { restorePoint } from '$lib/history.svelte';
 	import { quickEntryStale } from '$lib/quickEntry.svelte';
@@ -15,7 +16,7 @@
 	import { isPending, isPlannedInstalment, signedAmount } from '$lib/data';
 	import { isBudgetFlow } from '$lib/totals';
 	import { flowKind } from '$lib/flow';
-	import { cleanLabel, formatDate, formatEUR, formatEURCompact, formatMonth, monthKeyOf, maskAmounts } from '$lib/format';
+	import { cleanLabel, formatDate, formatDateShort, formatEUR, formatEURCompact, formatMonth, monthKeyOf, maskAmounts } from '$lib/format';
 	import { addTags, hasTag, removeTags, sameTags, splitTagInput, suggestTags, tagInventory, tagKey } from '$lib/tags';
 	import { calendarMonth, purchaseDate, purchaseMonthRange, rangePurchases, weekdayAverages, WEEKDAY_LABELS, WEEKDAY_NAMES } from '$lib/spendingCalendar';
 	import { fly } from 'svelte/transition';
@@ -858,6 +859,11 @@
 
 	/** Sorted by date, the rows that open a day on the page (the first row of a page always does). */
 	const dayStarts = $derived(paginated.map((tx, i) => sortKey === 'date' && (i === 0 || dayOf(paginated[i - 1]!) !== dayOf(tx))));
+	/** Second row of a dated day on the page, right under its first row: its empty date cell carries the day's net. */
+	const dayNetRows = $derived(dayStarts.map((start, i) => !start && i > 0 && dayStarts[i - 1]! && !!dayOf(paginated[i]!) && expandedKey !== txKey(paginated[i - 1]!)));
+	/** First row of a day whose second row is not right under it (page break, detail open): the net goes after the date. */
+	const dayNetInline = $derived(dayStarts.map((start, i) => start && !!dayOf(paginated[i]!) && !dayNetRows[i + 1]));
+	const dayNetTitle = (d: { net: number; count: number }) => `${d.count} opérations ce jour, net sans les opérations en cours ni les virements masqués : ${formatEUR(d.net)}`;
 	/** Tags present in the selection ('− Tag'), most frequent first. */
 	const selectedTagCounts = $derived(tagInventory(selectedTxs));
 
@@ -2240,8 +2246,8 @@
 						{@const isSelected = selected.has(txKey(tx))}
 						{@const newDay = dayStarts[rowIndex] ?? false}
 						{@const showDate = sortKey !== 'date' || newDay || !dayOf(tx)}
-						{@const day = newDay && dayOf(tx) ? dayTotals?.get(dayOf(tx)) : undefined}
-						<!-- Sorted by date, the date is written once per day (and on the first row of a page), with the day's net when it has 2+ rows, under a full rule -->
+						{@const day = dayOf(tx) && (newDay || dayNetRows[rowIndex]) ? dayTotals?.get(dayOf(tx)) : undefined}
+						<!-- Sorted by date, the date is written once per day (and on the first row of a page) under a full rule; a day with 2+ rows shows its net under the date, in the empty date cell of its second row -->
 						<tr
 							class="row row-hover press group cursor-pointer border-t transition-colors select-none"
 							class:row-cursor={cursor === rowIndex}
@@ -2273,18 +2279,19 @@
 									{/if}
 								</td>
 							{/if}
-							<td class="tabular px-4 py-1 whitespace-nowrap {newDay && dayOf(tx) ? 'font-medium' : 'text-secondary'}">
+							<td class="tabular px-4 py-1 whitespace-nowrap {newDay && dayOf(tx) ? 'font-medium' : 'text-secondary'}" title={day && day.count > 1 ? dayNetTitle(day) : undefined}>
 								{#if showDate}
-									{tx.booking_date ? formatDate(tx.booking_date) : '—'}
-									{#if day && day.count > 1}<span class="meta-xs ml-1.5 font-normal" title="{day.count} opérations ce jour, net sans les opérations en cours ni les virements masqués : {formatEUR(day.net)}"><span class="sr-only">net du jour : </span>{signedCompact(day.net)}</span>{/if}
+									{tx.booking_date ? formatDateShort(tx.booking_date) : '—'}
+									{#if day && day.count > 1 && dayNetInline[rowIndex]}<span class="meta-xs ml-1.5 font-normal"><span class="sr-only">net du jour : </span>{signedCompact(day.net)}</span>{/if}
 								{:else}
 									<span class="sr-only">{tx.booking_date ? formatDate(tx.booking_date) : 'en cours'}</span>
+									{#if day && dayNetRows[rowIndex]}<span class="meta-xs"><span class="sr-only">net du jour : </span>{signedCompact(day.net)}</span>{/if}
 								{/if}
 							</td>
 							<td class="w-px py-1 pr-0 pl-4">
 								<MerchantMark label={displayLabel(tx)} id={catId} size={22} title />
 							</td>
-							<td class="max-w-80 py-1 pr-4 pl-2.5">
+							<td class="w-full max-w-0 min-w-48 py-1 pr-4 pl-2.5">
 								<p class="truncate leading-[1.4] font-medium" title={rawLabel(tx)}>
 									{displayLabel(tx)}
 									{#if isExcluded(txKey(tx))}
@@ -2301,7 +2308,7 @@
 									<InstalmentChip {tx} class="ml-2" />
 									{#if refundOf(txKey(tx))}
 										{@const r = refundOf(txKey(tx))!}
-										<span class="chip {r.state === 'refunded' ? 'chip-accent' : r.state === 'overdue' ? 'chip-amber' : 'chip-outline'} ml-2" title="Remboursement attendu de {r.claim.who} : {formatEUR(r.refunded)} reçus sur {formatEUR(r.claim.expected)}">{r.state === 'refunded' ? 'remboursé' : r.state === 'overdue' ? 'remboursement en retard' : r.state === 'closed' ? 'soldé' : 'à rembourser'}</span>
+										<span class="chip {r.state === 'refunded' ? 'chip-accent' : r.state === 'overdue' ? 'chip-amber' : 'chip-outline'} ml-2" title={r.claim.shared ? `Dépense partagée avec ${r.claim.who} : ${r.state === 'refunded' ? `${formatEUR(r.refunded)} reçus` : `part attendue de ${formatEUR(shareRange(r.claim.expected).min)} à ${formatEUR(shareRange(r.claim.expected).max)}`}` : `Remboursement attendu de ${r.claim.who} : ${formatEUR(r.refunded)} reçus sur ${formatEUR(r.claim.expected)}`}>{r.state === 'refunded' ? 'remboursé' : r.state === 'overdue' ? 'remboursement en retard' : r.state === 'closed' ? 'soldé' : 'à rembourser'}</span>
 									{:else if refundedBy(txKey(tx)).length}
 										<span class="chip chip-accent ml-2" title="Rembourse une dépense : compté en déduction de sa catégorie">remboursement</span>
 									{/if}
@@ -2811,6 +2818,8 @@
 		<p class="text-sm">{tx.remittance_information[0]}</p>
 		<p class="meta-xs mt-1">{tx.note} · écriture calculée depuis tes documents de portage : comptée dans le budget, jamais dans tes soldes.</p>
 		<button type="button" class="btn btn-secondary btn-sm mt-3" onclick={(e) => { e.stopPropagation(); navigate('/portage'); }}>Ouvrir l'onglet Portage</button>
+		<!-- Typed Swile / culture voucher spends can be shared with someone who pays back -->
+		{#if amount < 0 && tx.remittance_information[0]?.startsWith('Payé en ')}<RefundControl {tx} />{/if}
 	{:else}
 	{@const amazon = amazonMatchFor(tx)}
 	{@const suggestions = suggestTags(tagCounts, tagDraft, tx.tags ?? [], tagDraft.trim() ? 6 : 5)}

@@ -473,6 +473,28 @@ export function salaryTransfer(payslip: Payslip, txs: Transaction[]): Transactio
 
 export const PORTAGE_ACCOUNT = 'portage';
 
+/**
+ * Budget entry of a spend paid with the Swile card or culture vouchers (its key holds an expected
+ * refund); `rank` tells identical spends of a day apart (see voucherSpendRank).
+ */
+export function voucherSpendEntry(s: VoucherSpend, voucher: 'swile' | 'culture', rank = 0): Transaction {
+	const tx =
+		voucher === 'swile'
+			? entry(s.date, -s.montant, `Payé en Swile : ${s.libelle}`, s.categoryId, 'Repas payé avec la carte Swile (saisie rapide)', s.subId)
+			: entry(s.date, -s.montant, `Payé en chèques culture : ${s.libelle}`, s.categoryId, 'Dépense en chèques culture (onglet Portage)', s.subId);
+	return rank ? { ...tx, dup_index: rank } : tx;
+}
+
+/** Number of identical spends (same day, amount and label) typed before this one. */
+export function voucherSpendRank(list: readonly VoucherSpend[], s: VoucherSpend): number {
+	let rank = 0;
+	for (const x of list) {
+		if (x === s || x.id === s.id) return rank;
+		if (x.date === s.date && x.montant === s.montant && x.libelle === s.libelle) rank++;
+	}
+	return rank;
+}
+
 function entry(date: string, signedAmount: number, label: string, category: CategoryId, note: string, subId?: string): Transaction {
 	return {
 		transaction_amount: { amount: Math.abs(signedAmount).toFixed(2), currency: 'EUR' },
@@ -508,7 +530,7 @@ export function portageEntries(data: PortageData, txs: Transaction[], txKey: (tx
 			if (lump > 0) out.push(entry(date, -lump, `Repas en titres-restaurant (Swile) · ${monthName(p.mois)}`, 'alimentation', detailed > 0 ? `Le reste du mois : ${eur(detailed)} de repas sont saisis un par un` : 'Compté comme dépensé dans le mois : l’historique Swile n’est pas importable'));
 		}
 	}
-	for (const s of data.swile ?? []) out.push(entry(s.date, -s.montant, `Payé en Swile : ${s.libelle}`, s.categoryId, 'Repas payé avec la carte Swile (saisie rapide)', s.subId));
+	for (const s of data.swile ?? []) out.push(voucherSpendEntry(s, 'swile', voucherSpendRank(data.swile ?? [], s)));
 	for (const pr of portageTaxProvisions(data, years)) {
 		const payslip = data.paies.find((p) => p.mois === pr.mois)!;
 		const date = salaryTransfer(payslip, txs)?.booking_date ?? payslip.datePaiement ?? endOfMonth(pr.mois);
@@ -517,7 +539,7 @@ export function portageEntries(data: PortageData, txs: Transaction[], txKey: (tx
 		else out.push(entry(date, -pr.montant, `Provision impôt · ${monthName(pr.mois)}`, 'impots', `Prélevé à ${pct(pr.tauxPreleve)} au lieu de ≈ ${pct(pr.tauxVise)} sur ${eur(pr.base)} imposables : mis de côté pour la régularisation de ${adjustmentMonth}. Quand elle sera prélevée, exclus-la du budget pour ne pas la compter deux fois.`));
 	}
 	for (const c of data.cheques.credits) out.push(entry(c.date, c.montant, `Chèques culture · ${c.libelle}`, 'revenus', 'Porte-monnaie chèques culture (onglet Portage)'));
-	for (const d of data.cheques.depenses) out.push(entry(d.date, -d.montant, `Payé en chèques culture : ${d.libelle}`, d.categoryId, 'Dépense en chèques culture (onglet Portage)', d.subId));
+	for (const d of data.cheques.depenses) out.push(voucherSpendEntry(d, 'culture', voucherSpendRank(data.cheques.depenses, d)));
 
 	const matches = matchAllReports(data, txs, txKey);
 	for (const report of data.notes) {

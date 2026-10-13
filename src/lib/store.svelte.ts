@@ -79,7 +79,7 @@ class TxState {
 	loadError = $state('');
 	feedback = $state<ImportFeedback | null>(null);
 	/** Quick entries replaced by the latest import, with the category moved to the bank operation (undo). */
-	lastQuickMatches = $state.raw<{ manual: Transaction; bankKey: string; category?: CategoryId }[]>([]);
+	lastQuickMatches = $state.raw<{ manual: Transaction; bankKey: string; category?: CategoryId; moved?: boolean }[]>([]);
 }
 
 export const txState = new TxState();
@@ -225,7 +225,7 @@ export function addImported(
 	const manualAt = imported.map((tx, i) => ({ tx, i })).filter((x) => x.tx.source === 'manual');
 	const matches = matchQuickEntries(manualAt.map((x) => x.tx), batch, (tx) => !!tx.quick_keep);
 	const replaced = new Set<number>();
-	const quickMatches: { manual: Transaction; bankKey: string; category?: CategoryId }[] = [];
+	const quickMatches: { manual: Transaction; bankKey: string; category?: CategoryId; moved?: boolean }[] = [];
 	for (const m of matches) {
 		const manual = manualAt[m.manual]!.tx;
 		const bank = batch[m.incoming]!;
@@ -238,7 +238,8 @@ export function addImported(
 			clearOverride(manualKey);
 		}
 		replaced.add(manualAt[m.manual]!.i);
-		quickMatches.push({ manual, bankKey, ...(category ? { category } : {}) });
+		const moved = keyMoveListeners.map((fn) => fn(manualKey, bankKey)).some(Boolean);
+		quickMatches.push({ manual, bankKey, ...(category ? { category } : {}), ...(moved ? { moved } : {}) });
 	}
 	if (replaced.size) {
 		const kept = imported.filter((_, i) => !replaced.has(i));
@@ -369,6 +370,16 @@ export function settleDueInstalments(today: string): Map<string, string | null> 
 	return out;
 }
 
+const keyMoveListeners: ((from: string, to: string) => boolean)[] = [];
+
+/**
+ * Lets state kept by operation key follow a quick entry replaced by its bank operation at import,
+ * and back on undo when it moved (the listener returns whether it did).
+ */
+export function onQuickEntryReplaced(fn: (from: string, to: string) => boolean): void {
+	keyMoveListeners.push(fn);
+}
+
 /**
  * Undoes the pairings of the latest import: the quick entries come back, flagged never to be paired
  * again, with their category; the bank operations stay.
@@ -378,7 +389,11 @@ export function undoQuickMatches(): number {
 	if (!list.length) return 0;
 	const back = list.map((m) => ({ ...m.manual, quick_keep: true }));
 	txState.imported = [...txState.imported, ...back];
-	for (const m of list) if (m.category) setOverride(txKey({ ...m.manual, quick_keep: true }), m.category);
+	for (const m of list) {
+		const key = txKey({ ...m.manual, quick_keep: true });
+		if (m.category) setOverride(key, m.category);
+		if (m.moved) for (const fn of keyMoveListeners) fn(m.bankKey, key);
+	}
 	txState.lastQuickMatches = [];
 	persistImported();
 	return back.length;

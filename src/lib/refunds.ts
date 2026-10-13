@@ -23,6 +23,21 @@ export interface RefundClaim {
 	auto: boolean;
 	/** Closed by hand (« soldé ») even if not fully refunded. */
 	closed?: boolean;
+	/** Shared with the payer, who gives back their share: one transfer worth SHARE_MIN to SHARE_MAX of the open shared spends settles them. */
+	shared?: boolean;
+}
+
+/** Share of a shared spend a transfer must reach to settle it (40 %), and the most it may exceed it by. */
+export const SHARE_MIN = 0.4;
+export const SHARE_MAX = 1.1;
+/** Share counted as still owed on an unpaid shared spend (half: what a payer usually gives back). */
+export const SHARE_OWED = 0.5;
+/** Most open shared spends of one payer weighed against a transfer (the latest ones). */
+const SHARE_SET_CAP = 10;
+
+/** Transfers that settle shared spends worth `total`. */
+export function shareRange(total: number): { min: number; max: number } {
+	return { min: r2(total * SHARE_MIN), max: r2(total * SHARE_MAX) };
 }
 
 export interface Credit {
@@ -76,21 +91,29 @@ export function creditFrom(claim: RefundClaim, label: string, extraHealthNames: 
  * can be split between them (one transfer for several visits), a claim can be paid in several
  * transfers. A claim not fully refunded after `dueDays` is overdue. Health claims count as refunded
  * once at most HEALTH_TOLERANCE € is missing (the non-refundable flat fee per visit).
+ * Shared spends are settled first by `settleShared`.
  */
 export function matchRefunds(claims: readonly RefundClaim[], credits: readonly Credit[], today: string, dueDays = 15, extraHealthNames: readonly string[] = []): ClaimStatus[] {
 	const left = new Map(credits.map((c) => [c.key, c.amount]));
 	const sortedCredits = [...credits].sort((a, b) => a.date.localeCompare(b.date));
 	const order = claims.map((claim, i) => ({ claim, i })).sort((a, b) => a.claim.date.localeCompare(b.claim.date));
+	const settled = settleShared(order, sortedCredits, left, extraHealthNames);
 	const out: ClaimStatus[] = new Array(claims.length);
 	for (const { claim, i } of order) {
+		const age = (utc(today) - utc(claim.date)) / DAY;
+		if (claim.shared) {
+			const share = settled.get(i);
+			const state: ClaimStatus['state'] = claim.closed ? 'closed' : share ? 'refunded' : age > dueDays ? 'overdue' : 'pending';
+			out[i] = { claim, payments: share ? [share] : [], refunded: share?.amount ?? 0, remaining: share ? 0 : r2(claim.expected * SHARE_OWED), state };
+			continue;
+		}
 		const payments: ClaimStatus['payments'] = [];
 		let refunded = 0;
 		for (const c of sortedCredits) {
 			if (refunded >= claim.expected - 0.005) break;
 			const avail = left.get(c.key) ?? 0;
 			if (avail <= 0.005) continue;
-			const days = (utc(c.date) - utc(claim.date)) / DAY;
-			if (days < 0 || days > 90 || !creditFrom(claim, c.label, extraHealthNames)) continue;
+			if (!followsWithin90(claim, c) || !creditFrom(claim, c.label, extraHealthNames)) continue;
 			const part = r2(Math.min(avail, claim.expected - refunded));
 			left.set(c.key, r2(avail - part));
 			refunded = r2(refunded + part);
@@ -98,11 +121,62 @@ export function matchRefunds(claims: readonly RefundClaim[], credits: readonly C
 		}
 		const remaining = r2(Math.max(0, claim.expected - refunded));
 		const tolerance = claim.source === 'sante' ? HEALTH_TOLERANCE : 0.005;
-		const age = (utc(today) - utc(claim.date)) / DAY;
 		const state: ClaimStatus['state'] = claim.closed ? 'closed' : remaining <= tolerance ? 'refunded' : age > dueDays ? 'overdue' : refunded > 0 ? 'partial' : 'pending';
 		out[i] = { claim, payments, refunded, remaining, state };
 	}
 	return out;
+}
+
+function followsWithin90(claim: RefundClaim, c: Credit): boolean {
+	const days = (utc(c.date) - utc(claim.date)) / DAY;
+	return days >= 0 && days <= 90;
+}
+
+/**
+ * Shared spends: each transfer from the payer (oldest first) settles some of their open shared
+ * spends of the 90 days before it: the set whose total puts the transfer between SHARE_MIN and
+ * SHARE_MAX of it, nearest to half or all of it (more spends, then older ones, on a tie). The whole
+ * transfer goes to that set, split pro rata. A transfer that repays exactly an open plain claim of
+ * that payer (a loan, an advance) is left to it.
+ */
+function settleShared(order: readonly { claim: RefundClaim; i: number }[], credits: readonly Credit[], left: Map<string, number>, extraHealthNames: readonly string[]): Map<number, ClaimStatus['payments'][number]> {
+	const settled = new Map<number, ClaimStatus['payments'][number]>();
+	const shared = order.filter((o) => o.claim.shared && !o.claim.closed);
+	if (!shared.length) return settled;
+	const plain = order.filter((o) => !o.claim.shared && !o.claim.closed);
+	for (const c of credits) {
+		const from = (claim: RefundClaim) => followsWithin90(claim, c) && creditFrom(claim, c.label, extraHealthNames);
+		if (plain.some(({ claim }) => Math.abs(claim.expected - c.amount) < 0.01 && from(claim))) continue;
+		const open = shared.filter(({ claim, i }) => !settled.has(i) && from(claim)).slice(-SHARE_SET_CAP);
+		const set = bestShareSet(open.map((o) => o.claim.expected), c.amount);
+		if (!set) continue;
+		const picked = set.map((j) => open[j]!);
+		const total = r2(picked.reduce((sum, o) => sum + o.claim.expected, 0));
+		let given = 0;
+		picked.forEach(({ claim, i }, j) => {
+			const amount = j === picked.length - 1 ? r2(c.amount - given) : r2((c.amount * claim.expected) / total);
+			given = r2(given + amount);
+			settled.set(i, { key: c.key, date: c.date, amount, label: c.label });
+		});
+		left.set(c.key, 0);
+	}
+	return settled;
+}
+
+/** Indexes (oldest first) of the spends a transfer most likely pays back, or null when no set fits the share range. */
+function bestShareSet(amounts: readonly number[], paid: number): number[] | null {
+	let best: { set: number[]; gap: number } | null = null;
+	for (let mask = 1; mask < 1 << amounts.length; mask++) {
+		const set = amounts.map((_, j) => j).filter((j) => mask & (1 << j));
+		const total = r2(set.reduce((sum, j) => sum + amounts[j]!, 0));
+		const { min, max } = shareRange(total);
+		if (paid < min - 0.005 || paid > max + 0.005) continue;
+		const ratio = paid / total;
+		const gap = Math.round(Math.min(Math.abs(ratio - 0.5), Math.abs(ratio - 1)) * 1000);
+		const better = !best || gap < best.gap || (gap === best.gap && (set.length > best.set.length || (set.length === best.set.length && set.join() < best.set.join())));
+		if (better) best = { set, gap };
+	}
+	return best?.set ?? null;
 }
 
 /**
