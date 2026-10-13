@@ -437,7 +437,7 @@
 				</Block>
 			{/if}
 		{:else if id === 'networth'}
-			<Block page="patrimoine" {id} defaults={WEALTH_BLOCKS} title="Valeur totale du patrimoine" size="L" sizes={['M', 'L', 'XL']} elements={NETWORTH_ELEMENTS} class="networth-glow vt-net-worth hero-in-1 flex flex-col">
+			<Block page="patrimoine" {id} defaults={WEALTH_BLOCKS} title="Valeur totale du patrimoine" size="L" sizes={['M', 'L', 'XL']} elements={NETWORTH_ELEMENTS} class="networth-glow hero-in-1 flex flex-col">
 				{#snippet children(show)}
 					<p class="label-xs">Valeur totale du patrimoine</p>
 					<p class="display-amount mt-1">

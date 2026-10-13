@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { Tween } from 'svelte/motion';
 	import { cubicOut } from 'svelte/easing';
 	import { formatEURNarrowParts, sensitiveEURNarrowParts } from '$lib/format';
+	import { playsEntrance } from '$lib/motion.svelte';
 
 	/**
-	 * Amount animated as a count-up with Svelte 5 Tween. With `flash` (crypto tickers): teal (up) /
+	 * Amount animated as a count-up with Svelte 5 Tween (from 0, or from its value when mounted by a page
+	 * change). With `flash` (crypto tickers): teal (up) /
 	 * amber (down) overlay for 400 ms on each update, skipped on first render. With `narrow`: 'k€'
 	 * format whose suffix sits in a span with neutral kerning (fixes the €/k collision under display
 	 * tracking).
@@ -19,7 +22,7 @@
 
 	// Reduced motion (system preference): value shown directly
 	const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-	const displayed = new Tween(0, { duration: reduced ? 0 : 900, easing: cubicOut });
+	const displayed = new Tween(playsEntrance() ? 0 : untrack(() => value), { duration: reduced ? 0 : 900, easing: cubicOut });
 
 	let flashDir = $state<'up' | 'down' | null>(null);
 	let mounted = false;

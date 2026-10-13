@@ -138,6 +138,13 @@
 	const fixedHeights = $derived(!!saved?.tree);
 	const tiled = $derived(tiledMedia && width > 0);
 
+	/**
+	 * First placement of the tiles, until every shown block is measured (then two more frames, 1 s at
+	 * most): they land at their size without sliding; later moves and resizes animate.
+	 */
+	let placing = $state(true);
+	const measured = $derived(visible.every((id) => layoutState.natural[blockKey(page, id)] !== undefined));
+
 	/** Natural outer height of a block (measured), with an estimate until it is measured. */
 	function naturalOf(id: string): number {
 		return Math.max(MIN_TILE.h, layoutState.natural[blockKey(page, id)] ?? LEAF_ESTIMATE);
@@ -247,6 +254,17 @@
 			ro.disconnect();
 			window.removeEventListener('resize', measure);
 		};
+	});
+
+	$effect(() => {
+		if (!placing || !tiled || !measured) return;
+		let frame = requestAnimationFrame(() => (frame = requestAnimationFrame(() => (placing = false))));
+		return () => cancelAnimationFrame(frame);
+	});
+
+	$effect(() => {
+		const timer = setTimeout(() => (placing = false), 1000);
+		return () => clearTimeout(timer);
 	});
 
 	/** Menu listeners while it is open: outside click, Escape, scroll or resize close it. */
@@ -721,6 +739,7 @@
 	class="tile-canvas"
 	class:tile-canvas-tiled={tiled}
 	class:tile-canvas-gesture={gesture}
+	class:tile-canvas-placing={placing}
 	style={tiled ? `height: ${height}px;` : ''}
 	data-tile-page={page}
 >

@@ -160,9 +160,6 @@
 	const sparkValues = $derived(getNetWorthSparkline());
 	/** Auto-backup failing or paused: amber dot on the Settings gear. */
 	const backupAlert = $derived(autoBackupState.enabled && (!!autoBackupState.error || autoBackupState.permission !== 'granted'));
-	// Carrier of the 'net-worth' view-transition-name outside the Patrimoine page (on /patrimoine the
-	// large Valeur totale card carries it)
-	const carriesNetWorth = $derived(route.path !== '/patrimoine');
 </script>
 
 <!-- ============ Desktop: fixed left sidebar (≥1024px) ============ -->
@@ -313,7 +310,7 @@
 		{#if !collapsed && isModuleActive('patrimoine')}
 			<a
 				href="/patrimoine"
-				class="press block {carriesNetWorth ? 'vt-net-worth' : ''}"
+				class="press block"
 				title="Voir le patrimoine"
 			>
 				<p class="label-xs">Patrimoine net</p>

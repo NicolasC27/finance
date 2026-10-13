@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { formatEUR, formatEURNarrowParts, sensitiveEUR, sensitiveEURNarrowParts } from '$lib/format';
+	import { playsEntrance } from '$lib/motion.svelte';
 
 	/**
 	 * Rolling-digit odometer (SPEC v12 §1), a mechanical counter: each digit is a one-line
@@ -11,7 +12,8 @@
 	 * never rAF. Triggered when entering the viewport (IntersectionObserver, once) then on every value
 	 * change (re-rolls from the current position; CSS retargeting means no visual jump).
 	 * LCP: the initial state IS the final value (no 0000 flash); the strip only restarts from 0 on the
-	 * first visible appearance. prefers-reduced-motion → instant display (see also app.css).
+	 * first visible appearance, except when mounted by a page change (it then shows its value and rolls
+	 * on changes). prefers-reduced-motion → instant display (see also app.css).
 	 * Deliberately rare effect: Patrimoine net amount + StatCard KPIs. AnimatedAmount stays the choice
 	 * for small changes (tables, lists).
 	 */
@@ -184,9 +186,13 @@
 
 	onMount(() => {
 		reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-		if (reduced || typeof IntersectionObserver === 'undefined') {
+		const clearTimers = () => {
+			window.clearTimeout(snapTimer);
+			window.clearTimeout(flashTimer);
+		};
+		if (reduced || !playsEntrance() || typeof IntersectionObserver === 'undefined') {
 			seen = true;
-			return;
+			return clearTimers;
 		}
 		const io = new IntersectionObserver(
 			(entries) => {
@@ -200,8 +206,7 @@
 		if (host) io.observe(host);
 		return () => {
 			io.disconnect();
-			window.clearTimeout(snapTimer);
-			window.clearTimeout(flashTimer);
+			clearTimers();
 		};
 	});
 </script>

@@ -77,6 +77,14 @@
 		return () => clearTimeout(timer);
 	});
 
+	/** First rectangle taken at once (two frames without transition): a block that appears late lands in place, no slide from the corner. */
+	let placed = $state(false);
+	$effect(() => {
+		if (placed || !rect) return;
+		let frame = requestAnimationFrame(() => (frame = requestAnimationFrame(() => (placed = true))));
+		return () => cancelAnimationFrame(frame);
+	});
+
 	$effect(() => {
 		registerBlock(page, id, { title: label, elements, size });
 		return () => unregisterBlock(page, id);
@@ -159,6 +167,7 @@
 		class:tile-tiled={tiled}
 		class:tile-lifted={!!lifted}
 		class:tile-landing={landing}
+		class:tile-unplaced={tiled && !placed}
 		class:tile-settled={settled}
 		style="{tileStyle} {style}"
 		data-block="{page}:{id}"
@@ -249,6 +258,8 @@
 		display: flow-root;
 	}
 	:global(.tile-canvas-gesture) .tile-tiled,
+	:global(.tile-canvas-placing) .tile-tiled,
+	.tile-unplaced,
 	.tile-landing {
 		transition: none;
 	}
