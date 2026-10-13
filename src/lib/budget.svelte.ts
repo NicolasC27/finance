@@ -123,6 +123,25 @@ export function setTxSubOverrides(list: readonly { tx: Transaction; subId: strin
 }
 
 /**
+ * Puts subcategory overrides back as they were before a change (undo), in one write: a value
+ * (subId, or null = « none ») is set again, `undefined` removes the entry (automatic subcategory).
+ */
+export function restoreSubOverrides(byTxPrevious: Record<string, string | null | undefined>, byMerchantPrevious: Record<string, string | null | undefined> = {}): void {
+	const restore = (current: Record<string, string | null>, previous: Record<string, string | null | undefined>) => {
+		const next = { ...current };
+		for (const [key, value] of Object.entries(previous)) {
+			if (value === undefined) delete next[key];
+			else next[key] = value;
+		}
+		return next;
+	};
+	budgetState.subOverrides = { byTx: restore(budgetState.subOverrides.byTx, byTxPrevious), byMerchant: restore(budgetState.subOverrides.byMerchant, byMerchantPrevious) };
+	saveSubOverrides(budgetState.subOverrides);
+	setSubOverridesSource(budgetState.subOverrides);
+	budgetState.overrides = { ...budgetState.overrides };
+}
+
+/**
  * Hands the category and subcategory chosen for one operation (`fromKey`) over to `to`: a quick
  * entry whose key changes, or the bank operation that replaces it. What `to` already has is kept;
  * `fromKey` loses them.

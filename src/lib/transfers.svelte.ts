@@ -3,6 +3,7 @@ import { txKey } from './categories';
 import { getTransactions } from './store.svelte';
 import { accountState } from './accounts.svelte';
 import { getPortageEntries } from './portage.svelte';
+import { getCashEntries, isWalletWithdrawal, walletWithdrawalKeys } from './wallet.svelte';
 import {
 	detectTransferPairs,
 	holderNamesFromLabels,
@@ -21,6 +22,9 @@ import {
  *   badge.
  * - dismissed: txKeys the user chose to KEEP (remembered decision, never offered again by the
  *   dialog).
+ * A withdrawal into the cash wallet is out of the budget by a derived rule, never through these
+ * lists: it is not « hidden by the user » (isHidden), and hiding or bringing it back never writes
+ * its key (excludeKeys, includeKeys).
  *
  * The confirmation dialog opens only once per detection batch (initial load or import) through
  * reviewTransfers().
@@ -70,8 +74,13 @@ function persist(): void {
 const excludedSet = $derived(new Set(transferState.excluded));
 const dismissedSet = $derived(new Set(transferState.dismissed));
 
-/** Is the key excluded from the budget totals? */
+/** Is the key out of the budget totals: hidden by the user (isHidden), or a withdrawal that went into the cash wallet? */
 export function isExcluded(key: string): boolean {
+	return excludedSet.has(key) || isWalletWithdrawal(key);
+}
+
+/** Is the key hidden from the budget by the user (persisted list)? A withdrawal into the cash wallet is not, though out of the budget. */
+export function isHidden(key: string): boolean {
 	return excludedSet.has(key);
 }
 
@@ -85,9 +94,9 @@ export function getDetectedPairs(): TransferPair[] {
 	return detectedPairs;
 }
 
-/** Keys detected as internal transfers (excluded or not): Transactions filter. */
+/** Keys detected as internal transfers (excluded or not), withdrawals into the cash wallet included: Transactions filter. */
 const internalKeys = $derived.by((): Set<string> => {
-	const set = new Set<string>(transferState.excluded);
+	const set = new Set<string>([...transferState.excluded, ...walletWithdrawalKeys()]);
 	for (const pair of detectedPairs) for (const k of pairKeys(pair)) set.add(k);
 	return set;
 });
@@ -124,23 +133,38 @@ export function reviewTransfers(): void {
 	if (undecidedPairs.length > 0) transferState.reviewOpen = true;
 }
 
-/** 'Masquer du budget': the keys leave the totals (persisted decision). */
+/** 'Masquer du budget': the keys leave the totals (persisted decision); a withdrawal into the cash wallet is never written. */
 export function excludeKeys(keys: string[]): void {
 	if (keys.length === 0) return;
-	const add = new Set(keys.filter((k) => !excludedSet.has(k)));
+	const add = new Set(keys.filter((k) => !excludedSet.has(k) && !isWalletWithdrawal(k)));
 	if (add.size === 0) return;
 	transferState.excluded = [...transferState.excluded, ...add];
 	transferState.dismissed = transferState.dismissed.filter((k) => !add.has(k));
 	persist();
 }
 
-/** 'Garder' / 'Réintégrer au budget': remembered decision (never offered again). */
-export function includeKeys(keys: string[]): void {
+/** 'Garder' / 'Réintégrer au budget': remembered decision (never offered again); a withdrawal into the cash wallet stays out of the budget and out of the lists. */
+export function includeKeys(input: string[]): void {
+	const keys = input.filter((k) => !isWalletWithdrawal(k));
 	if (keys.length === 0) return;
 	const wanted = new Set(keys);
 	transferState.excluded = transferState.excluded.filter((k) => !wanted.has(k));
 	const add = keys.filter((k) => !dismissedSet.has(k));
 	transferState.dismissed = [...transferState.dismissed, ...add];
+	persist();
+}
+
+/**
+ * Undo of 'Masquer du budget' (excludeKeys): the keys go back into the budget totals and get back
+ * their previous « kept » decision (only those in `wasDismissed`), so the dialog may offer the
+ * others again, unlike includeKeys which remembers every key as kept.
+ */
+export function unexcludeKeys(keys: readonly string[], wasDismissed: readonly string[] = []): void {
+	if (keys.length === 0) return;
+	const wanted = new Set(keys);
+	transferState.excluded = transferState.excluded.filter((k) => !wanted.has(k));
+	const add = wasDismissed.filter((k) => wanted.has(k) && !dismissedSet.has(k));
+	if (add.length) transferState.dismissed = [...transferState.dismissed, ...add];
 	persist();
 }
 
@@ -172,18 +196,33 @@ export function closeReview(): void {
 }
 
 /**
- * Transactions of the BUDGET scope: all except the excluded internal transfers, plus the computed
- * portage entries (meal vouchers, culture vouchers, advanced expenses). Single source of the
- * aggregations (budget, donut, forecast, report, insights); account balances (Patrimoine) use
+ * Transactions of the BUDGET scope: all except the excluded internal transfers and the withdrawals
+ * that went into the cash wallet, plus the computed portage entries (meal vouchers, culture
+ * vouchers, advanced expenses) and the cash wallet entries (cash spends, write-offs). Single source
+ * of the aggregations (budget, donut, forecast, report, insights); account balances (Patrimoine) use
  * getTransactions(), without those entries.
  */
-const budgetTransactions = $derived([...getTransactions().filter((tx) => !excludedSet.has(txKey(tx))), ...getPortageEntries()]);
+const budgetTransactions = $derived([
+	...getTransactions().filter((tx) => {
+		const key = txKey(tx);
+		return !excludedSet.has(key) && !isWalletWithdrawal(key);
+	}),
+	...getPortageEntries(),
+	...getCashEntries()
+]);
 
 export function getBudgetTransactions(): Transaction[] {
 	return budgetTransactions;
 }
 
-/** Number of hidden internal transfers in a batch of transactions (import feedback). */
+/** Operations of the Transactions list: the bank's, plus the portage and cash wallet entries (budget only). */
+const listedTransactions = $derived([...getTransactions(), ...getPortageEntries(), ...getCashEntries()]);
+
+export function getListedTransactions(): Transaction[] {
+	return listedTransactions;
+}
+
+/** Number of internal transfers hidden by the user in a batch of transactions (import feedback « virements masqués »); withdrawals into the cash wallet are not transfers and do not count. */
 export function countExcludedAmong(txs: Transaction[]): number {
 	let n = 0;
 	for (const tx of txs) if (excludedSet.has(txKey(tx))) n++;

@@ -7,12 +7,14 @@
 	import { navigate } from '$lib/router.svelte';
 	import { lighten } from '$lib/color';
 	import Sparkline from './Sparkline.svelte';
+	import { contextActions, type MenuInput } from '$lib/contextMenu.svelte';
 
 	/**
 	 * Budget card: consumed percentage + draggable spent/budget slider. The spent/remaining line and the
 	 * percentage follow the « Éléments affichés » of the Budget block; the slider always shows, being
 	 * the only way to set a budget. `trend` (spending of the last months, oldest first) draws a small
-	 * sparkline under the percentage.
+	 * sparkline under the percentage. Right click: its operations, the envelope edit (the slider takes
+	 * the focus) and the envelope set to the month's spending, with undo.
 	 */
 	let {
 		categoryId,
@@ -47,6 +49,8 @@
 	let dragging = $state(false);
 	let dragValue = $state(0);
 	let lastCommit = 0;
+	/** Slider just focused from the menu: outlined a moment so the edit is seen. */
+	let editing = $state(false);
 	/** Budget when the drag started ('Annuler' toast on release). */
 	let dragStart = 0;
 
@@ -115,10 +119,40 @@
 		dragging = false;
 		if (track?.hasPointerCapture(e.pointerId)) track.releasePointerCapture(e.pointerId);
 		setBudget(categoryId, dragValue);
-		if (dragValue !== dragStart) {
-			const before = dragStart;
-			showToast(`${category.label} : ${formatEUR(before)} → ${formatEUR(dragValue)}`, 'Annuler', () => setBudget(categoryId, before));
-		}
+		if (dragValue !== dragStart) announce(dragStart, dragValue);
+	}
+
+	/** Toast of a budget change, whose « Annuler » restores the former budget. */
+	function announce(before: number, after: number) {
+		showToast(`${category.label} : ${formatEUR(before)} → ${formatEUR(after)}`, 'Annuler', () => setBudget(categoryId, before));
+	}
+
+	/** « Modifier l'enveloppe »: the slider takes the focus (arrows ±10 €, ⇧ ±50 €), outlined a moment. */
+	function editBudget() {
+		if (!track) return;
+		track.focus();
+		editing = true;
+		setTimeout(() => (editing = false), 1600);
+	}
+
+	/** Budget that covers the month's spending, rounded up to the slider step. */
+	const spentBudget = $derived(Math.ceil(spent / STEP) * STEP);
+
+	/** Right-click entries of the card. */
+	function menuItems(): MenuInput[] {
+		return [
+			{ label: 'Voir les opérations du mois', onSelect: openTransactions },
+			{ label: "Modifier l'enveloppe", hint: '← →', onSelect: editBudget },
+			spent > 0 &&
+				spentBudget !== storedBudget && {
+					label: `Caler l'enveloppe sur la dépense (${formatEUR(spentBudget)})`,
+					onSelect: () => {
+						const before = storedBudget;
+						setBudget(categoryId, spentBudget);
+						announce(before, spentBudget);
+					}
+				}
+		];
 	}
 
 	/** Opens the Transactions page filtered on this category and the selected month. */
@@ -143,7 +177,7 @@
 	}
 </script>
 
-<div class="card card-hover fade-slide p-4" style="--stagger: {index * 60}ms;">
+<div class="card card-hover fade-slide p-4" style="--stagger: {index * 60}ms;" use:contextActions={menuItems}>
 	<div class="flex items-start justify-between gap-4">
 		<div class="min-w-0">
 			<button
@@ -188,6 +222,7 @@
 		class="budget-slider relative mt-3 flex h-6 touch-pan-y items-center {dragging
 			? 'dragging'
 			: ''}"
+		class:editing
 		role="slider"
 		tabindex="0"
 		aria-label="Budget {category.label}"
@@ -289,7 +324,8 @@
 		touch-action: none;
 	}
 
-	.budget-slider:focus-visible {
+	.budget-slider:focus-visible,
+	.budget-slider.editing {
 		outline: 2px solid var(--accent);
 		outline-offset: 4px;
 		border-radius: 9999px;

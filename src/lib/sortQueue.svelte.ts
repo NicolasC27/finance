@@ -4,12 +4,13 @@ import { subcategorize } from './subcategories';
 import { budgetState } from './budget.svelte';
 import { getMerchantCategoryMap } from './store.svelte';
 import { getBudgetTransactions } from './transfers.svelte';
-import { isPending } from './data';
+import { isComputedEntry, isPending } from './data';
 import { persistJson } from './storage';
 
 /**
  * 'À trier' queue (Triage page + Sidebar badge), single source: operations in 'Autre', excluding
- * wealth movements, hidden operations, fixed charges legitimately in 'Autre' (loan instalments,
+ * computed entries (portage, cash wallet: their category is chosen where they are typed), wealth
+ * movements, hidden operations, fixed charges legitimately in 'Autre' (loan instalments,
  * bank fees and subscriptions) and operations the user chose to keep in 'Autre'. Before, those 7
  * real operations stayed in the queue and the badge forever.
  */
@@ -39,7 +40,7 @@ const queue = $derived.by((): Transaction[] => {
 	const merchantMap = getMerchantCategoryMap();
 	return getBudgetTransactions()
 		.filter((tx) => {
-			if (tx.source === 'portage' || isPending(tx) || isWealthMovement(tx) || keptSet.has(txKey(tx))) return false;
+			if (isComputedEntry(tx) || isPending(tx) || isWealthMovement(tx) || keptSet.has(txKey(tx))) return false;
 			if (categorize(tx, budgetState.overrides, undefined, merchantMap) !== 'autre') return false;
 			if (FIXED_LABEL_RE.test(tx.remittance_information.join(' ').trim())) return false;
 			const sub = subcategorize(tx, budgetState.overrides, undefined, merchantMap);

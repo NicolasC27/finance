@@ -34,9 +34,11 @@
 		getNatixisCashCounted,
 		getKrakenPerformance,
 		getTaxProvision,
+		getCashInHand,
 		syncLedgerFromApi,
 		type AccountView
 	} from '$lib/wealth.svelte';
+	import { walletStarted } from '$lib/wallet.svelte';
 	import { krakenLedgerState } from '$lib/krakenLedger.svelte';
 	import { natixisState } from '$lib/natixisHoldings.svelte';
 	import type { AccountKind } from '$lib/accounts.svelte';
@@ -271,7 +273,7 @@
 	const NETWORTH_ELEMENTS: BlockElement[] = [
 		{ id: 'variation', label: 'Variation sur 30 jours' },
 		{ id: 'detail', label: 'Actifs, dettes et provision d’impôt' },
-		{ id: 'sources', label: 'Banques, crypto et épargne salariale' },
+		{ id: 'sources', label: 'Banques, crypto, liquide et épargne salariale' },
 		{ id: 'portage', label: 'À recevoir du portage' },
 		{ id: 'biens', label: 'Biens, hors total' }
 	];
@@ -466,6 +468,11 @@
 							<p class="text-secondary">
 								Crypto : <span class="tabular font-medium" style="color: var(--text);">{formatEUR(getCryptoTotal())}</span>
 							</p>
+							{#if walletStarted()}
+								<p class="text-secondary" title="Porte-monnaie : les retraits ont baissé le solde de la banque, le liquide en main compte ici (un retrait encore en cours y entre une fois débité)">
+									Liquide : <span class="tabular font-medium" style="color: var(--text);">{formatEUR(getCashInHand())}</span>
+								</p>
+							{/if}
 							{#if employeeSavingsTotal > 0}
 								<p class="text-secondary" title="Valeur de l'avis Natixis{natixisState.holdings ? ` au ${formatDate(natixisState.holdings.valuedAt)}` : ''} : c'est elle qui entre au patrimoine net">
 									Épargne salariale : <span class="tabular font-medium" style="color: var(--text);">{formatEUR(employeeSavingsTotal)}</span>

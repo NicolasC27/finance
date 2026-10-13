@@ -1,5 +1,5 @@
 import type { CategoryId, Transaction } from './types';
-import { signedAmount } from './data';
+import { isComputedEntry, signedAmount } from './data';
 import { flowKind } from './flow';
 import { getCategory } from './categories';
 import { getSubcategory } from './subDict';
@@ -90,11 +90,11 @@ const toEuros = (cents: number) => cents / 100;
 
 /**
  * Display name of an operation: the merchant (like Analyse › Par commerçant), except for the
- * computed entries of the Portage tab whose label is already written ('Chèques culture ·
- * septembre' → 'Chèques culture').
+ * computed entries of the Portage tab and of the cash wallet whose label is already written
+ * ('Chèques culture · septembre' → 'Chèques culture', 'Liquide : marché').
  */
 function displayName(tx: Transaction): string {
-	if (tx.source === 'portage') {
+	if (isComputedEntry(tx)) {
 		const raw = tx.remittance_information.join(' ').trim();
 		const head = raw.split(' · ')[0]!.replace(/\s*\([^)]*\)\s*$/, '').trim();
 		if (head) return head;
@@ -185,7 +185,7 @@ export function buildSankeyFlows(
 			const bySub = subDef !== undefined && subDef.categoryId === 'revenus';
 			const key = bySub
 				? `sub:${subDef.id}`
-				: tx.source === 'portage'
+				: isComputedEntry(tx)
 					? `p:${name}`
 					: `m:${merchantKey(tx.remittance_information) || name}`;
 			let g = sources.get(key);

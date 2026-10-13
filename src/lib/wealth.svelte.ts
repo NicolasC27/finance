@@ -19,11 +19,13 @@ import { assetPnl, computePerformance, TECHNICAL_ASSETS, type KrakenPerformance 
 import { computeTaxReport, pfuRate } from './cryptoTax';
 import { hasTaxNotice, getTaxNotices } from './taxes.svelte';
 import { natixisState, getNatixisEstimate } from './natixisHoldings.svelte';
+import { walletState } from './wallet.svelte';
+import { shownBalance, walletBalance, walletBalanceByDay, withdrawalsOf } from './wallet';
 
 /**
  * Reactive net-worth state (Svelte 5 runes):
  * - Kraken state (prices, balances, statuses, manual entries, snapshots)
- * - net worth = bank balances (demo + imported CM, imported Natixis) + live crypto
+ * - net worth = bank balances (demo + imported CM, imported Natixis) + live crypto + cash wallet
  * - net-worth history for the chart (bank + crypto snapshots/OHLC)
  */
 
@@ -341,8 +343,25 @@ export function getTaxProvision(): number {
 	return taxProvision.total;
 }
 
+/**
+ * Withdrawals already booked: the bank balances leave pending rows out, so a withdrawal still
+ * pending has not lowered them yet and must not raise the cash counted in the net worth either.
+ */
+const bookedWithdrawals = $derived(withdrawalsOf(getTransactions().filter((tx) => !isPending(tx)), txKey));
+
+/**
+ * Cash in the wallet once it has started (never below 0 €), booked withdrawals only: they lowered
+ * the bank balance instead of counting as spending, so the cash in hand enters the net worth here,
+ * once. Equals the wallet balance except while a withdrawal is still pending.
+ */
+const cashInHand = $derived(walletState.wallet.start ? shownBalance(walletBalance(walletState.wallet, bookedWithdrawals)) : 0);
+
+export function getCashInHand(): number {
+	return cashInHand;
+}
+
 const netWorth = $derived(
-	Math.round((bankBalances.cm + natixisCash + cryptoTotal + employeeSavingsTotal - taxProvision.total) * 100) / 100
+	Math.round((bankBalances.cm + natixisCash + cryptoTotal + employeeSavingsTotal + cashInHand - taxProvision.total) * 100) / 100
 );
 
 export function getNetWorth(): number {
@@ -364,9 +383,14 @@ export interface AllocationSlice {
  */
 const ALLOCATION_COLORS = { cm: '#5d94da', natixis: '#9e5598', crypto: '#c77f3e', epargne: '#297613' } as const;
 
+/**
+ * Slices of the net worth's assets. The cash in hand joins the bank slice (« Crédit Mutuel et
+ * liquide »), the account it was taken from, without a colour of its own: the total matches the
+ * assets of the net worth.
+ */
 const allocation = $derived.by((): AllocationSlice[] => {
 	const parts: AllocationSlice[] = [
-		{ id: 'cm', label: 'Crédit Mutuel', value: bankBalances.cm, color: ALLOCATION_COLORS.cm },
+		{ id: 'cm', label: cashInHand > 0 ? 'Crédit Mutuel et liquide' : 'Crédit Mutuel', value: Math.round((bankBalances.cm + cashInHand) * 100) / 100, color: ALLOCATION_COLORS.cm },
 		{ id: 'natixis', label: 'Natixis', value: natixisCash, color: ALLOCATION_COLORS.natixis },
 		{ id: 'crypto', label: 'Crypto (Kraken)', value: cryptoTotal, color: ALLOCATION_COLORS.crypto },
 		{ id: 'epargne', label: 'Épargne salariale', value: employeeSavingsTotal, color: ALLOCATION_COLORS.epargne }
@@ -416,13 +440,25 @@ const baseHistory = $derived.by((): BalancePoint[] => {
 });
 
 /**
- * Curve + employee savings (step at the statement date, constant statement value after).
- * The LAST point matches the displayed net worth (today): tax provision and crypto value of
- * the day included. Future-dated data never creates a point.
+ * Cash in the wallet at the end of each day (never below 0 €; 0 before its start), booked
+ * withdrawals only like the bank curve, on their booking day: from the start they lower the bank
+ * balance, so the curve adds the cash in hand back day by day instead of jumping by the whole
+ * balance on today's point. One pass over the wallet events (walletBalanceByDay).
+ */
+function cashOnDays(days: readonly string[]): number[] {
+	return walletBalanceByDay(walletState.wallet, bookedWithdrawals, days);
+}
+
+/**
+ * Curve + employee savings (step at the statement date, constant statement value after) + cash
+ * in the wallet. The LAST point matches the displayed net worth (today): tax provision and crypto
+ * value of the day included. Future-dated data never creates a point.
  */
 const history = $derived.by((): BalancePoint[] => {
 	const h = natixisState.holdings;
-	const withSavings = !h || !h.valuedAt ? baseHistory : baseHistory.map((p) => (p.iso >= h.valuedAt ? { ...p, balance: Math.round((p.balance + h.total) * 100) / 100 } : p));
+	const cash = cashOnDays(baseHistory.map((p) => p.iso));
+	const withCash = cash.some((c) => c > 0) ? baseHistory.map((p, k) => (cash[k] ? { ...p, balance: Math.round((p.balance + cash[k]!) * 100) / 100 } : p)) : baseHistory;
+	const withSavings = !h || !h.valuedAt ? withCash : withCash.map((p) => (p.iso >= h.valuedAt ? { ...p, balance: Math.round((p.balance + h.total) * 100) / 100 } : p));
 	if (withSavings.length === 0) return withSavings;
 	const today = dayKey(new Date());
 	const last = withSavings[withSavings.length - 1]!;

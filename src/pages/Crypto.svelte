@@ -4,7 +4,7 @@
 	import { formatEUR, formatDate, formatMonth, formatPct } from '$lib/sensitiveFormat';
 	import { isPriceable } from '$lib/kraken';
 	import { getKrakSummary } from '$lib/krakCard.svelte';
-	import { navigate } from '$lib/router.svelte';
+	import { navigate, pageSnapshot } from '$lib/router.svelte';
 	import {
 		krakenState,
 		getAssets,
@@ -165,6 +165,18 @@
 	const ledgerEntries = $derived(getLedgerEntries());
 	const taxReport = $derived(ledgerEntries.length > 0 ? computeTaxReport(ledgerEntries, priceAtDate) : null);
 	let taxOpenYear = $state<number | null>(null);
+	/** Back, Forward and a reload bring back the small positions, the open asset with its period and price target, and the open tax year. */
+	pageSnapshot(
+		'crypto',
+		() => ({ showSmall, openSymbol, period, targetInput, taxOpenYear }),
+		(saved) => {
+			if (typeof saved?.showSmall === 'boolean') showSmall = saved.showSmall;
+			if (typeof saved?.openSymbol === 'string') openSymbol = saved.openSymbol;
+			if (typeof saved?.period === 'string' && Object.keys(PERIOD_DAYS).includes(saved.period)) period = saved.period;
+			if (typeof saved?.targetInput === 'string') targetInput = saved.targetInput;
+			if (typeof saved?.taxOpenYear === 'number') taxOpenYear = saved.taxOpenYear;
+		}
+	);
 	/** Amounts declared (tax notices) per year, for comparison: persisted. */
 	const DECLARED_KEY = 'budget:crypto-tax-declared';
 	let declared = $state<Record<string, string>>(loadDeclared());
@@ -314,6 +326,7 @@
 	onMount(() => {
 		void refreshPrices();
 		if (krakenState.hasKeys) void refreshBalances();
+		if (openSymbol) void loadOhlc(openSymbol);
 		const ohlcTimer = window.setTimeout(() => {
 			for (const a of getAssets().slice(0, 6)) void loadOhlc(a.symbol);
 			for (const sym of getCryptoFlowAssets()) void loadOhlc(sym);

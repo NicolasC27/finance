@@ -161,6 +161,23 @@ test('exclude: changes ONLY excluded — the transaction note and category stay 
 	assert.deepEqual(e2.excluded, ['k1']);
 });
 
+test('exclude / include: a withdrawal into the cash wallet is refused with its reason, never hidden nor brought back', () => {
+	const walletCtx = { ...ctx, walletKeys: new Set(['k3']) };
+	const { actions, rejected } = parseActions(
+		[
+			{ type: 'include', keys: ['k3'] },
+			{ type: 'exclude', keys: ['k1', 'k3'] },
+			{ type: 'include', keys: ['k1'] },
+			{ type: 'recategorize', keys: ['k3'], categoryId: 'loisirs' }
+		],
+		walletCtx
+	);
+	assert.deepEqual(actions.map((a) => a.type), ['include', 'recategorize'], 'the other keys and actions stay possible');
+	assert.equal(rejected.length, 2);
+	assert.match(rejected[0]!.reason, /^1 retrait versé au porte-monnaie : hors budget tant que le porte-monnaie le garde/);
+	assert.notEqual(typeof validateAction({ type: 'include', keys: ['k3'] }, ctx), 'string', 'without the wallet keys the context accepts it as before');
+});
+
 /** The old format (category) is still understood. */
 test('add_asset: validated like an asset (type, date, amounts, existing transactions); applied then undoable', () => {
 	const piano = { type: 'add_asset', name: ' Piano ', assetType: 'instrument', purchaseDate: '2025-09-18', purchasePrice: '11000', linkedTxKeys: ['k1', 'k2', 'k1'], note: 'payé en 2 fois' };

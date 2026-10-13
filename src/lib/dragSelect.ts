@@ -37,5 +37,5 @@ export function edgeScrollStep(y: number, height: number, max = 18): number {
 /** Pointer travel (px) before a mouse press becomes a slide, or before a touch press becomes a scroll (long press not fired yet). */
 export const TOUCH_SLOP = 8;
 
-/** Long press (ms) that starts a selection on touch screens. */
+/** Long press (ms) that arms the slide on touch screens: moving then selects, holding still opens the row menu. */
 export const LONG_PRESS = 450;

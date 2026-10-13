@@ -20,8 +20,8 @@ export interface Transaction {
 	checked?: boolean; // Cleared operation
 	tags?: string[];
 	analysis_date?: string; // Analysis date (CM export)
-	// 'ofx' | 'qif' | 'camt': standard statements (statements.ts)
-	source?: 'demo' | 'cm-csv' | 'cm-xlsx' | 'natixis-csv' | 'kraken' | 'kraken-csv' | 'krak-pdf' | 'portage' | 'ofx' | 'qif' | 'camt' | 'manual';
+	// 'ofx' | 'qif' | 'camt': standard statements (statements.ts); 'cash': cash wallet entry (wallet.ts)
+	source?: 'demo' | 'cm-csv' | 'cm-xlsx' | 'natixis-csv' | 'kraken' | 'kraken-csv' | 'krak-pdf' | 'portage' | 'ofx' | 'qif' | 'camt' | 'manual' | 'cash';
 	/**
 	 * Quick entry (source 'manual') the user split from the bank operation it was paired with: never
 	 * paired automatically again.
@@ -34,7 +34,8 @@ export interface Transaction {
 	instalment?: { n: number; of: number };
 	/**
 	 * Computed entry outside the bank (source 'portage': meal vouchers, culture vouchers, reimbursed
-	 * expenses): imposed category, never in the balances.
+	 * expenses; source 'cash': cash wallet spends and write-offs), never in the balances. Imposed
+	 * category for portage; for cash, the typed category, which overrides and holidays can change.
 	 */
 	virtual_category?: CategoryId;
 	/** Subcategory of a computed entry (Swile meal, culture voucher purchase), checked against its category. */

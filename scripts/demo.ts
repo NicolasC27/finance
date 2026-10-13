@@ -56,7 +56,8 @@ const LOAN_ACCOUNT = 'cm-00000012301';
  * - savings: savings account and crypto (transfers to oneself, neither expense
  *   nor income); one-offs: servicing, roadworthiness test, tax adjustment,
  *   holidays, interest; business purchases advanced in August (refunded with the
- *   September salary);
+ *   September salary); three ATM withdrawals (August to October) for the cash
+ *   wallet of the quick entry;
  * - balances: current and savings accounts recomputed from an opening balance.
  */
 export function generateDemo(today = '2026-10-03'): Record<string, string> {
@@ -163,6 +164,12 @@ export function generateDemo(today = '2026-10-03'): Record<string, string> {
 	add('2026-09-19', -40.8, cardLabel(9, 18, 'PARIS', 'JETBRAINS'), ['Numérique', 'Logiciel']);
 	add('2026-09-23', -36, cardLabel(9, 22, 'PARIS', 'AMAZON EU SARL'));
 	add('2026-09-27', -89.23, cardLabel(9, 26, 'SINGAPORE', 'AI TOOLS PTE'), ['Numérique', 'Logiciel']);
+	for (const [date, amount, day, month] of [
+		['2026-08-18', -50, 16, 8],
+		['2026-09-21', -60, 19, 9],
+		['2026-10-02', -40, 30, 9]
+	] as const)
+		add(date, amount, `RETRAIT DAB ${pad(day)}${pad(month)} LYON CARTE 1234`, ['Retrait', 'Retrait DAB']);
 	const portage: PortageData = {
 		compte: {
 			periode: '2026-09',

@@ -54,7 +54,8 @@
 				{ keys: ['N'], label: 'Écrire une note' },
 				{ keys: ['X'], label: 'Cocher la ligne (lot ; Échap pour sortir)' },
 				{ keys: ['←', '→'], sep: 'ou', label: 'Page précédente / suivante' },
-				{ keys: ['←', '→'], sep: 'ou', label: 'Mois précédent / suivant (calendrier)' }
+				{ keys: ['←', '→'], sep: 'ou', label: 'Mois précédent / suivant (calendrier, par catégorie)' },
+				{ keys: ['⇧ ←', '⇧ →'], sep: 'ou', label: 'Page précédente / suivante (par catégorie)' }
 			]
 		},
 		{
@@ -64,6 +65,7 @@
 				{ keys: ['Entrée'], label: 'Passer' },
 				{ keys: ['R'], label: 'Règle « toujours » on/off' },
 				{ keys: ['S'], label: 'Sous-catégorie' },
+				{ keys: ['I'], label: 'Accepter la proposition de l’IA' },
 				{ keys: ['Z'], label: 'Annuler le dernier tri' }
 			]
 		},

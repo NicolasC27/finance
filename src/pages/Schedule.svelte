@@ -7,13 +7,21 @@
 	import { confidenceLabel, confidenceStyle } from '$lib/forecast';
 	import { addDays, addMonths, daysBetween, GROUP_ORDER, groupColor, groupLabel, scheduleGroup, scheduleTotal, type ScheduleGroup, type ScheduleItem } from '$lib/schedule';
 	import { getSchedule, getScheduleFrom } from '$lib/schedule.svelte';
+	import { navigate, pageSnapshot } from '$lib/router.svelte';
+	import { uiState } from '$lib/ui.svelte';
+	import { contextActions, type MenuInput } from '$lib/contextMenu.svelte';
+	import { isComputedEntry, isPending } from '$lib/data';
+	import { normalizeLabel } from '$lib/forecast';
+	import { latestMerchantQuery } from '$lib/merchantSearch';
+	import { getBudgetTransactions } from '$lib/transfers.svelte';
 
 	/**
 	 * Schedule: every upcoming deadline on one list (direct debits, loans, taxes, car, employee
 	 * savings, goals), in week bands with their totals, filtered by group and horizon, with a
 	 * two-month calendar; a day of the calendar narrows the list to that day. One colour code on the
 	 * whole page: the group of a deadline (budget category, loans, savings, goals) gives the mark of
-	 * its row, the dot of its filter chip and its dot on the calendar.
+	 * its row, the dot of its filter chip and its dot on the calendar. Right click on a deadline: the
+	 * operations of its merchant (direct debits), its group alone, its day alone.
 	 */
 
 	const HORIZONS: [number, string][] = [
@@ -25,6 +33,17 @@
 	let horizon = $state(90);
 	let group = $state<ScheduleGroup | 'all'>('all');
 	let day = $state<string | null>(null);
+
+	/** Back, Forward and a reload keep the horizon, the group and the calendar day chosen. */
+	pageSnapshot(
+		'schedule',
+		() => ({ horizon, group, day }),
+		(snap) => {
+			if (HORIZONS.some(([h]) => h === snap.horizon)) horizon = snap.horizon;
+			if (snap.group === 'all' || GROUP_ORDER.includes(snap.group)) group = snap.group;
+			if (snap.day === null || typeof snap.day === 'string') day = snap.day;
+		}
+	);
 
 	const from = $derived(getScheduleFrom());
 	const inHorizon = $derived(getSchedule(horizon));
@@ -72,6 +91,32 @@
 	const money = (i: ScheduleItem) => (i.amount === undefined ? '' : i.sensitive ? sensitiveEUR(i.amount) : formatEUR(i.amount));
 	const daysTo = (d: string) => (from ? daysBetween(from, d) : 0);
 	const inDays = (n: number) => (n === 1 ? 'demain' : `dans ${n} j`);
+
+	/**
+	 * Search listing the operations of a detected direct debit: its id (`debit:<key>:<date>`) carries
+	 * the grouping key of its occurrences, and the search of the latest one is found in it, unlike its
+	 * short name (« Streamflix Com » for « PRLV SEPA STREAMFLIX.COM »). Its name when none is left.
+	 */
+	function debitQuery(i: ScheduleItem): string {
+		const key = i.id.slice('debit:'.length, i.id.lastIndexOf(':'));
+		return latestMerchantQuery(getBudgetTransactions().filter((t) => !isPending(t) && !isComputedEntry(t) && normalizeLabel(t) === key)) || i.label;
+	}
+
+	/** Right-click entries of a deadline; the group and the day toggle back to the whole list. */
+	function itemActions(i: ScheduleItem): MenuInput[] {
+		const g = scheduleGroup(i);
+		return [
+			i.id.startsWith('debit:') && {
+				label: 'Voir les opérations de ce marchand',
+				onSelect: () => {
+					uiState.txSearch = debitQuery(i);
+					navigate('/transactions');
+				}
+			},
+			group === g ? { label: 'Afficher tous les groupes', onSelect: () => (group = 'all') } : { label: `Filtrer ce groupe (${groupLabel(g)})`, onSelect: () => (group = g) },
+			day === i.date ? { label: "Tout l'horizon", onSelect: () => (day = null) } : { label: `Seulement le ${formatDate(i.date)}`, onSelect: () => (day = i.date) }
+		];
+	}
 </script>
 
 <header class="mb-3 flex flex-wrap items-end justify-between gap-3">
@@ -133,7 +178,7 @@
 						{#each w.items as i (i.id)}
 							{@const g = scheduleGroup(i)}
 							{@const n = daysTo(i.date)}
-							<li class="row">
+							<li class="row" use:contextActions={() => itemActions(i)}>
 								<a href={i.href} class="flex items-center gap-3 px-4 py-1.5 select-none hover:bg-[var(--surface-hover)]">
 									<span class="w-24 shrink-0 whitespace-nowrap" title={n === 0 ? "aujourd'hui" : inDays(n)}>
 										<span class="tabular block {n === 0 ? 'font-medium' : n <= 7 ? '' : 'text-secondary'}">{weekday(i.date)}</span>

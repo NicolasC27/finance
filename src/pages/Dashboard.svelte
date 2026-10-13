@@ -27,6 +27,7 @@
 	import type { AccountKind } from '$lib/csvCore';
 	import { formatMonth, monthKeyOf, formatEUR, formatEURCompact, formatDate, truncateLabel, sensitiveEUR } from '$lib/format';
 	import { merchantLabel } from '$lib/merchant';
+	import { merchantSearchQuery } from '$lib/merchantSearch';
 	import { buildEditorialSummary } from '$lib/report';
 	import StatCard from '$lib/components/StatCard.svelte';
 	import MonthNavigator from '$lib/components/MonthNavigator.svelte';
@@ -38,11 +39,14 @@
 	import InsightsCard from '$lib/components/InsightsCard.svelte';
 	import PageTitle from '$lib/components/PageTitle.svelte';
 	import WeatherBadge from '$lib/components/WeatherBadge.svelte';
+	import CashWalletCheck from '$lib/components/CashWalletCheck.svelte';
+	import { getCashEntries } from '$lib/wallet.svelte';
 	import { avgDailyNet, todayIso } from '$lib/forecast';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
-	import { navigate } from '$lib/router.svelte';
+	import { navigate, pageSnapshot } from '$lib/router.svelte';
 	import { uiState } from '$lib/ui.svelte';
+	import { contextActions, type MenuInput } from '$lib/contextMenu.svelte';
 
 	// 'À venir' card in a separate chunk (gzip budget of the main bundle)
 	const upcomingCard = import('$lib/components/UpcomingCard.svelte');
@@ -236,9 +240,9 @@
 	});
 
 	/** Last 15 transactions, pending first with a badge. */
-	/** Recent operations OF THE DISPLAYED MONTH (+ pending ones), most recent first. */
+	/** Recent operations OF THE DISPLAYED MONTH (+ pending ones), most recent first; cash spends included, portage entries left out. */
 	const recent = $derived(
-		getTransactions()
+		[...getTransactions(), ...getCashEntries()]
 			.filter((tx) => (isPending(tx) && !isPlannedInstalment(tx)) || (!isPending(tx) && monthKeyOf(tx.booking_date) === currentMonth))
 			.sort((a, b) => {
 				if (isPending(a) !== isPending(b)) return isPending(a) ? -1 : 1;
@@ -305,10 +309,20 @@
 		return set;
 	});
 
-	// Leaves the drill-down when the category is no longer detected (data/filters changed)
+	// Leaves the drill-down when the category is no longer detected (data/filters changed), once the
+	// data is loaded (a detail restored by a reload waits for it)
 	$effect(() => {
-		if (drilled && !drillable.has(drilled)) drilled = null;
+		if (txState.loaded && drilled && !drillable.has(drilled)) drilled = null;
 	});
+
+	/** Back, Forward and a reload return to the donut detail on screen (the month is shared by the pages, never rewound). */
+	pageSnapshot(
+		'dashboard',
+		() => ({ drilled }),
+		(snap) => {
+			if (snap.drilled === null || typeof snap.drilled === 'string') drilled = snap.drilled;
+		}
+	);
 
 	/** Scale of tints derived from the category colour (lighten, increasing lightness). */
 	function subColorLadder(baseColor: string, n: number): string[] {
@@ -368,6 +382,54 @@
 			return;
 		}
 		if (isDonutSliceClickable(slice)) drilled = slice.id as CategoryId;
+	}
+
+	/**
+	 * Right-click entries of a donut slice (segment or legend row): its operations of the month, the
+	 * detail by subcategory, the way back from the detail.
+	 */
+	function sliceActions(slice: DonutSlice): MenuInput[] {
+		if (!drilled) {
+			const id = slice.id as CategoryId;
+			return [
+				{ label: 'Voir les opérations', onSelect: () => goToTransactions(id) },
+				drillable.has(id) && { label: 'Détailler par sous-catégorie', onSelect: () => (drilled = id) }
+			];
+		}
+		const cat = drilled;
+		return [
+			{ label: 'Voir les opérations', onSelect: () => goToTransactions(cat, slice.id === 'autres' ? null : slice.id) },
+			{ label: `Toutes les opérations ${getCategory(cat).label}`, onSelect: () => goToTransactions(cat) },
+			{ label: 'Revenir à toutes les catégories', onSelect: () => (drilled = null) }
+		];
+	}
+
+	/**
+	 * Right-click entries of a recent operation: Transactions on its day and merchant, every operation
+	 * of the merchant, its category over the month. The merchant search is always found in the
+	 * operation itself (merchantSearch.ts), so neither list comes up empty.
+	 */
+	function recentActions(tx: Transaction): MenuInput[] {
+		const query = merchantSearchQuery(tx);
+		const day = isPending(tx) ? {} : { from: tx.booking_date, to: tx.booking_date };
+		const cat = catOf(tx);
+		return [
+			{
+				label: 'Ouvrir dans Transactions',
+				onSelect: () => {
+					uiState.txFilter = { search: query, ...day };
+					navigate('/transactions');
+				}
+			},
+			query !== '' && {
+				label: 'Toutes les opérations de ce marchand',
+				onSelect: () => {
+					uiState.txSearch = query;
+					navigate('/transactions');
+				}
+			},
+			{ label: `Voir ${getCategory(cat).label} ce mois-ci`, onSelect: () => goToTransactions(cat) }
+		];
 	}
 
 	/** Budget health: share of the overall budget consumed this month. */
@@ -609,6 +671,8 @@
 		{/if}
 		</div>
 		<div class="flex flex-wrap items-center gap-3">
+			<!-- Honesty check of the cash wallet, nothing unless a check is due -->
+			<CashWalletCheck />
 			<!-- Today's weather of the chosen town (Réglages › Météo), nothing until one is chosen -->
 			<WeatherBadge />
 			{#if months.length > 1}
@@ -778,6 +842,7 @@
 							isSliceClickable={isDonutSliceClickable}
 							onSliceClick={onDonutSliceClick}
 							onCenterClick={drilled ? () => (drilled = null) : undefined}
+							{sliceActions}
 							showLegend={show('legende')}
 							showCenter={show('total')}
 							diameter={box ? donutDiameter(box, show('legende')) : 180}
@@ -804,7 +869,9 @@
 						<div class="divide-y divide-[var(--border-subtle)]">
 							<QuickEntryRow compact />
 							{#each recent.slice(0, show('plus') ? 12 : 6) as tx (txKey(tx))}
-								<TransactionRow {tx} compact showDate={show('date')} showCategory={show('categorie')} />
+								<div use:contextActions={() => recentActions(tx)}>
+									<TransactionRow {tx} compact showDate={show('date')} showCategory={show('categorie')} />
+								</div>
 							{/each}
 						</div>
 					{/snippet}

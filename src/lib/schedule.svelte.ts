@@ -1,6 +1,6 @@
 import { budgetState } from './budget.svelte';
 import { getBudgetTransactions } from './transfers.svelte';
-import { isPending, isPlannedInstalment, signedAmount, sortByDate } from './data';
+import { isComputedEntry, isPending, isPlannedInstalment, signedAmount, sortByDate } from './data';
 import { detectRecurring, forecastRefIso } from './forecast';
 import { getMerchantCategoryMap } from './store.svelte';
 import { categorize, txKey } from './categories';
@@ -18,12 +18,13 @@ import { subcategorize } from './subcategories';
 /**
  * Schedule, app side: reads every source (detected direct debits, payments in several times,
  * loans, tax notices, vehicles, employee savings, goals) and builds the merged list over the
- * longest horizon once; pages cut it.
+ * longest horizon once; pages cut it. The computed entries (portage documents, cash wallet) never
+ * feed it: a weekly market paid in cash is no direct debit to come.
  */
 
 export const MAX_HORIZON = 365;
 
-const confirmed = $derived(getBudgetTransactions().filter((tx) => !isPending(tx) && tx.source !== 'portage'));
+const confirmed = $derived(getBudgetTransactions().filter((tx) => !isPending(tx) && !isComputedEntry(tx)));
 const fromIso = $derived(forecastRefIso(sortByDate(confirmed)[confirmed.length - 1]?.booking_date ?? ''));
 
 const schedule = $derived.by((): ScheduleItem[] => {

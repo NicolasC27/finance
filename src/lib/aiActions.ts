@@ -36,6 +36,8 @@ export interface ActionContext {
 	txKeys: ReadonlySet<string>;
 	/** Assets of type vehicle (odometer readings). */
 	vehicleIds?: ReadonlySet<string>;
+	/** Withdrawals into the cash wallet: out of the budget while the wallet holds them, never hidden nor brought back by an action. */
+	walletKeys?: ReadonlySet<string>;
 }
 
 const MAX_ACTIONS = 50;
@@ -116,6 +118,8 @@ export function validateAction(raw: unknown, ctx: ActionContext): AiAction | str
 		case 'include': {
 			const keys = keysOf(o, ctx);
 			if (typeof keys === 'string') return keys;
+			const wallet = keys.filter((k) => ctx.walletKeys?.has(k)).length;
+			if (wallet) return `${wallet} retrait${wallet > 1 ? 's' : ''} versé${wallet > 1 ? 's' : ''} au porte-monnaie : hors budget tant que le porte-monnaie ${wallet > 1 ? 'les' : 'le'} garde (les dépenses en liquide comptent à sa place), ni à masquer ni à réintégrer`;
 			return { type: o.type, keys, ...why(o) };
 		}
 		case 'set_note': {
@@ -237,6 +241,7 @@ export interface ActionEffects {
 	setOverrides(next: Record<string, CategoryId>): void;
 	addRule(keyword: string, categoryId: CategoryId): { keyword: string; previous?: CatRule };
 	restoreRule(keyword: string, previous?: CatRule): void;
+	/** Hidden from the budget by the user (persisted list); a withdrawal into the cash wallet is not, see ActionContext.walletKeys. */
 	isExcluded(key: string): boolean;
 	excludeKeys(keys: string[]): void;
 	includeKeys(keys: string[]): void;

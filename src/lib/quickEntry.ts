@@ -21,8 +21,8 @@ export interface QuickDraft {
 	categoryId?: CategoryId;
 	/** Subcategory id (must belong to categoryId). */
 	subId?: string;
-	/** Payment named in the sentence (« swile », « chèques culture »); the card otherwise. */
-	payment?: 'swile' | 'culture';
+	/** Payment named in the sentence (« swile », « chèques culture », « en liquide », « 3 € liquide »: see readCash); the card otherwise. */
+	payment?: 'swile' | 'culture' | 'cash';
 	/** Number of instalments of a card payment (« en 3 fois », « 4x »); one payment when absent. */
 	instalments?: number;
 	/** Person the spend was for, who pays back their share (« pour Léa »). */
@@ -84,12 +84,13 @@ function readDate(text: string, today: string): { date: string; used: string[] }
 export function parseQuickEntry(text: string, today: string, people: readonly string[] = []): QuickDraft | { error: string } {
 	const typed = text.replace(/\s+/g, ' ').trim();
 	if (!typed) return { error: 'Écris par exemple « leboncoin 20,25 € ».' };
-	const pay = PAYMENT_WORDS.find((p) => p.re.test(typed));
-	const times = INSTALMENTS_RE.exec(typed);
+	const unpaid = withoutCashWords(typed);
+	const pay = PAYMENT_WORDS.find((p) => p.re.test(unpaid)) ?? (unpaid !== typed ? { payment: 'cash' as const } : undefined);
+	const times = INSTALMENTS_RE.exec(unpaid);
 	const count = times ? Number(times[1] ?? times[2] ?? times[3]) : 0;
-	const raw = typed
+	const raw = unpaid
 		.replace(INSTALMENTS_RE, ' ')
-		.replace(/\s*\b(en|par|avec)?\s*(swile|ch[eè]ques?[- ]culture|carte|cb)\b/gi, ' ')
+		.replace(/\s*(?:\bpay[ée]e?s?\s+)?\b(en|par|avec)?\s*(swile|ch[eè]ques?[- ]culture|carte|cb)(?![\p{L}\d])/giu, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();
 	const who = readForWhom(raw, people);
@@ -102,7 +103,7 @@ export function parseQuickEntry(text: string, today: string, people: readonly st
 	const amount = Number(`${pick[2]!.replace(/[  ]/g, '')}.${pick[3] ?? '0'}`);
 	if (!(amount > 0) || amount > 1_000_000) return { error: 'Montant invalide.' };
 	const credit = pick[1] === '+' || CREDIT_WORDS.test(raw);
-	const instalments = credit ? 0 : count;
+	const instalments = credit || pay?.payment === 'cash' ? 0 : count;
 	const forWhom = who && !credit && instalments <= 1 ? who : null;
 	const words = rest.slice(0, pick.index) + ' ' + rest.slice(pick.index! + pick[0].length);
 	const label = (forWhom ? words.replace(forWhom.used, ' ') : words)
@@ -149,11 +150,45 @@ function readForWhom(text: string, people: readonly string[]): { who: string; us
  */
 const INSTALMENTS_RE = /(?:\bpay[ée]e?s?\s+)?(?:\ben\s+(1[0-2]|[2-9])\s*(?:fois|x)\b|\b(1[0-2]|[2-9])x\b|\b(1[0-2]|[2-9])\s*(?:fois|x)\b(?!\s*\d))(?:\s+sans\s+frais)?/i;
 
-/** Payment means a sentence can name (the bank card is the default and needs no word). */
+/** Payment means a sentence can name (the bank card is the default and needs no word); cash is read by readCash. */
 const PAYMENT_WORDS: readonly { re: RegExp; payment: 'swile' | 'culture' }[] = [
 	{ re: /\bswile\b/i, payment: 'swile' },
 	{ re: /\bch[eè]ques?[- ]culture\b/i, payment: 'culture' }
 ];
+
+/** « liquide », « espèces », « cash » as whole words (group 2), with « en », « par », « avec (du) », « payé (en) » before them (group 1). */
+const CASH_RE = /(?<![\p{L}\p{N}'’-])((?:pay[ée]e?s?\s+)?(?:(?:en|par|avec)\s+(?:du\s+)?)|pay[ée]e?s?\s+)?(liquide|esp[eè]ces?|cash)(?![\p{L}\p{N}'’-])/giu;
+/** What turns a bare « liquide » or « cash » into a product or a shop: « liquide vaisselle », « liquide de frein », « cash converters ». */
+const PRODUCT_NEXT_RE = /^\s+(?:vaisselle|lave|de|d['’]|du|des|à|a|pour\s+(?:la\s+)?vaisselle|frein|refroidissement|converters|express|piscines?)(?![\p{L}])/iu;
+/** The amount right before a word (« 12,50 € liquide », « 5 € cash », « 3e espèces »). */
+const AMOUNT_BEFORE_RE = /(?:\d|€|(?<![\p{L}])eur(?:os?)?|\de)\s*$/iu;
+
+/**
+ * Cash named in the sentence: « en liquide », « payé (en) liquide », « en espèces », « par cash »
+ * anywhere; a bare « espèces » (« especes ») or a standalone « cash » anywhere too; a bare
+ * « liquide » only right after the amount (« 3,50 € liquide »). A bare word is never cash when the
+ * next word makes it a product or a shop name (« 3 € liquide vaisselle », « Cash Converters »).
+ * Anywhere else « liquide » stays in the label: « lessive liquide 8 € », « 8 € lessive liquide »,
+ * « savon liquide », « Liquide vaisselle », « e-liquide ». Returns the span of the words to leave
+ * out of the label.
+ */
+function readCash(text: string): { index: number; length: number } | null {
+	for (const m of text.matchAll(CASH_RE)) {
+		const index = m.index!;
+		if (m[1]) return { index, length: m[0].length };
+		const after = text.slice(index + m[0].length);
+		if (PRODUCT_NEXT_RE.test(after) || /^\s+\p{Lu}/u.test(after)) continue;
+		if (fold(m[2]!) !== 'liquide' || AMOUNT_BEFORE_RE.test(text.slice(0, index))) return { index, length: m[0].length };
+	}
+	return null;
+}
+
+/** The sentence without the words that name cash (see readCash); unchanged when it names none. */
+export function withoutCashWords(text: string): string {
+	const typed = text.replace(/\s+/g, ' ').trim();
+	const cash = readCash(typed);
+	return cash ? `${typed.slice(0, cash.index)} ${typed.slice(cash.index + cash.length)}`.replace(/\s+/g, ' ').trim() : text;
+}
 
 /**
  * Reads the AI answer (JSON alone or in a ```json fence): label, positive amount, direction, date,
@@ -356,9 +391,10 @@ export function suggestFromMemory(mem: QuickMemory, label: string): { categoryId
 	return best ? { categoryId: best.categoryId, subId: best.subId, word: best.word } : null;
 }
 
-// ---------- Payment: meal card and culture vouchers ----------
+// ---------- Payment: meal card, culture vouchers, cash ----------
 
-export type QuickPayment = 'card' | 'swile' | 'culture';
+/** How an entry was paid: bank card (or account), Swile meal card, culture vouchers, cash wallet. */
+export type QuickPayment = 'card' | 'swile' | 'culture' | 'cash';
 
 /**
  * Split of a payment between a voucher wallet and the bank card: the voucher pays up to what is

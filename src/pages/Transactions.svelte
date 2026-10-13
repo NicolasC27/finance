@@ -1,22 +1,24 @@
 <script lang="ts">
+	import { listLabel, merchantSearchQuery, transactionSearchText } from '$lib/merchantSearch';
 	import { refundOf, refundedBy } from '$lib/refunds.svelte';
 	import { shareRange } from '$lib/refunds';
 	import RefundControl from '$lib/components/RefundControl.svelte';
 	import { restorePoint } from '$lib/history.svelte';
 	import { quickEntryStale } from '$lib/quickEntry.svelte';
 	import { segmented } from '$lib/actions/segmented';
-	import { flushSync, onMount } from 'svelte';
+	import { flushSync, onMount, tick } from 'svelte';
 	import type { CategoryId, Transaction } from '$lib/types';
 	import { CATEGORIES, categorize, getCategory, isWealthMovement, txKey, VACATION_ELIGIBLE } from '$lib/categories';
 	import { getSubcategory, subcategorize, subcategoriesFor } from '$lib/subcategories';
 	import { budgetState, patchOverrides, setSubOverride } from '$lib/budget.svelte';
-	import { setOverrideAndPrompt } from '$lib/rules.svelte';
+	import { ruleImpact, rulesState, setOverrideAndPrompt, withdrawPrompt } from '$lib/rules.svelte';
 	import RulesCard from '$lib/components/RulesCard.svelte';
 	import { getTransactions, getMerchantCategoryMap, txState, addImported, resetImported, restoreImported, deleteTransactions, restoreTransactions, deletedCount, resetDeletedTombstones, updateImported, updateImportedMany, undoQuickMatches } from '$lib/store.svelte';
-	import { isPending, isPlannedInstalment, signedAmount } from '$lib/data';
+	import { isComputedEntry, isPending, isPlannedInstalment, signedAmount } from '$lib/data';
 	import { isBudgetFlow } from '$lib/totals';
 	import { flowKind } from '$lib/flow';
-	import { cleanLabel, formatDate, formatDateShort, formatEUR, formatEURCompact, formatMonth, monthKeyOf, maskAmounts } from '$lib/format';
+	import { cleanLabel, formatDate, formatDateShort, formatEUR, formatEURCompact, formatMonth, formatPct, monthKeyOf, maskAmounts, sensitiveEUR } from '$lib/format';
+	import { categoryLayout, headPage, monthBounds, monthsWithRows, pageHeads, rangeMonth, spendingShare, stepMonth, type CategoryGroup, type CategoryHead } from '$lib/categoryGroups';
 	import { addTags, hasTag, removeTags, sameTags, splitTagInput, suggestTags, tagInventory, tagKey } from '$lib/tags';
 	import { calendarMonth, purchaseDate, purchaseMonthRange, rangePurchases, weekdayAverages, WEEKDAY_LABELS, WEEKDAY_NAMES } from '$lib/spendingCalendar';
 	import { fly } from 'svelte/transition';
@@ -31,7 +33,8 @@
 		excludeKeys,
 		includeKeys,
 		reviewTransfers,
-		countExcludedAmong
+		countExcludedAmong,
+		getListedTransactions
 	} from '$lib/transfers.svelte';
 	import { syncLoans } from '$lib/loans.svelte';
 	import { parseCreditMutuelText, accountFromFileName } from '$lib/csvCreditMutuel';
@@ -53,11 +56,16 @@
 	import { registerAccounts, registerCsvAccount, accountLabel, accountKind, KIND_LABELS } from '$lib/accounts.svelte';
 	import { uiState, showToast, showSuccess } from '$lib/ui.svelte';
 	import { assetsState, assetOfTx, attachTx, detachTx, addAsset } from '$lib/assets.svelte';
-	import { getPortageEntries, noteOfTx } from '$lib/portage.svelte';
-	import { navigate } from '$lib/router.svelte';
+	import { noteOfTx } from '$lib/portage.svelte';
+	import { cashItemOf, isWalletWithdrawal, removeCashItem, setCashSpendCategory } from '$lib/wallet.svelte';
+	import { WRITE_OFF_LABEL } from '$lib/wallet';
+	import { navigate, pageSnapshot } from '$lib/router.svelte';
 	import ImportMapperModal, { type MapperSource } from '$lib/components/ImportMapperModal.svelte';
 	import MerchantMark from '$lib/components/MerchantMark.svelte';
+	import CategoryMark from '$lib/components/CategoryMark.svelte';
 	import InstalmentChip from '$lib/components/InstalmentChip.svelte';
+	import MerchantHistory from '$lib/components/MerchantHistory.svelte';
+	import { datesSentence, dayDate, fileTarget, merchantHistory, type DateState } from '$lib/operationDetail';
 	import { edgeScrollStep, LONG_PRESS, paintRange, TOUCH_SLOP } from '$lib/dragSelect';
 	import RowsToggle from '$lib/components/RowsToggle.svelte';
 	import QuickEntryRow from '$lib/components/QuickEntryRow.svelte';
@@ -71,8 +79,14 @@
 	import { isAmazonArchive, readAmazonArchive } from '$lib/amazonArchive';
 	import { vacationState, assignedVacation, assignVacation, isDetached, vacationOf, vacationFor, addVacation, removeVacation, type VacationPeriod } from '$lib/vacations.svelte';
 	import { orderRange, rangeLabel, suggestVacationLabel } from '$lib/rangeCalendar';
+	import { closeContextMenu, contextActions, SEPARATOR, type MenuAction, type MenuInput } from '$lib/contextMenu.svelte';
+	import { isMenuKey } from '$lib/contextMenuModel';
 
-	/** Transactions page: full table, multi-account CSV/XLSX import, combinable filters. */
+	/**
+	 * Transactions page: full table, multi-account CSV/XLSX import, combinable filters. Right click
+	 * (or a long press of a finger, or the Menu key on a focused row) on a row, a category header or
+	 * the list opens their actions (rowActions, headActions, listActions).
+	 */
 
 	const PAGE_SIZE = 50;
 
@@ -127,6 +141,11 @@
 		{ id: 'liste', label: 'Liste', title: 'Toutes les opérations' },
 		{ id: 'calendrier', label: 'Calendrier', title: 'Dépenses jour par jour, à la date d’achat' }
 	] as const;
+	/** List grouping switch: the date sort or the category mode (setGrouping); the short label keeps it on one line with the views on a phone. */
+	const GROUPINGS = [
+		{ id: 'date', label: 'Par date', short: 'Date', title: 'Opérations de la plus récente à la plus ancienne' },
+		{ id: 'category', label: 'Par catégorie', short: 'Catégorie', title: 'Une ligne par catégorie sur un mois, la plus grosse dépense d’abord : cliquer une catégorie la déplie' }
+	] as const;
 	/** Selection mode (bulk edit) and checked txKey keys (reassigned: reactivity). */
 	let selectMode = $state(false);
 	let selected = $state<Set<string>>(new Set());
@@ -141,17 +160,47 @@
 	});
 
 	// ---- Sorting ----
-	type SortKey = 'date' | 'debit' | 'credit';
+	type SortKey = 'date' | 'debit' | 'credit' | 'category';
 	let sortKey = $state<SortKey>('date');
 	let sortDir = $state<'asc' | 'desc'>('desc');
+	/** Categories folded in the « Catégorie » sort: only their header shows (reassigned: reactivity). */
+	let foldedCats = $state<Set<CategoryId>>(new Set());
+	/** Every category: folding them all also folds those a later month or filter brings in. */
+	const ALL_CATS: readonly CategoryId[] = CATEGORIES.map((c) => c.id);
 
+	/** Column header: the same key flips the direction, another one starts descending (the category mode opens folded). */
 	function toggleSort(key: SortKey) {
 		if (sortKey === key) {
 			sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+		} else if (key === 'category') {
+			setGrouping('category');
 		} else {
 			sortKey = key;
 			sortDir = 'desc';
 		}
+	}
+
+	/**
+	 * « Par date » or « Par catégorie » (toolbar switch, column header, row menu). The category mode
+	 * opens as a summary, every category folded, on the latest month with operations under the other
+	 * filters when no period is chosen; back to the date sort, the period stays. A restored page never
+	 * comes through here, so its folds are kept.
+	 */
+	function setGrouping(mode: 'date' | 'category') {
+		if (mode === 'date') {
+			sortKey = 'date';
+			sortDir = 'desc';
+			return;
+		}
+		if (sortKey === 'category') return;
+		sortKey = 'category';
+		sortDir = 'desc';
+		foldedCats = new Set(ALL_CATS);
+		cursor = -1;
+		lastToggled = -1;
+		if (dateFrom || dateTo || dayFilter || vacationFilter) return;
+		const latest = periodMonths.at(-1);
+		if (latest) setMonth(latest);
 	}
 
 	// ---- Pagination ----
@@ -161,16 +210,16 @@
 	let expandedKey = $state<string | null>(null);
 
 	/** Months present in the data (period picker shortcuts). */
-	/** Bank operations + computed portage entries: same totals as the budget. */
-	const allTxs = $derived([...getTransactions(), ...getPortageEntries()]);
+	/** Bank operations + computed portage and cash wallet entries: same totals as the budget. */
+	const allTxs = $derived(getListedTransactions());
 
 	const months = $derived(
 		[...new Set(allTxs.filter((tx) => !isPending(tx)).map((tx) => monthKeyOf(tx.booking_date)))].sort()
 	);
 
-	/** Account of an operation (scope.ts); '' for a computed portage entry, outside any account. */
+	/** Account of an operation (scope.ts); '' for a computed entry, outside any account. */
 	function accountIdOf(tx: Transaction): string {
-		return tx.source === 'portage' ? '' : accountOf(tx);
+		return isComputedEntry(tx) ? '' : accountOf(tx);
 	}
 
 	/** Accounts present in the data (selector shown from 2 on). */
@@ -213,17 +262,7 @@
 		}
 		if (minAmount !== null && Math.abs(signedAmount(tx)) < minAmount) return false;
 		if (maxAmount !== null && Math.abs(signedAmount(tx)) > maxAmount) return false;
-		if (q) {
-			const haystack = [
-				tx.remittance_information.join(' '),
-				cleanLabel(tx.remittance_information),
-				tx.note ?? '',
-				(tx.tags ?? []).join(' ')
-			]
-				.join(' ')
-				.toLowerCase();
-			if (!haystack.includes(q)) return false;
-		}
+		if (q && !transactionSearchText(tx).includes(q)) return false;
 		return true;
 	}
 
@@ -255,9 +294,10 @@
 	const calendarRange = $derived(purchaseMonthRange(calendarTxs, catOfCal));
 	let calMonth = $state('');
 	// Displayed month: the one of the chosen day or period, otherwise the latest month with purchases
+	// (once the operations are loaded: a month restored by a reload is checked against all of them)
 	$effect(() => {
 		const r = calendarRange;
-		if (!r || (calMonth && calMonth >= r.first && calMonth <= r.last)) return;
+		if (!r || !txState.loaded || (calMonth && calMonth >= r.first && calMonth <= r.last)) return;
 		const wanted = (dayFilter || dateTo || dateFrom).slice(0, 7);
 		calMonth = wanted && wanted >= r.first && wanted <= r.last ? wanted : r.last;
 	});
@@ -347,12 +387,13 @@
 		view = 'liste';
 	}
 
-	/** One operation of the panel in the list, unfolded there with its full detail and edits. */
+	/** One operation of the panel in the list, unfolded there with its full detail and edits (its category unfolded in the category mode). */
 	function openInList(tx: Transaction) {
 		dayFilter = purchaseDate(tx);
 		dayTo = '';
 		view = 'liste';
 		expandedKey = txKey(tx);
+		unfold(catOfTx(tx));
 	}
 
 	/** Range being slid on the spending calendar (first day pressed, day under the pointer). */
@@ -461,15 +502,64 @@
 	}
 
 	/**
-	 * Sorting: date (desc by default) or debit/credit (absolute value); pending rows and empty cells
-	 * last, except the expected instalments of a payment in several times, sorted by their date.
+	 * « Catégorie » sort (categoryGroups.ts): rows grouped under the category they display, counted
+	 * like the page totals, folded categories left out; null under the other sorts.
+	 */
+	const categoryView = $derived.by(() => (sortKey === 'category' ? categoryLayout(filtered, catOfTx, countedFlow, sortDir, foldedCats) : null));
+
+	/**
+	 * Category mode: months with a dated operation under every filter but the period and the purchase
+	 * day, oldest first; none in holiday mode, whose period is the holiday's (the stepper is hidden).
+	 */
+	const periodMonths = $derived.by(() => {
+		if (sortKey !== 'category' || vacationFilter) return [];
+		const q = search.trim().toLowerCase();
+		return monthsWithRows(allTxs.filter((tx) => matchesFilters(tx, q, true)));
+	});
+	/** Month the period picker covers exactly ('' for the whole period or any other range); a purchase day overrides it. */
+	const periodMonth = $derived(dayFilter ? '' : rangeMonth(dateFrom, dateTo));
+	/** Month the stepper shows: the chosen one, else the month the range ends in, else the latest with operations. */
+	const stepperMonth = $derived(periodMonth || monthKeyOf(dayFilter || dateTo || dateFrom) || (periodMonths.at(-1) ?? ''));
+	const prevMonth = $derived(stepMonth(periodMonths, stepperMonth, -1));
+	const nextMonth = $derived(stepMonth(periodMonths, stepperMonth, 1));
+	/** No date bound and no purchase day: « Toute la période ». */
+	const wholePeriod = $derived(!dateFrom && !dateTo && !dayFilter);
+
+	/** Period of one whole month, written in the period picker (a purchase-day filter gives way). */
+	function setMonth(key: string) {
+		[dateFrom, dateTo] = monthBounds(key);
+		dayFilter = '';
+		dayTo = '';
+	}
+
+	/** Previous or next month with operations under the other filters; false past either end. */
+	function stepPeriod(delta: number): boolean {
+		const next = delta < 0 ? prevMonth : nextMonth;
+		if (!next) return false;
+		setMonth(next);
+		return true;
+	}
+
+	/** « Toute la période »: no date bound, no purchase day. */
+	function clearPeriod() {
+		dateFrom = '';
+		dateTo = '';
+		dayFilter = '';
+		dayTo = '';
+	}
+
+	/**
+	 * Sorting: date (desc by default), debit/credit (absolute value) or category (grouped, see
+	 * categoryView); pending rows and empty cells last, except the expected instalments of a payment
+	 * in several times, sorted by their date.
 	 */
 	const sorted = $derived.by(() => {
+		if (categoryView) return categoryView.rows;
 		const dir = sortDir === 'asc' ? 1 : -1;
 		const last = (tx: Transaction) => isPending(tx) && !isPlannedInstalment(tx);
 		return [...filtered].sort((a, b) => {
 			if (last(a) !== last(b)) return last(a) ? 1 : -1;
-			if (sortKey === 'date') return a.booking_date.localeCompare(b.booking_date) * dir;
+			if (sortKey !== 'debit' && sortKey !== 'credit') return a.booking_date.localeCompare(b.booking_date) * dir;
 			const va = columnSortValue(a, sortKey);
 			const vb = columnSortValue(b, sortKey);
 			if (va === null || vb === null) return va === null ? (vb === null ? 0 : 1) : -1;
@@ -479,6 +569,25 @@
 
 	const pageCount = $derived(Math.max(1, Math.ceil(sorted.length / PAGE_SIZE)));
 	const paginated = $derived(sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE));
+	/**
+	 * Category headers of the page, outside `paginated`: row indexes (cursor, slide, Shift+click)
+	 * only count operations, and a header is never selectable.
+	 */
+	const catHeads = $derived(categoryView ? pageHeads(categoryView, (page - 1) * PAGE_SIZE, (page - 1) * PAGE_SIZE + paginated.length) : null);
+
+	/**
+	 * Merchant history of the operation whose detail is open (on the page shown), computed once for
+	 * its table row and its phone card. `fileable` when its hint may file it like the others: a bank
+	 * operation whose category can change, most of its merchant's operations filed elsewhere and a
+	 * merchant key naming one merchant (the scan of every operation this takes runs only then).
+	 */
+	const openHistory = $derived.by(() => {
+		const tx = expandedKey === null ? undefined : paginated.find((t) => txKey(t) === expandedKey);
+		if (!tx || tx.source === 'portage') return null;
+		const history = merchantHistory(tx, allTxs, catOfTx);
+		const fileable = !!history && fileTarget(history) !== null && !isComputedEntry(tx) && categorySetter(tx) !== null && !ruleImpact(tx)?.generic;
+		return { key: txKey(tx), history, fileable };
+	});
 
 	// Optional columns: shown only when at least one row of the page fills them (otherwise 3 columns
 	// of '—'; the row detail keeps all the information)
@@ -488,15 +597,89 @@
 	const colCount = $derived(7 + (hasTags ? 1 : 0) + (hasChecked ? 1 : 0) + (hasBalance ? 1 : 0) + (selectMode ? 1 : 0));
 
 	// Back to page 1 when the FILTERS or the sort change, no longer when the row count moves (a
-	// deletion or recategorisation on page 4 sent you back to page 1)
+	// deletion or recategorisation on page 4 sent you back to page 1); a page restored by Back,
+	// Forward or a reload survives the first run. The keyboard cursor, an index in the old list, is
+	// dropped (a right click then « Filtrer sur cette catégorie » left M or X on another operation)
+	let keepRestoredPage = false;
 	$effect(() => {
 		[search, categoryFilter, typeFilter, dateFrom, dateTo, minAmount, maxAmount, subFilter, vacationFilter, internalOnly, tagFilter, accountFilter, dayFilter, dayTo, sortKey, sortDir];
-		page = 1;
+		cursor = -1;
+		if (keepRestoredPage) keepRestoredPage = false;
+		else page = 1;
 	});
-	// Fewer pages (deletions): stay on a page that exists
+	// Fewer pages (deletions): stay on a page that exists, once the operations are loaded (a reload
+	// keeps the restored page instead of page 1 of a list still empty)
 	$effect(() => {
-		if (page > pageCount) page = pageCount;
+		if (txState.loaded && page > pageCount) page = pageCount;
 	});
+
+	/** True when a restored value is one of `options` (the snapshot may come from an older version of the page). */
+	function isOneOf<T extends string>(value: unknown, options: readonly T[]): value is T {
+		return options.includes(value as T);
+	}
+
+	/**
+	 * Back, Forward and a reload give the list back as it was left: search, filters, view, sort, folded
+	 * categories, page, open row, calendar month and chosen days. Selection, drafts and imports start
+	 * over; a filter asked by another page (uiState.txFilter) is applied after the restore and wins.
+	 */
+	pageSnapshot(
+		'transactions',
+		() => ({
+			search: searchInput,
+			categoryFilter,
+			typeFilter,
+			dateFrom,
+			dateTo,
+			minAmount,
+			maxAmount,
+			vacationId: vacationFilter?.id ?? null,
+			subFilter,
+			internalOnly,
+			tagFilter,
+			accountFilter,
+			dayFilter,
+			dayTo,
+			view,
+			sortKey,
+			sortDir,
+			foldedCats: [...foldedCats],
+			page,
+			expandedKey,
+			calMonth,
+			calFrom: calPanel?.from ?? '',
+			calTo: calPanel?.to ?? '',
+			calOpenKey
+		}),
+		(saved: Record<string, unknown>) => {
+			if (typeof saved.search === 'string') searchInput = search = saved.search;
+			if (saved.categoryFilter === '' || isOneOf(saved.categoryFilter, CATEGORIES.map((c) => c.id))) categoryFilter = saved.categoryFilter;
+			if (isOneOf(saved.typeFilter, ['all', 'CRDT', 'DBIT'])) typeFilter = saved.typeFilter;
+			if (typeof saved.dateFrom === 'string') dateFrom = saved.dateFrom;
+			if (typeof saved.dateTo === 'string') dateTo = saved.dateTo;
+			if (saved.minAmount === null || typeof saved.minAmount === 'number') minAmount = saved.minAmount;
+			if (saved.maxAmount === null || typeof saved.maxAmount === 'number') maxAmount = saved.maxAmount;
+			if (typeof saved.vacationId === 'string') vacationFilter = vacationState.periods.find((p) => p.id === saved.vacationId) ?? null;
+			if (saved.subFilter === null || typeof saved.subFilter === 'string') subFilter = saved.subFilter;
+			if (typeof saved.internalOnly === 'boolean') internalOnly = saved.internalOnly;
+			if (saved.tagFilter === null || typeof saved.tagFilter === 'string') tagFilter = saved.tagFilter;
+			if (typeof saved.accountFilter === 'string') accountFilter = saved.accountFilter;
+			if (typeof saved.dayFilter === 'string') dayFilter = saved.dayFilter;
+			if (typeof saved.dayTo === 'string') dayTo = saved.dayTo;
+			if (isOneOf(saved.view, VIEWS.map((v) => v.id))) view = saved.view;
+			if (isOneOf(saved.sortKey, ['date', 'debit', 'credit', 'category'])) sortKey = saved.sortKey;
+			if (isOneOf(saved.sortDir, ['asc', 'desc'])) sortDir = saved.sortDir;
+			if (Array.isArray(saved.foldedCats)) foldedCats = new Set(saved.foldedCats.filter((id): id is CategoryId => isOneOf(id, CATEGORIES.map((c) => c.id))));
+			if (typeof saved.page === 'number' && Number.isInteger(saved.page) && saved.page >= 1) {
+				page = saved.page;
+				keepRestoredPage = true;
+			}
+			if (saved.expandedKey === null || typeof saved.expandedKey === 'string') expandedKey = saved.expandedKey;
+			if (typeof saved.calMonth === 'string') calMonth = saved.calMonth;
+			if (typeof saved.calFrom === 'string' && typeof saved.calTo === 'string' && saved.calFrom) calPanel = { from: saved.calFrom, to: saved.calTo || saved.calFrom };
+			if (saved.calOpenKey === null || typeof saved.calOpenKey === 'string') calOpenKey = saved.calOpenKey;
+		}
+	);
 
 	/**
 	 * Selection totals, same convention as the budget (totals.ts): income and spending per category,
@@ -554,9 +737,9 @@
 
 	// ---- Bulk edit ----
 
-	/** Computed portage entries: category fixed at the source, never editable in bulk. */
+	/** Computed entries (portage, cash wallet): edited at their source, never in bulk. */
 	function selectable(tx: Transaction): boolean {
-		return tx.source !== 'portage';
+		return !isComputedEntry(tx);
 	}
 
 	function exitSelect() {
@@ -583,7 +766,7 @@
 		lastToggled = index;
 	}
 
-	// ---- Press and slide (mouse: a few pixels onto another row; touch and pen: after a long press) ----
+	// ---- Press and slide (mouse: a few pixels onto another row; touch and pen: held still, then moved; held on, the row menu opens and the slide closes it) ----
 
 	interface Drag {
 		pointerId: number;
@@ -598,6 +781,8 @@
 		wasSelecting: boolean;
 		active: boolean;
 		touch: boolean;
+		/** Finger or pen held still for LONG_PRESS: moving now selects instead of scrolling. */
+		armed: boolean;
 		last: number;
 		x0: number;
 		y0: number;
@@ -682,11 +867,11 @@
 		if (!e.isPrimary || e.button !== 0 || (e.target as HTMLElement).closest('input, select, button, a, textarea, label, [contenteditable], [data-no-slide]')) return;
 		endDrag();
 		const touch = e.pointerType !== 'mouse';
-		drag = { pointerId: e.pointerId, start: index, el: e.currentTarget as HTMLElement, keys: pageSignature(), on: true, base: selected, wasSelecting: selectMode, active: false, touch, last: -1, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, timer: 0 };
+		drag = { pointerId: e.pointerId, start: index, el: e.currentTarget as HTMLElement, keys: pageSignature(), on: true, base: selected, wasSelecting: selectMode, active: false, touch, armed: false, last: -1, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, timer: 0 };
 		if (touch) {
 			drag.timer = window.setTimeout(() => {
 				if (!drag || drag.active) return;
-				startPaint(drag.start);
+				drag.armed = true;
 				navigator.vibrate?.(10);
 			}, LONG_PRESS);
 		}
@@ -706,13 +891,16 @@
 		drag.y = e.clientY;
 		const far = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > TOUCH_SLOP;
 		if (!drag.active) {
-			if (drag.touch) {
+			if (drag.touch && !drag.armed) {
 				if (far) endDrag();
 				return;
 			}
 			if (!far) return;
 			const index = rowIndexAt(e.clientX, e.clientY);
-			if (index !== null && index !== drag.start) startPaint(index);
+			if (drag.touch) {
+				closeContextMenu();
+				startPaint(index ?? drag.start);
+			} else if (index !== null && index !== drag.start) startPaint(index);
 			return;
 		}
 		const index = rowIndexAt(e.clientX, e.clientY);
@@ -776,7 +964,7 @@
 	 */
 	function slideSurface(node: HTMLElement) {
 		const block = (e: TouchEvent) => {
-			if (drag?.active) e.preventDefault();
+			if (drag?.active || drag?.armed) e.preventDefault();
 		};
 		const noDrag = (e: DragEvent) => {
 			const t = e.target instanceof Element ? e.target : null;
@@ -792,8 +980,14 @@
 		};
 	}
 
-	function onRowContextMenu(e: MouseEvent) {
-		if (drag?.touch) e.preventDefault();
+	/**
+	 * Right click (or the system long press) on a row: no menu while a slide selects (the shared menu
+	 * skips a prevented event); otherwise the row becomes the keyboard cursor, so the keys shown in its
+	 * menu (M, X, Entrée) act on it afterwards too.
+	 */
+	function onRowContextMenu(e: MouseEvent, index: number) {
+		if (drag?.active) e.preventDefault();
+		else cursor = index;
 	}
 
 	onMount(() => () => {
@@ -801,7 +995,8 @@
 		window.removeEventListener('pointerup', armSwallow);
 	});
 
-	const selectableFiltered = $derived(filtered.filter(selectable));
+	/** Rows « tout sélectionner » takes: the listed ones on every page, never those of a folded category. */
+	const selectableListed = $derived(sorted.filter(selectable));
 	const pageSelectable = $derived(paginated.filter(selectable));
 	const pageSelectedCount = $derived(pageSelectable.filter((tx) => selected.has(txKey(tx))).length);
 
@@ -817,14 +1012,14 @@
 	}
 
 	function selectAllFiltered() {
-		selected = new Set(selectableFiltered.map(txKey));
+		selected = new Set(selectableListed.map(txKey));
 	}
 
-	// Filters changed: the selection is limited to the rows still shown (never act on an operation you
-	// can no longer see)
+	// Filters changed or a category folded: the selection is limited to the rows still listed (never
+	// act on an operation you can no longer see)
 	$effect(() => {
 		if (selected.size === 0) return;
-		const visible = new Set(filtered.map(txKey));
+		const visible = new Set(sorted.map(txKey));
 		const kept = [...selected].filter((k) => visible.has(k));
 		if (kept.length !== selected.size) selected = new Set(kept);
 	});
@@ -860,6 +1055,70 @@
 	/** Sorted by date, the rows that open a day on the page (the first row of a page always does). */
 	const dayStarts = $derived(paginated.map((tx, i) => sortKey === 'date' && (i === 0 || dayOf(paginated[i - 1]!) !== dayOf(tx))));
 	const dayNetTitle = (d: { net: number; count: number }) => `${d.count} opérations ce jour, net sans les opérations en cours ni les virements masqués : ${formatEUR(d.net)}`;
+	/** Share of the filtered spending written in a category header (never a misleading « 0 % »). */
+	const shareLabel = (share: number) => (share < 0.005 ? '< 1 %' : formatPct(share * 100, 0));
+	const catNetTitle = (g: CategoryGroup) =>
+		`Net de la catégorie, compté comme les totaux de la page (remboursements déduits, sans les opérations en cours ni les virements masqués)${g.kind === 'transfer' ? ' ; épargne et transferts restent hors revenus et dépenses' : ''}`;
+
+	/**
+	 * New folded categories of the « Catégorie » sort: their rows leave the list or come back. With a
+	 * `focus` category, the list turns to the page that now holds its header and that header keeps the
+	 * focus; otherwise it goes back to its first page.
+	 */
+	async function applyFolds(next: Set<CategoryId>, focus?: CategoryId) {
+		foldedCats = next;
+		cursor = -1;
+		lastToggled = -1;
+		const before = page;
+		page = focus && categoryView ? headPage(categoryView, focus, PAGE_SIZE) : 1;
+		if (!focus) return;
+		await tick();
+		const head = [...document.querySelectorAll<HTMLElement>(`[data-cat-head="${focus}"]`)].find((el) => el.offsetParent !== null);
+		head?.focus({ preventScroll: page === before });
+		if (page !== before) head?.scrollIntoView({ block: 'nearest' });
+	}
+
+	/** Click on a category header: folds or unfolds that category alone. */
+	function toggleFold(id: CategoryId) {
+		const next = new Set(foldedCats);
+		if (!next.delete(id)) next.add(id);
+		void applyFolds(next, id);
+	}
+
+	/** Every category unfolded: the category mode lists all its rows. */
+	function unfoldAll() {
+		void applyFolds(new Set());
+	}
+
+	/** Every category folded, those a later month or filter brings in included: the list is a one-page summary. */
+	function foldAll() {
+		void applyFolds(new Set(ALL_CATS));
+	}
+
+	/** One category unfolded, every other one folded (row menu « Déplier seulement … »). */
+	function unfoldOnly(id: CategoryId) {
+		setGrouping('category');
+		void applyFolds(new Set(ALL_CATS.filter((c) => c !== id)), id);
+	}
+
+	/** Only the operations of one category (category filter, its subcategory filter dropped), unfolded in the category mode. */
+	function filterCategory(id: CategoryId) {
+		categoryFilter = id;
+		subFilter = undefined;
+		view = 'liste';
+		unfold(id);
+	}
+
+	/** One category unfolded, the other folds kept: its rows come back in the category mode. */
+	function unfold(id: CategoryId) {
+		if (!foldedCats.has(id)) return;
+		const next = new Set(foldedCats);
+		next.delete(id);
+		foldedCats = next;
+	}
+
+	/** Categories listed in the category mode all folded: the toolbar offers « Tout déplier », otherwise « Tout replier ». */
+	const allFolded = $derived(categoryView !== null && categoryView.groups.every((g) => foldedCats.has(g.id)));
 	/** Tags present in the selection ('− Tag'), most frequent first. */
 	const selectedTagCounts = $derived(tagInventory(selectedTxs));
 
@@ -911,10 +1170,10 @@
 		);
 	}
 
-	/** Bulk hide from / restore to the budget (same mechanism as the detail panel). */
+	/** Bulk hide from / restore to the budget (same mechanism as the detail panel); withdrawals into the cash wallet stay out. */
 	function bulkExclude(hide: boolean) {
 		void restorePoint(`avant modification groupée : ${selected.size} opération${selected.size > 1 ? 's' : ''} ${hide ? 'masquées' : 'réintégrées'}`);
-		const changed = selectedTxs.map(txKey).filter((k) => isExcluded(k) !== hide);
+		const changed = selectedTxs.map(txKey).filter((k) => !isWalletWithdrawal(k) && isExcluded(k) !== hide);
 		if (changed.length === 0) {
 			showToast(hide ? 'Déjà masquées du budget' : 'Déjà comptées dans le budget');
 			return;
@@ -991,9 +1250,9 @@
 		};
 	}
 
-	/** List label: short merchantLabel (SPEC v13 §A), cleanLabel fallback when empty. */
+	/** List label: short merchantLabel (SPEC v13 §A), cleanLabel fallback when empty; computed entries (portage, cash wallet) keep their written label. */
 	function displayLabel(tx: Transaction): string {
-		return merchantLabel(tx.remittance_information) || cleanLabel(tx.remittance_information);
+		return listLabel(tx);
 	}
 
 	/** Full raw label (title tooltip of the list). */
@@ -1034,9 +1293,14 @@
 		attachOpenKey = null;
 	}
 
-	/** Budget exclusion toggle from the detail panel (SPEC v13 §C.3). */
+	/** Budget exclusion toggle from the detail panel (SPEC v13 §C.3); never on a computed entry nor a withdrawal into the cash wallet. */
 	function toggleInternal(tx: Transaction) {
 		const key = txKey(tx);
+		if (isComputedEntry(tx)) return;
+		if (isWalletWithdrawal(key)) {
+			showToast('Retrait vers le porte-monnaie : hors budget, compté dans les soldes');
+			return;
+		}
 		if (isExcluded(key)) {
 			includeKeys([key]);
 			showToast('Opération réintégrée au budget');
@@ -1580,7 +1844,8 @@
 		ofx: 'Relevé OFX',
 		qif: 'Relevé QIF',
 		camt: 'Relevé CAMT',
-		manual: 'Saisie rapide (en attente du relevé)'
+		manual: 'Saisie rapide (en attente du relevé)',
+		cash: 'Liquide (porte-monnaie)'
 	};
 
 	/**
@@ -1589,6 +1854,7 @@
 	 */
 	function accountBadge(tx: Transaction): { label: string; title: string } | null {
 		if (tx.source === 'portage') return { label: 'Portage', title: 'Écriture calculée depuis tes documents de portage : comptée dans le budget, jamais dans les soldes (onglet Portage)' };
+		if (tx.source === 'cash') return { label: 'Liquide', title: `${tx.credit_debit_indicator === 'CRDT' ? 'Reçu en liquide, ajouté au porte-monnaie' : tx.remittance_information[0] === WRITE_OFF_LABEL ? 'Reste du porte-monnaie jamais détaillé' : 'Payé en liquide, sorti du porte-monnaie'} : compté dans le budget, jamais dans les soldes` };
 		const account =
 			tx.account ??
 			(tx.source === 'cm-csv' || tx.source === 'cm-xlsx'
@@ -1605,6 +1871,75 @@
 		return { label, title: `${KIND_LABELS[accountKind(account)]} : ${label}` };
 	}
 
+	/** Source of an operation and its account as the one chip of its detail (« CSV Crédit Mutuel · Compte courant »), whole in its tooltip; a computed entry has no account. */
+	function sourceChip(tx: Transaction): { label: string; title: string } {
+		const source = TX_SOURCE_LABELS[tx.source ?? 'demo'];
+		const account = tx.account && !isComputedEntry(tx) ? accountLabel(tx.account) : '';
+		const badge = accountBadge(tx);
+		return { label: account ? `${source} · ${account}` : source, title: badge ? `${source} · ${badge.title}` : source };
+	}
+
+	/**
+	 * Dates sentence of an operation's detail (operationDetail.ts) with what the list knows of it: a
+	 * planned instalment, a quick entry (paid or received that day), a pending operation, a cash
+	 * withdrawal. A computed entry, whose note already says what it is, gets its day alone; a cash
+	 * write-off is the day of the wallet check.
+	 */
+	function entryDates(tx: Transaction): string {
+		if (isComputedEntry(tx)) return `${tx.source === 'cash' && tx.remittance_information[0] === WRITE_OFF_LABEL ? 'Constaté le' : 'Le'} ${dayDate(tx.booking_date, new Date().getFullYear())}`;
+		const state: DateState = isPlannedInstalment(tx) ? 'planned' : tx.source === 'manual' ? 'typed' : isPending(tx) ? 'pending' : 'booked';
+		return datesSentence({
+			purchase: purchaseDate(tx),
+			booking: tx.booking_date,
+			credit: tx.credit_debit_indicator === 'CRDT',
+			withdrawal: /\bRETRAITS?\b/i.test(tx.remittance_information.join(' ')),
+			state
+		});
+	}
+
+	/** Amount of an operation kept in another currency than the euro (« −12,00 $US »), '' in euros. */
+	function foreignAmount(tx: Transaction): string {
+		const currency = tx.transaction_amount.currency;
+		if (!currency || currency === 'EUR') return '';
+		const value = signedAmount(tx);
+		try {
+			return new Intl.NumberFormat('fr-FR', { style: 'currency', currency }).format(value).replace('-', '−');
+		} catch {
+			return `${value.toFixed(2).replace('.', ',')} ${currency}`;
+		}
+	}
+
+	/**
+	 * Where the refund section (RefundControl) goes in an operation's detail: its « À rembourser… »
+	 * button among the actions while nothing is expected, the claim, or the expenses an income pays
+	 * back, on the « Lié à » line; null for an income that pays nothing back.
+	 */
+	function refundPlace(tx: Transaction): 'action' | 'linked' | null {
+		const key = txKey(tx);
+		if (signedAmount(tx) < 0) return refundOf(key) ? 'linked' : 'action';
+		return refundedBy(key).length > 0 ? 'linked' : null;
+	}
+
+	/**
+	 * Files a bank operation in the category most of its merchant's other operations are in (history
+	 * line of its detail), through the row select's setter and its learned-rule offer. « Annuler » in
+	 * the toast puts the override back and withdraws the offer this filing raised, so it can no longer
+	 * apply the undone category to the whole merchant, and shows again the offer it had replaced.
+	 */
+	function fileLikeOthers(tx: Transaction, id: CategoryId) {
+		const setCategory = categorySetter(tx);
+		if (!setCategory) return;
+		const key = txKey(tx);
+		const before = budgetState.overrides[key] ?? null;
+		const shown = rulesState.prompt;
+		setCategory(id);
+		const raised = rulesState.prompt === shown ? null : rulesState.prompt;
+		showToast(`Classée en ${getCategory(id).label}, comme les autres`, 'Annuler', () => {
+			patchOverrides({ [key]: before });
+			withdrawPrompt(raised, shown);
+		});
+	}
+
 	/**
 	 * Deleting an operation: persistent tombstone + toast with undo ('Annuler' reinjects the saved
 	 * copy and removes the tombstone).
@@ -1614,6 +1949,55 @@
 		const { backup } = deleteTransactions([key]);
 		if (expandedKey === key) expandedKey = null;
 		showToast('Opération supprimée', 'Annuler', () => restoreTransactions(backup, [key]));
+	}
+
+	/** Deleting a cash wallet entry: the spend, cash received or write-off leaves the wallet, undoable from the toast. */
+	function onDeleteCash(tx: Transaction) {
+		const key = txKey(tx);
+		const id = cashItemOf(key);
+		if (!id) return;
+		const undo = removeCashItem(id);
+		if (expandedKey === key) expandedKey = null;
+		const what = tx.credit_debit_indicator === 'CRDT' ? 'Liquide reçu supprimé' : tx.remittance_information[0] === WRITE_OFF_LABEL ? 'Liquide non détaillé supprimé' : 'Dépense en liquide supprimée';
+		showToast(what, 'Annuler', undo);
+	}
+
+	/** Cash spend or cash received whose category can change in the wallet (a write-off has none typed: always « Autre », even during a holiday). */
+	function cashCategoryEditable(tx: Transaction): boolean {
+		return tx.remittance_information[0] !== WRITE_OFF_LABEL && cashItemOf(txKey(tx)) !== undefined;
+	}
+
+	/**
+	 * Category of a cash spend or cash received picked on its row. « Vacances » is an override, like on
+	 * a bank operation (the typed category stays its default); another one becomes the typed category
+	 * in the wallet (its subcategory is reset when the category changes, kept when the typed one is
+	 * picked back out of a holiday) and lifts what would hide it, an override or the holiday of its
+	 * date (detached from the period), so the row shows what was picked.
+	 */
+	function setCashCategory(tx: Transaction, categoryId: CategoryId) {
+		const key = txKey(tx);
+		const id = cashItemOf(key);
+		if (!id) return;
+		if (categoryId === 'vacances') {
+			patchOverrides({ [key]: 'vacances' });
+			return;
+		}
+		if (categoryId !== tx.virtual_category) setCashSpendCategory(id, categoryId, null);
+		if (vacationOf(tx)) assignVacation(tx, null);
+		if (key in budgetState.overrides) patchOverrides({ [key]: null });
+	}
+
+	/** Category select of a cash row. */
+	function onCashCategoryChange(tx: Transaction, event: Event) {
+		setCashCategory(tx, (event.target as HTMLSelectElement).value as CategoryId);
+	}
+
+	/** Badge of an operation left out of the budget: withdrawal into the cash wallet, internal transfer or hidden by the user. */
+	function excludedBadge(key: string): { label: string; title: string } {
+		if (isWalletWithdrawal(key)) return { label: 'Porte-monnaie', title: 'Retrait vers le porte-monnaie : hors budget (les dépenses en liquide comptent à sa place), compté dans les soldes' };
+		return isInternal(key)
+			? { label: 'Virement interne', title: 'Virement entre vos comptes — exclu des totaux du budget, compté dans les soldes' }
+			: { label: 'Hors budget', title: 'Opération exceptionnelle masquée du budget — comptée dans les soldes' };
 	}
 
 	/** Makes deleted operations importable again (clears the tombstones). */
@@ -1638,7 +2022,6 @@
 	 */
 	let cursor = $state(-1);
 	let noteDraft = $state('');
-	let noteInput = $state<HTMLInputElement | null>(null);
 	/** A Shift+click range or a slide never spans two pages. */
 	$effect(() => {
 		void page;
@@ -1664,19 +2047,35 @@
 		listTop?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 		return true;
 	}
+	/**
+	 * Note field of the open detail that is on screen: the detail renders under the table row and in
+	 * the phone card, one of them hidden by the layout.
+	 */
+	function visibleNoteField(): HTMLInputElement | undefined {
+		return [...document.querySelectorAll<HTMLInputElement>('input[data-note-input]')].find((el) => el.getClientRects().length > 0);
+	}
 	function openNote(tx: Transaction) {
 		expandedKey = txKey(tx);
 		noteDraft = tx.note ?? '';
-		window.setTimeout(() => noteInput?.focus(), 30);
+		window.setTimeout(() => visibleNoteField()?.focus(), 30);
 	}
 	function saveNote(tx: Transaction) {
 		if ((tx.note ?? '') === noteDraft) return;
 		if (updateImported(txKey(tx), { note: noteDraft })) showSuccess('Note enregistrée');
 	}
+	/** In the category mode outside a holiday filter, ← / → step the month and Maj+arrows turn the pages. */
+	const monthKeys = $derived(sortKey === 'category' && !vacationFilter);
+
 	/**
 	 * List keyboard: ignored while a dialog is in front (transfers, Kraken, backup…); Escape leaves
 	 * the selection, even from a checked box (text fields intercept it); Enter on a focused button or
-	 * link keeps its action (the j/k cursor used to steal it); in the calendar, ← / → change month.
+	 * link keeps its action (the j/k cursor used to steal it), and on a focused row that is also the
+	 * cursor (a right click or the Menu key makes it so) the row's own Enter opens it once; in the
+	 * calendar, ← / → change month; in the category mode ← / → step the period to the previous or next
+	 * month with operations and Maj+← / Maj+→ turn the pages (plain arrows turn them under a holiday
+	 * filter, which has no month stepper).
+	 * An arrow a widget already used (the days of the period picker, Maj stretching its range) is left
+	 * to it.
 	 */
 	function onListKeydown(e: KeyboardEvent) {
 		if (uiState.paletteOpen || uiState.shortcutsOpen || uiState.backupDialogOpen || uiState.dialogDepth > 0 || mapper) return;
@@ -1687,8 +2086,9 @@
 			return;
 		}
 		if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return;
-		if (e.key === 'Enter' && t.closest('button, a')) return;
+		if (e.key === 'Enter' && (t.closest('button, a') || (e.defaultPrevented && t.dataset.rowIndex === String(cursor)))) return;
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
+		if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && e.defaultPrevented) return;
 		if (view === 'calendrier') {
 			if (e.key === 'Escape' && calPanel) {
 				e.preventDefault();
@@ -1699,6 +2099,10 @@
 				e.preventDefault();
 				shiftCalMonth(e.key === 'ArrowLeft' ? -1 : 1);
 			}
+			return;
+		}
+		if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && monthKeys && !e.shiftKey) {
+			if (stepPeriod(e.key === 'ArrowLeft' ? -1 : 1)) e.preventDefault();
 			return;
 		}
 		if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -1744,9 +2148,10 @@
 
 	/**
 	 * Row keyboard: interactive selects keep their keys; in selection mode Space checks the row and
-	 * Enter keeps the detail.
+	 * Enter keeps the detail; the Menu key (or Maj+F10) makes the row the cursor before its menu opens.
 	 */
 	function onRowKeydown(tx: Transaction, e: KeyboardEvent, index: number) {
+		if (isMenuKey(e)) cursor = index;
 		if (e.key === 'Enter' || e.key === ' ') {
 			if ((e.target as HTMLElement).tagName === 'SELECT') return;
 			e.preventDefault();
@@ -1763,6 +2168,90 @@
 		}
 		if (selectMode && selectable(tx)) toggleSelected(tx, index, e.shiftKey);
 		else toggleDetail(tx);
+	}
+
+	// ---- Right-click menus (contextMenu.svelte.ts): a row, then a category header, then the whole list ----
+
+	/** Only the operations of a row's merchant (search box, no debounce), its category unfolded in the category mode. */
+	function filterMerchant(tx: Transaction) {
+		searchInput = search = merchantSearchQuery(tx);
+		unfold(catOfTx(tx));
+	}
+
+	/** Entry filtering the list on a category, or lifting that filter when it is the one applied (like « Toutes catégories »). */
+	function categoryFilterEntry(id: CategoryId): MenuAction {
+		return categoryFilter === id
+			? { label: 'Retirer le filtre catégorie', onSelect: () => (categoryFilter = '') }
+			: { label: 'Filtrer sur cette catégorie', onSelect: () => filterCategory(id) };
+	}
+
+	/**
+	 * Category change of a row through the setter its select uses, null when the category is fixed: an
+	 * override with the learned-rule offer for a bank operation, the wallet for a cash entry; a portage
+	 * entry and the wallet write-off keep theirs.
+	 */
+	function categorySetter(tx: Transaction): ((id: CategoryId) => void) | null {
+		if (tx.source === 'portage') return null;
+		if (tx.source !== 'cash') return (id) => setOverrideAndPrompt(tx, id);
+		return cashCategoryEditable(tx) ? (id) => setCashCategory(tx, id) : null;
+	}
+
+	/**
+	 * Right-click entries of a row (table row or phone card), with the same setters, toasts and undo as
+	 * its select, its bin and its detail panel. On a checked row of a selection of several, the category
+	 * and the budget entries act on the whole selection, like the bar above the list.
+	 */
+	function rowActions(tx: Transaction, index: number): MenuInput[] {
+		const key = txKey(tx);
+		const catId = catOfTx(tx);
+		const many = selectMode && selected.has(key) && selected.size > 1;
+		const setCategory = categorySetter(tx);
+		const merchant = merchantSearchQuery(tx);
+		const hidden = many ? selectedTxs.filter((t) => isExcluded(txKey(t))) : [];
+		return [
+			{ label: expandedKey === key ? 'Fermer le détail' : 'Ouvrir le détail', hint: 'Entrée', onSelect: () => toggleDetail(tx) },
+			many
+				? { label: `Catégorie des ${selected.size} sélectionnées`, items: CATEGORIES.map((c) => ({ label: c.label, category: c.id, onSelect: () => bulkCategory(c.id) })) }
+				: setCategory && { label: 'Catégorie', items: CATEGORIES.map((c) => ({ label: c.label, category: c.id, disabled: c.id === catId, onSelect: () => setCategory(c.id) })) },
+			merchant !== '' &&
+				(searchInput.trim().toLowerCase() === merchant.toLowerCase()
+					? { label: 'Retirer le filtre marchand', onSelect: () => (searchInput = search = '') }
+					: { label: 'Filtrer sur ce marchand', onSelect: () => filterMerchant(tx) }),
+			categoryFilterEntry(catId),
+			selectable(tx) && { label: selected.has(key) ? 'Désélectionner' : 'Sélectionner', hint: 'X', onSelect: () => toggleSelected(tx, index) },
+			many && selected.size > hidden.length && { label: 'Masquer la sélection du budget', onSelect: () => bulkExclude(true) },
+			many && hidden.some((t) => !isWalletWithdrawal(txKey(t))) && { label: 'Réintégrer la sélection au budget', onSelect: () => bulkExclude(false) },
+			!many && !isComputedEntry(tx) && !isWalletWithdrawal(key) && { label: isExcluded(key) ? 'Réintégrer au budget' : 'Masquer du budget', hint: 'M', onSelect: () => toggleInternal(tx) },
+			SEPARATOR,
+			!many && tx.source !== 'portage' && { label: 'Supprimer', danger: true, onSelect: () => (tx.source === 'cash' ? onDeleteCash(tx) : onDeleteTx(tx)) }
+		];
+	}
+
+	/** Right-click entries of a category header (category mode); the list adds the grouping, « Tout déplier / replier » and the months. */
+	function headActions(id: CategoryId): MenuInput[] {
+		const othersOpen = (categoryView?.groups ?? []).some((g) => g.id !== id && !foldedCats.has(g.id));
+		return [
+			{ label: foldedCats.has(id) ? 'Déplier' : 'Replier', onSelect: () => toggleFold(id) },
+			othersOpen && { label: 'Ne déplier que celle-ci', onSelect: () => unfoldOnly(id) },
+			categoryFilterEntry(id)
+		];
+	}
+
+	/**
+	 * Right-click entries of the whole list, after those of a row or a header: the grouping and, in the
+	 * category mode, the folds that would change something and the month stepper (← / →).
+	 */
+	function listActions(): MenuInput[] {
+		const groups = categoryView?.groups ?? [];
+		const byCategory = sortKey === 'category';
+		return [
+			sortKey !== 'category' && { label: 'Grouper par catégorie', onSelect: () => setGrouping('category') },
+			sortKey !== 'date' && { label: 'Grouper par date', onSelect: () => setGrouping('date') },
+			byCategory && groups.some((g) => foldedCats.has(g.id)) && { label: 'Tout déplier', onSelect: unfoldAll },
+			byCategory && groups.some((g) => !foldedCats.has(g.id)) && { label: 'Tout replier', onSelect: foldAll },
+			byCategory && !vacationFilter && { label: 'Mois précédent', hint: '←', disabled: !prevMonth, onSelect: () => stepPeriod(-1) },
+			byCategory && !vacationFilter && { label: 'Mois suivant', hint: '→', disabled: !nextMonth, onSelect: () => stepPeriod(1) }
+		];
 	}
 
 	/** Sort arrow for the active header. */
@@ -2059,7 +2548,62 @@
 				Créer une période de vacances
 			</button>
 		{/if}
-		<div class="ml-auto flex items-center gap-2">
+		{#if view === 'liste' && sortKey === 'category'}
+			<!-- Category mode period: whole months stepped with ‹ › (months without operations skipped), written in the period picker, which stays the source of truth; none in holiday mode, where the holiday sets the period -->
+			{#if !vacationFilter}
+				<div class="period-step flex items-center overflow-hidden rounded-full border" style="border-color: var(--hairline);" role="group" aria-label="Période de la vue par catégorie" use:segmented>
+					<button
+						type="button"
+						class="press cursor-pointer py-1 pr-1 pl-2.5 text-xs font-medium transition-colors duration-150 disabled:cursor-default disabled:opacity-30"
+						style="color: var(--text-2);"
+						disabled={!prevMonth}
+						aria-label="Mois précédent"
+						title={prevMonth ? `${formatMonth(prevMonth)} (←)` : 'Aucun mois plus ancien avec des opérations'}
+						onclick={() => stepPeriod(-1)}
+					>
+						‹
+					</button>
+					<button
+						type="button"
+						class="press tabular min-w-[7.5rem] cursor-pointer px-1.5 py-1 text-center text-xs font-medium transition-colors duration-150"
+						style={periodMonth ? 'color: var(--accent);' : 'color: var(--text-2);'}
+						aria-pressed={periodMonth !== ''}
+						disabled={!stepperMonth}
+						title={periodMonth ? 'Mois affiché : les flèches passent au mois précédent ou suivant qui a des opérations (← / →)' : 'Afficher ce mois seulement'}
+						onclick={() => setMonth(stepperMonth)}
+					>
+						{stepperMonth ? formatMonth(stepperMonth) : 'Aucun mois'}
+					</button>
+					<button
+						type="button"
+						class="press cursor-pointer py-1 pr-2.5 pl-1 text-xs font-medium transition-colors duration-150 disabled:cursor-default disabled:opacity-30"
+						style="color: var(--text-2);"
+						disabled={!nextMonth}
+						aria-label="Mois suivant"
+						title={nextMonth ? `${formatMonth(nextMonth)} (→)` : 'Aucun mois plus récent avec des opérations'}
+						onclick={() => stepPeriod(1)}
+					>
+						›
+					</button>
+					<button
+						type="button"
+						class="press cursor-pointer border-l px-3 py-1 text-xs font-medium transition-colors duration-150"
+						style="border-color: var(--hairline); {wholePeriod ? 'color: var(--accent);' : 'color: var(--text-2);'}"
+						aria-pressed={wholePeriod}
+						title="Toutes les dates : le sélecteur de période se vide"
+						onclick={clearPeriod}
+					>
+						Toute la période
+					</button>
+				</div>
+			{/if}
+			{#if categoryView && categoryView.groups.length > 0}
+				<button type="button" class="meta-xs cursor-pointer hover:underline" onclick={() => (allFolded ? unfoldAll() : foldAll())}>
+					{allFolded ? 'Tout déplier' : 'Tout replier'}
+				</button>
+			{/if}
+		{/if}
+		<div class="ml-auto flex flex-wrap items-center justify-end gap-2">
 			{#if view === 'liste'}
 				<span class="hidden md:inline-flex"><RowsToggle /></span>
 				<button
@@ -2071,6 +2615,22 @@
 				>
 					{selectMode ? 'Terminer la sélection' : 'Sélectionner'}
 				</button>
+				<!-- Date or category grouping (the column headers keep sorting; a Débit/Crédit sort leaves both off) -->
+				<div class="flex overflow-hidden rounded-full border" style="border-color: var(--hairline);" role="group" aria-label="Regroupement de la liste" use:segmented>
+					{#each GROUPINGS as opt (opt.id)}
+						<button
+							type="button"
+							class="press cursor-pointer px-3 py-1 text-xs font-medium transition-colors duration-150"
+							style={opt.id === sortKey ? 'background-color: var(--accent-soft); color: var(--accent);' : 'color: var(--text-2);'}
+							aria-pressed={opt.id === sortKey}
+							aria-label={opt.label}
+							title={opt.title}
+							onclick={() => setGrouping(opt.id)}
+						>
+							<span class="hidden sm:inline">{opt.label}</span><span class="sm:hidden">{opt.short}</span>
+						</button>
+					{/each}
+				</div>
 			{/if}
 			<div class="flex overflow-hidden rounded-full border" style="border-color: var(--hairline);" role="group" aria-label="Vue de la page" use:segmented>
 				{#each VIEWS as opt (opt.id)}
@@ -2113,14 +2673,15 @@
 	{#if view === 'liste'}
 	{#if selectMode}
 		{@const excludedCount = selectedTxs.filter((t) => isExcluded(txKey(t))).length}
+		{@const restorableCount = selectedTxs.filter((t) => isExcluded(txKey(t)) && !isWalletWithdrawal(txKey(t))).length}
 		<!-- Selection actions: bar stuck to the top of the screen while scrolling (the 'Annuler' toast stays visible at the bottom) -->
 		<div class="bulk-bar card mb-3 flex flex-wrap items-center gap-2 px-3 py-2 text-[12px]" role="toolbar" aria-label="Actions sur la sélection">
 			<span class="font-medium"><span class="tabular">{selected.size}</span> sélectionnée{selected.size > 1 ? 's' : ''}</span>
 			{#if selected.size > 0}
 				<span class="tabular {selectedTotal > 0 ? 'text-accent' : 'text-secondary'}" title="Net des opérations sélectionnées, comptées comme les totaux de la page : sans les opérations en cours ni les virements masqués">{selectedTotal > 0 ? '+' : selectedTotal < 0 ? '−' : ''}{formatEUR(Math.abs(selectedTotal))}</span>
 			{/if}
-			{#if selected.size < selectableFiltered.length}
-				<button type="button" class="meta-xs cursor-pointer hover:underline" onclick={selectAllFiltered}>tout sélectionner ({selectableFiltered.length})</button>
+			{#if selected.size < selectableListed.length}
+				<button type="button" class="meta-xs cursor-pointer hover:underline" onclick={selectAllFiltered}>tout sélectionner ({selectableListed.length})</button>
 			{/if}
 			{#if selected.size > 0}
 				<button type="button" class="meta-xs cursor-pointer hover:underline" onclick={() => (selected = new Set())}>aucune</button>
@@ -2179,7 +2740,7 @@
 			{#if selected.size > excludedCount}
 				<button type="button" class="btn btn-secondary btn-sm" title="Retirer des entrées/sorties et du budget ; elles restent comptées dans les soldes" onclick={() => bulkExclude(true)}>Masquer du budget</button>
 			{/if}
-			{#if excludedCount > 0}
+			{#if restorableCount > 0}
 				<button type="button" class="btn btn-secondary btn-sm" onclick={() => bulkExclude(false)}>Réintégrer au budget</button>
 			{/if}
 			<button type="button" class="btn btn-secondary btn-sm ml-auto" onclick={exitSelect}>Terminer <kbd class="kbd">Échap</kbd></button>
@@ -2188,7 +2749,7 @@
 
 	<!-- Desktop table (≥ md); the anchor above it is where ← → paging scrolls back to -->
 	<div bind:this={listTop} class="scroll-mt-3" aria-hidden="true"></div>
-	<section class="card hero-in-3 no-callout mb-3 hidden overflow-hidden md:block" use:slideSurface>
+	<section class="card hero-in-3 no-callout mb-3 hidden overflow-hidden md:block" use:slideSurface use:contextActions={listActions}>
 		<div class="overflow-x-auto">
 			<table class="w-full min-w-[760px] border-collapse text-[12px]">
 				<thead>
@@ -2212,7 +2773,11 @@
 							</button>
 						</th>
 						<th class="sticky-th label-plain px-4 py-2" colspan="2">Libellé</th>
-						<th class="sticky-th label-plain px-4 py-2">Catégorie</th>
+						<th class="sticky-th px-4 py-2">
+							<button type="button" class="label-plain cursor-pointer transition-colors hover:text-[var(--text)]" onclick={() => toggleSort('category')}>
+								Catégorie{sortArrow('category')}
+							</button>
+						</th>
 						{#if hasTags}<th class="sticky-th label-plain px-4 py-2">Tags</th>{/if}
 						{#if hasChecked}<th class="sticky-th label-plain px-2 py-2 text-center">Pointée</th>{/if}
 						<th class="sticky-th px-4 py-2 text-right">
@@ -2243,6 +2808,9 @@
 						{@const newDay = dayStarts[rowIndex] ?? false}
 						{@const showDate = sortKey !== 'date' || newDay || !dayOf(tx)}
 						{@const day = dayOf(tx) ? dayTotals?.get(dayOf(tx)) : undefined}
+						{#each catHeads?.before[rowIndex] ?? [] as head (head.group.id)}
+							{@render categoryHeadRow(head)}
+						{/each}
 						<!-- Sorted by date, the date alone is written once per day (and on the first row of a page) under a full rule; the day's net is in the date cell's tooltip on every row of the day -->
 						<tr
 							class="row row-hover press group cursor-pointer border-t transition-colors select-none"
@@ -2257,7 +2825,8 @@
 							onclick={(e) => onRowClick(tx, e, rowIndex)}
 							onkeydown={(e) => onRowKeydown(tx, e, rowIndex)}
 							onpointerdown={(e) => onRowPointerDown(e, rowIndex)}
-							oncontextmenu={onRowContextMenu}
+							oncontextmenu={(e) => onRowContextMenu(e, rowIndex)}
+							use:contextActions={() => rowActions(tx, rowIndex)}
 						>
 							{#if selectMode}
 								<td class="w-8 py-1 pr-0 pl-4">
@@ -2290,10 +2859,11 @@
 								<p class="truncate leading-[1.4] font-medium" title={rawLabel(tx)}>
 									{displayLabel(tx)}
 									{#if isExcluded(txKey(tx))}
+										{@const excluded = excludedBadge(txKey(tx))}
 										<!-- Internal transfer hidden from the budget (neutral badge, never red) -->
-										<span class="chip chip-outline ml-2" title={isInternal(txKey(tx)) ? "Virement entre vos comptes — exclu des totaux du budget, compté dans les soldes" : "Opération exceptionnelle masquée du budget — comptée dans les soldes"}>{isInternal(txKey(tx)) ? 'Virement interne' : 'Hors budget'}</span>
+										<span class="chip chip-outline ml-2" title={excluded.title}>{excluded.label}</span>
 									{/if}
-									{#if (uiState.accountBadges || tx.source === 'portage') && accountBadge(tx)}
+									{#if (uiState.accountBadges || isComputedEntry(tx)) && accountBadge(tx)}
 										{@const badge = accountBadge(tx)!}
 										<span class="chip chip-muted ml-2" title={badge.title} aria-label={badge.title}>{badge.label}</span>
 									{/if}
@@ -2323,7 +2893,7 @@
 									{/if}
 								</p>
 								{#if tx.note}
-									<p class="row-sub meta-xs mt-0.5 truncate">{tx.source === 'portage' ? maskAmounts(tx.note) : tx.note}</p>
+									<p class="row-sub meta-xs mt-0.5 truncate">{isComputedEntry(tx) ? maskAmounts(tx.note) : tx.note}</p>
 								{/if}
 							</td>
 							<td class="px-4 py-1" onclick={(e) => e.stopPropagation()}>
@@ -2331,6 +2901,17 @@
 									{#if tx.source === 'portage'}
 										<!-- Computed entry: category fixed by the Portage tab -->
 										<span class="input-surface w-32 shrink-0 truncate text-secondary" title="Catégorie fixée par l'onglet Portage">{getCategory(catId).label}</span>
+									{:else if tx.source === 'cash'}
+										<!-- Cash wallet entry: the typed category lives in the wallet; a write-off always counts in « Autre », even during a holiday -->
+										{#if cashCategoryEditable(tx)}
+											<select class="input-surface w-32 shrink-0 cursor-pointer" value={catId} onchange={(e) => onCashCategoryChange(tx, e)} aria-label="Catégorie">
+												{#each CATEGORIES as cat (cat.id)}
+													<option value={cat.id}>{cat.label}</option>
+												{/each}
+											</select>
+										{:else}
+											<span class="input-surface w-32 shrink-0 truncate text-secondary" title="Reste du porte-monnaie jamais détaillé : en Autre, en Vacances pendant une période de vacances">{getCategory(catId).label}</span>
+										{/if}
 									{:else}
 									<select
 										class="input-surface w-32 shrink-0 cursor-pointer"
@@ -2388,7 +2969,7 @@
 									{tx.balance_after !== undefined ? formatEUR(tx.balance_after) : '—'}
 								</td>
 							{/if}
-							<!-- Deletion: bare bin icon, visible on hover (150 ms); never on a computed entry -->
+							<!-- Deletion: bare bin icon, visible on hover (150 ms); never on a portage entry, a cash entry leaves the wallet -->
 							<td class="px-2 py-1 text-center">
 								{#if tx.source !== 'portage'}
 								<button
@@ -2398,7 +2979,8 @@
 									title="Supprimer"
 									onclick={(e) => {
 										e.stopPropagation();
-										onDeleteTx(tx);
+										if (tx.source === 'cash') onDeleteCash(tx);
+										else onDeleteTx(tx);
 									}}
 								>
 									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -2419,28 +3001,33 @@
 							</tr>
 						{/if}
 					{:else}
-						<tr>
-							<td colspan={colCount} class="px-4 py-6">
-								{#if getTransactions().length === 0}
-									<!-- No data at all: point to the import, not to the filters -->
-									<EmptyState
-										icon="import"
-										title="Aucune transaction"
-										text="Importez un relevé Crédit Mutuel (CSV ou XLSX), Natixis (CSV) ou de toute banque (OFX, QIF, CAMT), ou glissez-déposez le fichier ici."
-										ctaLabel="Importer un relevé"
-										onCta={() => (uiState.importPanelOpen = true)}
-									/>
-								{:else}
-									<EmptyState
-										icon="search"
-										title="Aucun résultat"
-										text="Aucune transaction ne correspond aux filtres actifs."
-										ctaLabel={filtersActive ? 'Réinitialiser les filtres' : ''}
-										onCta={filtersActive ? resetFilters : undefined}
-									/>
-								{/if}
-							</td>
-						</tr>
+						{#if !catHeads?.after.length}
+							<tr>
+								<td colspan={colCount} class="px-4 py-6">
+									{#if getTransactions().length === 0}
+										<!-- No data at all: point to the import, not to the filters -->
+										<EmptyState
+											icon="import"
+											title="Aucune transaction"
+											text="Importez un relevé Crédit Mutuel (CSV ou XLSX), Natixis (CSV) ou de toute banque (OFX, QIF, CAMT), ou glissez-déposez le fichier ici."
+											ctaLabel="Importer un relevé"
+											onCta={() => (uiState.importPanelOpen = true)}
+										/>
+									{:else}
+										<EmptyState
+											icon="search"
+											title="Aucun résultat"
+											text="Aucune transaction ne correspond aux filtres actifs."
+											ctaLabel={filtersActive ? 'Réinitialiser les filtres' : ''}
+											onCta={filtersActive ? resetFilters : undefined}
+										/>
+									{/if}
+								</td>
+							</tr>
+						{/if}
+					{/each}
+					{#each catHeads?.after ?? [] as head (head.group.id)}
+						{@render categoryHeadRow(head)}
 					{/each}
 				</tbody>
 			</table>
@@ -2448,7 +3035,7 @@
 	</section>
 
 	<!-- Mobile: stacked cards -->
-	<section class="no-callout mb-3 space-y-2 md:hidden" use:slideSurface>
+	<section class="no-callout mb-3 space-y-2 md:hidden" use:slideSurface use:contextActions={listActions}>
 		<div class="card p-1"><QuickEntryRow compact /></div>
 		{#each paginated as tx, i (txKey(tx))}
 			{@const amount = signedAmount(tx)}
@@ -2457,6 +3044,9 @@
 			{@const expanded = expandedKey === txKey(tx)}
 			{@const isSelected = selected.has(txKey(tx))}
 			{@const dayHead = dayStarts[i] ?? false}
+			{#each catHeads?.before[i] ?? [] as head (head.group.id)}
+				{@render categoryHeadLine(head)}
+			{/each}
 			{#if dayHead}
 				{@const day = dayOf(tx) ? dayTotals?.get(dayOf(tx)) : undefined}
 				<p class="meta-xs flex items-baseline justify-between px-1 pt-1">
@@ -2477,7 +3067,8 @@
 				onclick={(e) => onRowClick(tx, e, i)}
 				onkeydown={(e) => onRowKeydown(tx, e, i)}
 				onpointerdown={(e) => onRowPointerDown(e, i)}
-				oncontextmenu={onRowContextMenu}
+				oncontextmenu={(e) => onRowContextMenu(e, i)}
+				use:contextActions={() => rowActions(tx, i)}
 			>
 				<div class="flex items-start gap-3">
 					{#if selectMode && selectable(tx)}
@@ -2497,10 +3088,11 @@
 						<p class="truncate text-sm font-medium" title={rawLabel(tx)}>
 							{displayLabel(tx)}
 							{#if isExcluded(txKey(tx))}
+								{@const excluded = excludedBadge(txKey(tx))}
 								<!-- Internal transfer hidden from the budget (neutral badge) -->
-								<span class="chip chip-outline ml-1.5" title={isInternal(txKey(tx)) ? "Virement entre vos comptes — exclu des totaux du budget, compté dans les soldes" : "Opération exceptionnelle masquée du budget — comptée dans les soldes"}>{isInternal(txKey(tx)) ? 'Virement interne' : 'Hors budget'}</span>
+								<span class="chip chip-outline ml-1.5" title={excluded.title}>{excluded.label}</span>
 							{/if}
-							{#if (uiState.accountBadges || tx.source === 'portage') && accountBadge(tx)}
+							{#if (uiState.accountBadges || isComputedEntry(tx)) && accountBadge(tx)}
 								{@const badge = accountBadge(tx)!}
 								<span class="chip chip-muted ml-1.5" title={badge.title} aria-label={badge.title}>{badge.label}</span>
 							{/if}
@@ -2517,7 +3109,7 @@
 							{#if tx.checked}<span style="color: var(--accent);"> · ✓ pointée</span>{/if}
 						</p>
 						{#if tx.note}
-							<p class="meta-xs mt-0.5 truncate">{tx.source === 'portage' ? maskAmounts(tx.note) : tx.note}</p>
+							<p class="meta-xs mt-0.5 truncate">{isComputedEntry(tx) ? maskAmounts(tx.note) : tx.note}</p>
 						{/if}
 						{#if tx.tags && tx.tags.length > 0}
 							<div class="mt-1.5 flex flex-wrap gap-1">
@@ -2552,25 +3144,30 @@
 				{/if}
 			</div>
 		{:else}
-			<div class="card p-4">
-				{#if getTransactions().length === 0}
-					<EmptyState
-						icon="import"
-						title="Aucune transaction"
-						text="Importez un relevé Crédit Mutuel (CSV ou XLSX) ou Natixis (CSV)."
-						ctaLabel="Importer un relevé"
-						onCta={() => (uiState.importPanelOpen = true)}
-					/>
-				{:else}
-					<EmptyState
-						icon="search"
-						title="Aucun résultat"
-						text="Aucune transaction ne correspond aux filtres actifs."
-						ctaLabel={filtersActive ? 'Réinitialiser les filtres' : ''}
-						onCta={filtersActive ? resetFilters : undefined}
-					/>
-				{/if}
-			</div>
+			{#if !catHeads?.after.length}
+				<div class="card p-4">
+					{#if getTransactions().length === 0}
+						<EmptyState
+							icon="import"
+							title="Aucune transaction"
+							text="Importez un relevé Crédit Mutuel (CSV ou XLSX) ou Natixis (CSV)."
+							ctaLabel="Importer un relevé"
+							onCta={() => (uiState.importPanelOpen = true)}
+						/>
+					{:else}
+						<EmptyState
+							icon="search"
+							title="Aucun résultat"
+							text="Aucune transaction ne correspond aux filtres actifs."
+							ctaLabel={filtersActive ? 'Réinitialiser les filtres' : ''}
+							onCta={filtersActive ? resetFilters : undefined}
+						/>
+					{/if}
+				</div>
+			{/if}
+		{/each}
+		{#each catHeads?.after ?? [] as head (head.group.id)}
+			{@render categoryHeadLine(head)}
 		{/each}
 	</section>
 
@@ -2583,7 +3180,7 @@
 				style="border-color: var(--border);"
 				disabled={page <= 1}
 				aria-label="Page précédente"
-				title="Page précédente (←)"
+				title={monthKeys ? 'Page précédente (Maj+←)' : 'Page précédente (←)'}
 				onclick={() => (page = Math.max(1, page - 1))}
 			>
 				‹
@@ -2613,7 +3210,7 @@
 				style="border-color: var(--border);"
 				disabled={page >= pageCount}
 				aria-label="Page suivante"
-				title="Page suivante (→)"
+				title={monthKeys ? 'Page suivante (Maj+→)' : 'Page suivante (→)'}
 				onclick={() => (page = Math.min(pageCount, page + 1))}
 			>
 				›
@@ -2737,7 +3334,7 @@
 														<dt class="text-secondary">Libellé</dt>
 														<dd class="break-words">{rawLabel(item.tx)}</dd>
 														<dt class="text-secondary">Compte</dt>
-														<dd>{accountLabel(accountIdOf(item.tx))}</dd>
+														<dd>{isComputedEntry(item.tx) ? (accountBadge(item.tx)?.label ?? '') : accountLabel(accountIdOf(item.tx))}</dd>
 														<dt class="text-secondary">Comptabilisé</dt>
 														<dd>{formatDate(item.tx.booking_date)}</dd>
 														{#if sub}
@@ -2746,7 +3343,7 @@
 														{/if}
 														{#if item.tx.note}
 															<dt class="text-secondary">Note</dt>
-															<dd class="break-words">{item.tx.source === 'portage' ? maskAmounts(item.tx.note) : item.tx.note}</dd>
+															<dd class="break-words">{isComputedEntry(item.tx) ? maskAmounts(item.tx.note) : item.tx.note}</dd>
 														{/if}
 													</dl>
 													<button type="button" class="btn btn-secondary btn-sm mt-1.5" onclick={() => openInList(item.tx)}>Ouvrir dans la liste</button>
@@ -2804,304 +3401,378 @@
 {/if}
 
 
-<!-- Detail panel: all the raw information of the transaction -->
+<!-- « Catégorie » sort, wide screen: header row of a category (fold button, operations, share of the filtered spending, also drawn as a hairline under the row), its net in the Débit or Crédit column -->
+{#snippet categoryHeadRow(head: CategoryHead)}
+	{@const g = head.group}
+	{@const cat = getCategory(g.id)}
+	{@const share = spendingShare(g, totals.debit)}
+	<tr class="cat-head border-t" style="border-color: var(--hairline); background-color: color-mix(in srgb, {cat.color} 5%, transparent);" use:contextActions={() => headActions(g.id)}>
+		<td colspan={colCount - (hasBalance ? 4 : 3)} class="relative px-4 py-1">
+			<button
+				type="button"
+				class="flex w-full cursor-pointer items-center gap-2 text-left"
+				data-cat-head={g.id}
+				aria-expanded={!head.folded}
+				title={head.folded ? 'Déplier la catégorie' : 'Replier la catégorie'}
+				onclick={() => void toggleFold(g.id)}
+			>
+				<span class="meta-xs w-2.5 shrink-0" aria-hidden="true">{head.folded ? '▸' : '▾'}</span>
+				<CategoryMark id={g.id} size={18} />
+				<span class="font-medium">{cat.label}</span>
+				{#if head.continued}<span class="meta-xs">(suite)</span>{/if}
+				<span class="meta-xs tabular">{plural(g.count, 'opération')}{#if share > 0}&nbsp;· {shareLabel(share)} des dépenses{/if}</span>
+			</button>
+			{#if share > 0}<span class="cat-share" style="width: {share * 100}%; background-color: {cat.color};" aria-hidden="true"></span>{/if}
+		</td>
+		<td class="tabular px-4 py-1 text-right font-medium whitespace-nowrap text-debit" title={g.net < 0 ? catNetTitle(g) : undefined}>{g.net < 0 ? `−${formatEUR(-g.net)}` : ''}</td>
+		<td class="tabular px-4 py-1 text-right font-medium whitespace-nowrap text-accent" title={g.net > 0 ? catNetTitle(g) : undefined}>{g.net > 0 ? formatEUR(g.net) : ''}</td>
+		{#if hasBalance}<td></td>{/if}
+		<td></td>
+	</tr>
+{/snippet}
+
+<!-- « Catégorie » sort, phone: header line of a category above its cards, like the day headers -->
+{#snippet categoryHeadLine(head: CategoryHead)}
+	{@const g = head.group}
+	{@const cat = getCategory(g.id)}
+	{@const share = spendingShare(g, totals.debit)}
+	<button
+		type="button"
+		class="meta-xs relative flex w-full cursor-pointer items-center gap-1.5 px-1 py-1 text-left"
+		data-cat-head={g.id}
+		aria-expanded={!head.folded}
+		onclick={() => void toggleFold(g.id)}
+		use:contextActions={() => headActions(g.id)}
+	>
+		<span class="w-2.5 shrink-0" aria-hidden="true">{head.folded ? '▸' : '▾'}</span>
+		<CategoryMark id={g.id} size={16} />
+		<span class="truncate font-medium" style="color: var(--text);">{cat.label}</span>
+		{#if head.continued}<span class="shrink-0">(suite)</span>{/if}
+		<span class="tabular shrink-0">{g.count}&nbsp;op.{#if share > 0}&nbsp;· {shareLabel(share)}{/if}</span>
+		{#if g.net !== 0}<span class="tabular ml-auto shrink-0" title={catNetTitle(g)}><span class="sr-only">net : </span>{signedCompact(g.net)}</span>{/if}
+		{#if share > 0}<span class="cat-share" style="width: {share * 100}%; background-color: {cat.color};" aria-hidden="true"></span>{/if}
+	</button>
+{/snippet}
+
+<!-- Detail of an operation, in reading order: what it is (raw label, source, dates), what the user files, its merchant's history, what it is linked to, the actions, then the technical facts on one line -->
+{#snippet detailHead(tx: Transaction, top: string, bottom: string, aside: string)}
+	<!-- A bank operation: its raw label, quiet, over its dates, with its source and account as one chip; a computed entry (cash, portage), whose row already has its badge: its note over its date and how it counts -->
+	{@const bank = !isComputedEntry(tx)}
+	{@const source = sourceChip(tx)}
+	<div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+		<div class="min-w-0 flex-[1_1_16rem]">
+			{#if top}<p class="break-words" style={bank ? 'color: var(--text-2);' : ''}>{top}</p>{/if}
+			<p class={top ? 'mt-0.5' : ''} style={bank ? '' : 'color: var(--text-2);'}>{bottom}{#if aside}<span style="color: var(--text-2);">{` · ${aside}`}</span>{/if}</p>
+		</div>
+		{#if bank}<span class="chip chip-outline mt-px max-w-full min-w-0 sm:max-w-[17rem]" title={source.title}><span class="truncate">{source.label}</span></span>{/if}
+	</div>
+{/snippet}
+
 {#snippet detailContent(tx: Transaction)}
 	{@const amount = signedAmount(tx)}
-	{@const linkedAsset = assetOfTx(txKey(tx))}
-	{@const expenseNote = noteOfTx(txKey(tx))}
-	{#if tx.source === 'portage'}
-		<p class="text-sm">{tx.remittance_information[0]}</p>
-		<p class="meta-xs mt-1">{tx.note} · écriture calculée depuis tes documents de portage : comptée dans le budget, jamais dans tes soldes.</p>
-		<button type="button" class="btn btn-secondary btn-sm mt-3" onclick={(e) => { e.stopPropagation(); navigate('/portage'); }}>Ouvrir l'onglet Portage</button>
-		<!-- Typed Swile / culture voucher spends can be shared with someone who pays back -->
-		{#if amount < 0 && tx.remittance_information[0]?.startsWith('Payé en ')}<RefundControl {tx} />{/if}
-	{:else}
-	{@const amazon = amazonMatchFor(tx)}
-	{@const suggestions = suggestTags(tagCounts, tagDraft, tx.tags ?? [], tagDraft.trim() ? 6 : 5)}
-	{@const detailSub = getSubcategory(subcategorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap()) ?? '')}
-	{@const detailSubs = subcategoriesFor(categorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap()))}
-	<dl class="grid grid-cols-1 gap-x-8 gap-y-2.5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-		<div>
-			<dt class="meta-xs">Libellé brut</dt>
-			<dd class="mt-0.5 break-words">{tx.remittance_information.join(' ')}</dd>
-		</div>
-		<!-- Extracted merchant (merchantKey v10): basis of the learned rules -->
-		<div>
-			<dt class="meta-xs">Commerçant</dt>
-			<dd class="mt-0.5">{merchantLabel(tx.remittance_information)}</dd>
-		</div>
-		<!-- Subcategory: computed (v11), editable (operation or merchant) -->
-		<div>
-			<dt class="meta-xs">Sous-catégorie</dt>
-			<dd class="mt-0.5">
-				{#if detailSubs.length > 0}
-					<div class="flex flex-wrap items-center gap-2">
-						<select class="input-surface cursor-pointer" value={detailSub?.id ?? ''} onchange={(e) => onSubChange(tx, e)} aria-label="Sous-catégorie">
-							<option value="">—</option>
-							{#each detailSubs as s (s.id)}
-								<option value={s.id}>{s.label}</option>
-							{/each}
+	{@const key = txKey(tx)}
+	{@const catId = catOfTx(tx)}
+	{@const refund = refundPlace(tx)}
+	{@const open = openHistory?.key === key ? openHistory : null}
+	{@const history = open?.history ?? null}
+	{@const fileLike = open?.fileable ? (id: CategoryId) => fileLikeOthers(tx, id) : undefined}
+	<div class="op-detail">
+		{#if tx.source === 'portage'}
+			{@const refundable = amount < 0 && !!tx.remittance_information[0]?.startsWith('Payé en ')}
+			{@render detailHead(tx, maskAmounts(tx.note ?? ''), entryDates(tx), 'écriture calculée depuis tes documents de portage : comptée dans le budget, jamais dans tes soldes')}
+			{#if refundable && refund === 'linked'}
+				<div class="op-grid">
+					<span class="op-label">Lié à</span>
+					<div class="op-cell refund-line"><RefundControl {tx} /></div>
+				</div>
+			{/if}
+			<div class="op-actions op-actions-flat">
+				<button type="button" class="btn btn-secondary btn-sm" onclick={(e) => { e.stopPropagation(); navigate('/portage'); }}>Ouvrir l'onglet Portage</button>
+				<!-- Typed Swile / culture voucher spends can be shared with someone who pays back -->
+				{#if refundable && refund === 'action'}
+					<span class="refund-slot" title="Sécu, mutuelle, une avance à quelqu'un, un retour en magasin"><RefundControl {tx} /></span>
+				{/if}
+			</div>
+		{:else if tx.source === 'cash'}
+			<!-- Cash wallet entry: typed in the quick entry, edited in the wallet, never a bank operation -->
+			{@const refundable = amount < 0 && tx.remittance_information[0] !== WRITE_OFF_LABEL}
+			{@render detailHead(tx, maskAmounts(tx.note ?? ''), entryDates(tx), 'compté dans le budget, jamais dans tes soldes')}
+			<div class="op-grid {history || (refundable && refund === 'linked') ? '' : 'op-phone'}">
+				<!-- The phone card has no category select of its own -->
+				<span class="op-label op-phone">Catégorie</span>
+				<div class="op-cell op-phone">
+					{#if cashCategoryEditable(tx)}
+						<select class="op-field input-surface cursor-pointer" value={catId} onchange={(e) => onCashCategoryChange(tx, e)} aria-label="Catégorie">
+							{#each CATEGORIES as cat (cat.id)}<option value={cat.id}>{cat.label}</option>{/each}
 						</select>
-						<label class="meta-xs flex cursor-pointer items-center gap-1">
-							<input type="checkbox" bind:checked={subForMerchant} />
-							pour tout « {merchantLabel(tx.remittance_information)} »
-						</label>
-					</div>
-					{#if detailSub && tx.bank_subcategory && tx.bank_subcategory !== detailSub.label}
-						<span class="meta-xs">(banque : {tx.bank_subcategory})</span>
+					{:else}
+						<span title="Reste du porte-monnaie jamais détaillé : en Autre, en Vacances pendant une période de vacances">{getCategory(catId).label}</span>
 					{/if}
-				{:else}
-					—
+				</div>
+				{#if history}
+					<span class="op-label">Historique</span>
+					<div class="op-cell"><MerchantHistory {history} color={getCategory(catId).color} onShowAll={() => filterMerchant(tx)} /></div>
 				{/if}
-			</dd>
-		</div>
-		{#if vacationState.periods.length > 0}
-			<!-- Attachment to a specific holiday period (whatever the date) -->
-			<div>
-				<dt class="meta-xs">Vacances</dt>
-				<dd class="mt-0.5">
-					<select class="input-surface cursor-pointer" value={categorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap()) === 'vacances' ? (vacationOf(tx)?.id ?? '') : ''} onchange={(e) => onAssignVacation(tx, (e.target as HTMLSelectElement).value || null)} aria-label="Période de vacances">
-						<option value="">—</option>
-						{#each vacationState.periods as p (p.id)}
-							<option value={p.id}>{p.label} ({formatDate(p.start)} → {formatDate(p.end)})</option>
-						{/each}
-					</select>
-					{#if assignedVacation(tx)}
-						<span class="meta-xs ml-1">rattachée à la main</span>
-					{:else if isDetached(tx)}
-						<span class="meta-xs ml-1">détachée à la main</span>
-					{/if}
-				</dd>
-			</div>
-		{/if}
-		<div>
-			<dt class="meta-xs">Date comptable</dt>
-			<dd class="tabular mt-0.5">{tx.booking_date ? formatDate(tx.booking_date) : 'En cours'}</dd>
-		</div>
-		{#if purchaseDate(tx) && purchaseDate(tx) !== tx.booking_date}
-			<div>
-				<dt class="meta-xs">Date d'achat</dt>
-				<dd class="tabular mt-0.5" title="Lue dans le libellé carte">{formatDate(purchaseDate(tx))}</dd>
-			</div>
-		{/if}
-		<div>
-			<dt class="meta-xs">Date de valeur</dt>
-			<dd class="tabular mt-0.5">{tx.value_date ? formatDate(tx.value_date) : 'En cours'}</dd>
-		</div>
-		{#if tx.analysis_date}
-			<div>
-				<dt class="meta-xs">Date d'analyse</dt>
-				<dd class="tabular mt-0.5">{formatDate(tx.analysis_date)}</dd>
-			</div>
-		{/if}
-		<div>
-			<dt class="meta-xs">Montant</dt>
-			<dd class="tabular mt-0.5 {amount >= 0 ? 'text-accent' : 'text-debit'}">
-				{amount >= 0 ? '+' : '−'}{formatEUR(Math.abs(amount))}
-				<span class="meta-xs">({tx.credit_debit_indicator === 'CRDT' ? 'crédit' : 'débit'} · {tx.transaction_amount.currency})</span>
-			</dd>
-		</div>
-		<div>
-			<dt class="meta-xs">Source</dt>
-			<dd class="mt-0.5">
-				{TX_SOURCE_LABELS[tx.source ?? 'demo']}
-				{#if tx.account}
-					<span class="meta-xs">· {accountLabel(tx.account)}</span>
+				{#if refundable && refund === 'linked'}
+					<span class="op-label">Lié à</span>
+					<div class="op-cell refund-line"><RefundControl {tx} /></div>
 				{/if}
-			</dd>
-		</div>
-		{#if tx.bank_category}
-			<div>
-				<dt class="meta-xs">Catégorie banque</dt>
-				<dd class="mt-0.5">{tx.bank_category}{#if tx.bank_subcategory} · {tx.bank_subcategory}{/if}</dd>
 			</div>
-		{/if}
-		{#if amazon}
-			<!-- Items of the matched Amazon order: one per row, with its price -->
-			<div class="sm:col-span-2">
-				<dt class="meta-xs">
-					Articles Amazon · commande {amazon.orderId}{#if amazon.orderDate} du {formatDate(amazon.orderDate)}{/if}{#if amazon.kind === 'partial'} · expédition partielle{/if}
-				</dt>
-				<dd class="mt-1">
+			<div class="op-actions op-actions-flat">
+				<!-- A cash spend can be shared with someone who pays back -->
+				{#if refundable && refund === 'action'}
+					<span class="refund-slot" title="Sécu, mutuelle, une avance à quelqu'un, un retour en magasin"><RefundControl {tx} /></span>
+				{/if}
+				<button type="button" class="op-danger" title="Retirer cette entrée du porte-monnaie (annulable)" onclick={(e) => { e.stopPropagation(); onDeleteCash(tx); }}>Supprimer</button>
+			</div>
+		{:else}
+			{@const amazon = amazonMatchFor(tx)}
+			{@const suggestions = suggestTags(tagCounts, tagDraft, tx.tags ?? [], tagDraft.trim() ? 6 : 5)}
+			{@const detailSub = getSubcategory(subcategorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap()) ?? '')}
+			{@const detailSubs = subcategoriesFor(catId)}
+			{@const merchant = merchantLabel(tx.remittance_information)}
+			{@const bankCategory = tx.bank_category ? `${tx.bank_category}${tx.bank_subcategory ? ` › ${tx.bank_subcategory}` : ''}` : ''}
+			{@const bankHint = tx.bank_subcategory || tx.bank_category || ''}
+			{@const withdrawal = isWalletWithdrawal(key)}
+			{@const excluded = !withdrawal && isExcluded(key)}
+			{@const linkedAsset = assetOfTx(key)}
+			{@const expenseNote = noteOfTx(key)}
+			{@const foreign = foreignAmount(tx)}
+			{@render detailHead(
+				tx,
+				rawLabel(tx),
+				foreign ? `${entryDates(tx)} · ${foreign}` : entryDates(tx),
+				withdrawal ? 'retrait vers le porte-monnaie : hors budget, compté dans les soldes' : excluded ? `${isInternal(key) ? 'virement interne : ' : ''}hors entrées/sorties et budget, compté dans les soldes` : ''
+			)}
+			{#if amazon}
+				<!-- Items of the matched Amazon order: one per row, with its price -->
+				<div class="mt-2 max-w-xl">
+					<p class="meta-xs">Amazon · commande {amazon.orderId}{#if amazon.orderDate} du {formatDate(amazon.orderDate)}{/if}{#if amazon.kind === 'partial'} · expédition partielle{/if}</p>
 					<ul class="divide-y divide-[var(--border-subtle)]">
 						{#each amazon.items as item, i (i)}
-							<li class="flex items-baseline gap-3 py-1">
+							<li class="flex items-baseline gap-3 py-0.5">
 								<span class="min-w-0 flex-1 break-words">{item.name}{#if item.quantity > 1} <span class="meta-xs">× {item.quantity}</span>{/if}</span>
 								<span class="tabular shrink-0">{formatEUR(item.amount)}</span>
 							</li>
 						{/each}
 					</ul>
-				</dd>
+				</div>
+			{/if}
+			<div class="op-grid">
+				<!-- The phone card has no category select of its own -->
+				<span class="op-label op-phone">Catégorie</span>
+				<div class="op-cell op-phone">
+					<select class="op-field input-surface cursor-pointer" value={catId} onchange={(e) => onCategoryChange(tx, e)} aria-label="Catégorie">
+						{#each CATEGORIES as cat (cat.id)}<option value={cat.id}>{cat.label}</option>{/each}
+					</select>
+				</div>
+				<!-- Subcategory: computed (v11), editable for the operation or its whole merchant; the bank's own category as a hint -->
+				{#if detailSubs.length > 0}
+					<span class="op-label">Sous-catégorie</span>
+					<div class="op-cell">
+						<select class="op-field input-surface cursor-pointer" value={detailSub?.id ?? ''} onchange={(e) => onSubChange(tx, e)} aria-label="Sous-catégorie">
+							<option value="">—</option>
+							{#each detailSubs as s (s.id)}<option value={s.id}>{s.label}</option>{/each}
+						</select>
+						{#if merchant}
+							<label class="meta-xs flex cursor-pointer items-center gap-1">
+								<input type="checkbox" bind:checked={subForMerchant} />
+								pour tout « {merchant} »
+							</label>
+						{/if}
+						{#if bankHint}<span class="meta-xs" title="Catégorie donnée par la banque : {bankCategory}">banque : {bankHint}</span>{/if}
+					</div>
+				{/if}
+				{#if vacationState.periods.length > 0}
+					<!-- Attachment to a specific holiday period (whatever the date) -->
+					<span class="op-label">Vacances</span>
+					<div class="op-cell">
+						<select class="op-field input-surface cursor-pointer {catId === 'vacances' && vacationOf(tx) ? 'op-field-fit' : ''}" value={catId === 'vacances' ? (vacationOf(tx)?.id ?? '') : ''} onchange={(e) => onAssignVacation(tx, (e.target as HTMLSelectElement).value || null)} aria-label="Période de vacances">
+							<option value="">—</option>
+							{#each vacationState.periods as p (p.id)}
+								<option value={p.id}>{p.label} ({formatDate(p.start)} → {formatDate(p.end)})</option>
+							{/each}
+						</select>
+						{#if assignedVacation(tx)}
+							<span class="meta-xs">rattachée à la main</span>
+						{:else if isDetached(tx)}
+							<span class="meta-xs">détachée à la main</span>
+						{/if}
+					</div>
+				{/if}
+				<!-- Tags: group operations from different categories (works, wedding…) -->
+				<span class="op-label">Tags</span>
+				<div class="op-cell">
+					{#each tx.tags ?? [] as tag (tag)}
+						<span class="chip chip-accent">
+							<button type="button" class="cursor-pointer hover:underline" title="Toutes les opérations « {tag} »" onclick={(e) => { e.stopPropagation(); filterByTag(tag); }}>{tag}</button>
+							<button
+								type="button"
+								class="cursor-pointer opacity-70 hover:opacity-100"
+								aria-label="Retirer le tag {tag}"
+								title="Retirer"
+								onclick={(e) => {
+									e.stopPropagation();
+									removeTagFrom(tx, tag);
+								}}
+							>
+								<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+							</button>
+						</span>
+					{/each}
+					{#if !tx.source || tx.source === 'demo'}
+						<span class="meta-xs">Opération de démonstration : tags non modifiables</span>
+					{:else}
+						<input
+							type="text"
+							class="op-field input-surface"
+							placeholder={(tx.tags?.length ?? 0) > 0 ? 'Autre tag (Entrée)' : 'ex. travaux cuisine (Entrée)'}
+							aria-label="Ajouter un tag"
+							maxlength="60"
+							bind:value={tagDraft}
+							onclick={(e) => e.stopPropagation()}
+							onkeydown={(e) => onTagKeydown(tx, e, suggestions[0])}
+						/>
+						{#each suggestions as sug (sug)}
+							<button
+								type="button"
+								class="chip chip-outline cursor-pointer hover:text-[var(--text)]"
+								title="Ajouter le tag « {sug} »"
+								onclick={(e) => {
+									e.stopPropagation();
+									addTagsTo(tx, [sug]);
+								}}>+ {sug}</button
+							>
+						{/each}
+					{/if}
+				</div>
+				<!-- Note: N from the list focuses it, Enter saves -->
+				<label class="contents">
+					<span class="op-label">Note <kbd class="kbd ml-0.5 max-md:hidden">N</kbd></span>
+					<span class="op-cell">
+						<input
+							type="text"
+							class="input-surface w-full max-w-md"
+							data-note-input
+							placeholder="ex. cadeau neveu, remboursé par Morgan…"
+							value={expandedKey === key && document.activeElement?.hasAttribute('data-note-input') ? noteDraft : (tx.note ?? '')}
+							onfocus={() => (noteDraft = tx.note ?? '')}
+							oninput={(e) => (noteDraft = (e.target as HTMLInputElement).value)}
+							onblur={() => saveNote(tx)}
+							onkeydown={(e) => {
+								if (e.key === 'Enter') {
+									saveNote(tx);
+									(e.target as HTMLInputElement).blur();
+								}
+								e.stopPropagation();
+							}}
+						/>
+					</span>
+				</label>
+				<!-- Merchant history: its last amounts, a price change, where its other operations are filed -->
+				{#if history}
+					<span class="op-label">Historique</span>
+					<div class="op-cell"><MerchantHistory {history} color={getCategory(catId).color} onShowAll={() => filterMerchant(tx)} onFile={fileLike} /></div>
+				{/if}
+				{#if expenseNote || linkedAsset || refund === 'linked'}
+					<span class="op-label">Lié à</span>
+					<div class="op-cell">
+						{#if expenseNote}
+							<button type="button" class="op-link" title="Avancée pour le portage : neutralisée dans le budget, le remboursement arrive avec le salaire du mois suivant" onclick={(e) => { e.stopPropagation(); navigate('/portage'); }}>Portage · note de frais n° {expenseNote.note.numero}{expenseNote.ligne.commentaire ? ` (${expenseNote.ligne.commentaire})` : ''}</button>
+						{/if}
+						{#if expenseNote && linkedAsset}<span aria-hidden="true" style="color: var(--text-2);">·</span>{/if}
+						{#if linkedAsset}
+							<span class="inline-flex items-baseline gap-1.5">
+								<button type="button" class="op-link" title="Suivi dans {linkedAsset.type === 'vehicule' ? 'Voiture' : 'Patrimoine › Biens'}" onclick={(e) => { e.stopPropagation(); navigate(linkedAsset.type === 'vehicule' ? '/voiture' : '/patrimoine'); }}>Bien « {linkedAsset.name} »</button>
+								<button
+									type="button"
+									class="op-link meta-xs"
+									onclick={(e) => {
+										e.stopPropagation();
+										detachTx(key);
+										showToast('Opération détachée du bien');
+									}}>détacher</button
+								>
+							</span>
+						{/if}
+						{#if refund === 'linked'}
+							<div class="refund-line basis-full"><RefundControl {tx} /></div>
+						{/if}
+					</div>
+				{/if}
 			</div>
-		{:else if tx.note}
-			<div>
-				<dt class="meta-xs">Note personnelle</dt>
-				<dd class="mt-0.5 break-words">{tx.note}</dd>
-			</div>
-		{/if}
-		<div>
-			<dt class="meta-xs">Opération pointée</dt>
-			<dd class="mt-0.5">{tx.checked ? 'Oui' : 'Non'}</dd>
-		</div>
-		{#if tx.balance_after !== undefined}
-			<div>
-				<dt class="meta-xs">Solde après opération</dt>
-				<dd class="tabular mt-0.5">{formatEUR(tx.balance_after)}</dd>
-			</div>
-		{/if}
-		<div>
-			<dt class="meta-xs">Clé technique</dt>
-			<dd class="tabular mt-0.5 text-secondary">{txKey(tx)}</dd>
-		</div>
-	</dl>
-	<!-- Panel actions: budget exclusion (v13 §C.3) + deletion -->
-	<label class="mt-3 block">
-		<span class="meta-xs">Note <kbd class="kbd">N</kbd></span>
-		<input
-			bind:this={noteInput}
-			type="text"
-			class="input-surface mt-1 w-full"
-			placeholder="ex. cadeau neveu, remboursé par Morgan…"
-			value={expandedKey === txKey(tx) && noteInput === document.activeElement ? noteDraft : (tx.note ?? '')}
-			onfocus={() => (noteDraft = tx.note ?? '')}
-			oninput={(e) => (noteDraft = (e.target as HTMLInputElement).value)}
-			onblur={() => saveNote(tx)}
-			onkeydown={(e) => {
-				if (e.key === 'Enter') {
-					saveNote(tx);
-					(e.target as HTMLInputElement).blur();
-				}
-				e.stopPropagation();
-			}}
-		/>
-	</label>
-	<!-- Tags: group operations from different categories (works, wedding…) -->
-	<div class="mt-3">
-		<span class="meta-xs">Tags</span>
-		<div class="mt-1 flex flex-wrap items-center gap-1.5">
-			{#each tx.tags ?? [] as tag (tag)}
-				<span class="chip chip-accent">
-					<button type="button" class="cursor-pointer hover:underline" title="Toutes les opérations « {tag} »" onclick={(e) => { e.stopPropagation(); filterByTag(tag); }}>{tag}</button>
+			<!-- Actions: budget exclusion (v13 §C.3), refund, possession, then deletion apart -->
+			<div class="op-actions">
+				{#if !withdrawal}
 					<button
 						type="button"
-						class="cursor-pointer opacity-70 hover:opacity-100"
-						aria-label="Retirer le tag {tag}"
-						title="Retirer"
+						class="btn btn-secondary btn-sm"
+						title={excluded
+							? 'Réintégrer cette opération dans les totaux du budget (M)'
+							: 'Opération exceptionnelle (solde de tout compte, virement entre vos comptes, gros achat ponctuel…) : la retirer des entrées/sorties et du budget. Elle reste comptée dans les soldes. (M)'}
 						onclick={(e) => {
 							e.stopPropagation();
-							removeTagFrom(tx, tag);
+							toggleInternal(tx);
 						}}
 					>
-						<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+						{excluded ? 'Réintégrer au budget' : 'Masquer du budget'}
 					</button>
-				</span>
-			{/each}
-			{#if !tx.source || tx.source === 'demo'}
-				<span class="meta-xs">Opération de démonstration : tags non modifiables</span>
-			{:else}
-			<input
-				type="text"
-				class="input-surface w-48"
-				placeholder={(tx.tags?.length ?? 0) > 0 ? 'Autre tag (Entrée)' : 'ex. travaux cuisine (Entrée)'}
-				aria-label="Ajouter un tag"
-				maxlength="60"
-				bind:value={tagDraft}
-				onclick={(e) => e.stopPropagation()}
-				onkeydown={(e) => onTagKeydown(tx, e, suggestions[0])}
-			/>
-			{#each suggestions as sug (sug)}
+				{/if}
+				{#if refund === 'action'}
+					<span class="refund-slot" title="Sécu, mutuelle, une avance à quelqu'un, un retour en magasin"><RefundControl {tx} /></span>
+				{/if}
+				{#if !linkedAsset}
+					{#if attachOpenKey === key}
+						<select class="input-surface cursor-pointer" bind:value={assetChoice} aria-label="Bien à rattacher" onclick={(e) => e.stopPropagation()}>
+							{#each assetsState.biens as b (b.id)}
+								<option value={b.id}>{b.name}</option>
+							{/each}
+							<option value="__nouveau">+ Nouveau bien (depuis cette opération)</option>
+						</select>
+						<button
+							type="button"
+							class="btn btn-primary btn-sm"
+							onclick={(e) => {
+								e.stopPropagation();
+								attachToAsset(tx);
+							}}>Rattacher</button
+						>
+						<button
+							type="button"
+							class="btn btn-secondary btn-sm"
+							onclick={(e) => {
+								e.stopPropagation();
+								attachOpenKey = null;
+							}}>Annuler</button
+						>
+					{:else}
+						<button
+							type="button"
+							class="btn btn-secondary btn-sm"
+							title="Instrument, hi-fi… : suivi dans Patrimoine › Biens, à part du patrimoine financier"
+							onclick={(e) => {
+								e.stopPropagation();
+								openAttach(tx);
+							}}>Rattacher à un bien</button
+						>
+					{/if}
+				{/if}
 				<button
 					type="button"
-					class="chip chip-outline cursor-pointer hover:text-[var(--text)]"
-					title="Ajouter le tag « {sug} »"
+					class="op-danger"
+					title="Supprimer cette opération (annulable)"
 					onclick={(e) => {
 						e.stopPropagation();
-						addTagsTo(tx, [sug]);
-					}}>+ {sug}</button
+						onDeleteTx(tx);
+					}}>Supprimer</button
 				>
-			{/each}
-			{/if}
-		</div>
+			</div>
+			<!-- Technical facts: cleared flag, value and analysis dates when they differ, balance, bank category when not shown above, key -->
+			<p class="op-tech">
+				Pointée : {tx.checked ? 'oui' : 'non'}{#if tx.value_date && tx.value_date !== tx.booking_date}&nbsp;· valeur {formatDateShort(tx.value_date)}{/if}{#if tx.analysis_date && tx.analysis_date !== tx.booking_date}&nbsp;· analyse {formatDateShort(tx.analysis_date)}{/if}{#if tx.balance_after !== undefined}&nbsp;· solde après <span class="tabular">{sensitiveEUR(tx.balance_after)}</span>{/if}{#if bankCategory && detailSubs.length === 0}&nbsp;· catégorie banque : {bankCategory}{/if}&nbsp;· clé <span class="tabular select-all">{key}</span>
+			</p>
+		{/if}
 	</div>
-	<div class="mt-4 flex flex-wrap items-center gap-2 border-t pt-3" style="border-color: var(--border-subtle);">
-		<button
-			type="button"
-			class="btn btn-secondary btn-sm"
-			title={isExcluded(txKey(tx))
-				? 'Réintégrer cette opération dans les totaux du budget'
-				: 'Opération exceptionnelle (solde de tout compte, virement entre vos comptes, gros achat ponctuel…) : la retirer des entrées/sorties et du budget. Elle reste comptée dans les soldes.'}
-			onclick={(e) => {
-				e.stopPropagation();
-				toggleInternal(tx);
-			}}
-		>
-			{isExcluded(txKey(tx)) ? 'Réintégrer au budget' : 'Masquer du budget'}
-		</button>
-		{#if isExcluded(txKey(tx))}
-			<span class="meta-xs" style="color: var(--text-2);">{isInternal(txKey(tx)) ? 'Virement interne' : 'Hors budget'} — hors entrées/sorties et budget, compté dans les soldes</span>
-		{/if}
-		{#if expenseNote}
-			<span class="meta-xs" style="color: var(--text-2);" title="Neutralisée dans le budget : le remboursement arrive avec le salaire du mois suivant">Avancée pour le portage · note de frais n° {expenseNote.note.numero}{expenseNote.ligne.commentaire ? ` (${expenseNote.ligne.commentaire})` : ''}</span>
-		{/if}
-		{#if linkedAsset}
-			<span class="meta-xs" style="color: var(--text-2);">Rattachée au bien « {linkedAsset.name} »</span>
-			<button
-				type="button"
-				class="btn btn-secondary btn-sm"
-				onclick={(e) => {
-					e.stopPropagation();
-					detachTx(txKey(tx));
-					showToast('Opération détachée du bien');
-				}}>Détacher</button
-			>
-		{:else if attachOpenKey === txKey(tx)}
-			<select class="input-surface cursor-pointer" bind:value={assetChoice} aria-label="Bien à rattacher" onclick={(e) => e.stopPropagation()}>
-				{#each assetsState.biens as b (b.id)}
-					<option value={b.id}>{b.name}</option>
-				{/each}
-				<option value="__nouveau">+ Nouveau bien (depuis cette opération)</option>
-			</select>
-			<button
-				type="button"
-				class="btn btn-primary btn-sm"
-				onclick={(e) => {
-					e.stopPropagation();
-					attachToAsset(tx);
-				}}>Rattacher</button
-			>
-			<button
-				type="button"
-				class="btn btn-secondary btn-sm"
-				onclick={(e) => {
-					e.stopPropagation();
-					attachOpenKey = null;
-				}}>Annuler</button
-			>
-		{:else}
-			<button
-				type="button"
-				class="btn btn-secondary btn-sm"
-				title="Instrument, hi-fi… : suivi dans Patrimoine › Biens, à part du patrimoine financier"
-				onclick={(e) => {
-					e.stopPropagation();
-					openAttach(tx);
-				}}>Rattacher à un bien</button
-			>
-		{/if}
-		<button
-			type="button"
-			class="btn btn-secondary"
-			style="color: var(--amber);"
-			onclick={(e) => {
-				e.stopPropagation();
-				onDeleteTx(tx);
-			}}
-		>
-			Supprimer cette opération
-		</button>
-	</div>
-	<RefundControl {tx} />
-{/if}
 {/snippet}
 
 <!-- Column remapping modal (exotic CSV / XLSX) -->
@@ -3129,6 +3800,145 @@
 	.card-selected {
 		border-color: var(--accent);
 		background-color: color-mix(in srgb, var(--accent-soft) 60%, var(--surface));
+	}
+
+	/* « Catégorie » sort: the category's share of the filtered spending, a hairline along the bottom of its header */
+	.cat-share {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		height: 2px;
+		border-radius: 0 9999px 9999px 0;
+		opacity: 0.6;
+		pointer-events: none;
+	}
+	/* Category mode period stepper: an arrow with no month left to reach gets no hover background */
+	.period-step > button:disabled:hover {
+		background-color: transparent !important;
+	}
+	/* Compact rows: the category headers shrink with the rows they head */
+	@media (min-width: 768px) {
+		:global(html[data-compact-rows]) .cat-head > td {
+			padding-top: 1px;
+			padding-bottom: 1px;
+		}
+	}
+
+	/* ---- Operation detail (detailContent): 12 px, labels in a narrow column on the left, one row each ---- */
+	/* 42 rem: the table scrolls sideways under ~1280 px, the detail stays inside what the row shows */
+	.op-detail {
+		width: min(100%, 42rem);
+		font-size: 12px;
+		line-height: 1.45;
+	}
+	.op-grid {
+		display: grid;
+		grid-template-columns: max-content minmax(0, 1fr);
+		column-gap: 14px;
+		row-gap: 4px;
+		margin-top: 10px;
+	}
+	.op-label {
+		font-size: 11px;
+		line-height: 26px;
+		color: var(--text-2);
+		white-space: nowrap;
+	}
+	.op-cell {
+		display: flex;
+		min-width: 0;
+		min-height: 26px;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 8px;
+	}
+	/* Rows only the phone card needs (it has no category select): the table row has one */
+	@media (min-width: 768px) {
+		.op-detail .op-phone {
+			display: none;
+		}
+	}
+	@media (max-width: 639px) {
+		.op-grid {
+			column-gap: 10px;
+		}
+	}
+	/* Selects and the tag field share one width, so the column reads as a form; the holidays select grows to show the period it holds */
+	.op-field {
+		width: 13rem;
+		max-width: 100%;
+	}
+	.op-field-fit {
+		width: auto;
+		min-width: 13rem;
+	}
+	.op-link {
+		cursor: pointer;
+		color: var(--text);
+		text-decoration: underline dotted;
+		text-decoration-color: var(--hairline);
+		text-underline-offset: 3px;
+	}
+	.op-link:hover {
+		text-decoration-color: currentColor;
+	}
+	.op-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		margin-top: 10px;
+		padding-top: 10px;
+		border-top: 1px solid var(--border-subtle);
+	}
+	/* A cash or portage entry: two lines of text above, no form to close off */
+	.op-actions-flat {
+		margin-top: 8px;
+		padding-top: 0;
+		border-top: 0;
+	}
+	/* Deletion: a text button apart at the far right, in the UI font (a bare .btn-secondary is the serif pill) */
+	.op-danger {
+		margin-left: auto;
+		border-radius: 6px;
+		padding: 2px 4px;
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--accent-2);
+		cursor: pointer;
+	}
+	.op-danger:hover {
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+	.op-tech {
+		margin-top: 6px;
+		font-size: 11px;
+		color: var(--text-2);
+		overflow-wrap: anywhere;
+	}
+	/* Refund section (RefundControl) in the detail. Among the actions, its « À rembourser… » button is one
+	   more small button: its box goes, its hint moves to the tooltip, its form takes a line of its own. On
+	   the « Lié à » line, the claim drops its own rule and spacing. */
+	.refund-slot,
+	.refund-slot > :global(div) {
+		display: contents;
+	}
+	.refund-slot > :global(div > span) {
+		display: none;
+	}
+	.refund-slot > :global(div > div) {
+		order: 1;
+		flex-basis: 100%;
+	}
+	.refund-line {
+		padding-top: 3px;
+	}
+	.refund-line > :global(div) {
+		margin: 0;
+		border: 0;
+		padding: 0;
+		font-size: 12px;
 	}
 
 	/* Selection actions: stuck to the top while scrolling (the 'Annuler' toast is at the bottom) */

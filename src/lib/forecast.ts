@@ -1,5 +1,5 @@
 import type { CategoryId, Transaction } from './types';
-import { isPending, signedAmount } from './data';
+import { isComputedEntry, isPending, signedAmount } from './data';
 import { categorize, type MerchantCategoryMap } from './categories';
 import { subcategorize } from './subcategories';
 import { cleanLabel, monthKeyOf, normalizeLabelKey } from './format';
@@ -228,6 +228,8 @@ function classifyCadence(interval: number): Cadence | null {
  * the past, it moves forward by steps of the median interval until
  * nextDate ≥ reference — past occurrences no longer count (v8 fix: no more
  * double counting in the 30/60/90 d totals nor due dates shown in the past).
+ * Computed entries are left out (portage documents, cash wallet): paid by hand or computed, never a
+ * direct debit or a subscription.
  * Sorted by nearest due date first.
  */
 export function detectRecurring(
@@ -238,7 +240,7 @@ export function detectRecurring(
 ): RecurringItem[] {
 	const groups = new Map<string, Transaction[]>();
 	for (const tx of txs) {
-		if (isPending(tx)) continue;
+		if (isPending(tx) || isComputedEntry(tx)) continue;
 		const key = normalizeLabel(tx);
 		if (!key) continue;
 		const list = groups.get(key);

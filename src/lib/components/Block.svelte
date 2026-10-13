@@ -4,6 +4,7 @@
 	import { isFullscreen, layoutState, registerBlock, setFullscreen, setNaturalHeight, unregisterBlock } from '$lib/layout.svelte';
 	import { TILE_CONTEXT, type TileContext } from './TileCanvas.svelte';
 	import { tileOuterHeight } from '$lib/tileMeasure';
+	import { isMenuKey } from '$lib/contextMenuModel';
 
 	/**
 	 * Page block shown as a tile of its page canvas (TileCanvas): card, or bare container whose
@@ -19,7 +20,8 @@
 	 *   `show(id)`. The snippet also gets the width bucket of the tile (inner grids) and, once the
 	 *   page has user-defined tiles, the content box in px (charts can fill their tile; null otherwise).
 	 * - Gestures, menu and keyboard belong to the canvas; the block forwards its pointer, menu and key
-	 *   events, measures its natural content height and follows its tile rectangle.
+	 *   events, measures its natural content height and follows its tile rectangle. Entries a content
+	 *   offers with `use:contextActions` show first in the block menu.
 	 * - Fullscreen shows even for a stored block (palette commands open blocks by id).
 	 * - Outside a TileCanvas the block is a plain card.
 	 */
@@ -134,8 +136,9 @@
 		if (ctx && host) ctx.contextMenu(e, id, host);
 	}
 
+	/** Keys of the focused tile; the Menu key (or Shift + F10) also from any focused element inside it. */
 	function onKeyDown(e: KeyboardEvent) {
-		if (ctx && host && e.target === host) ctx.keyDown(e, id, host);
+		if (ctx && host && !e.defaultPrevented && (e.target === host || isMenuKey(e))) ctx.keyDown(e, id, host);
 	}
 
 	/** Elements whose double-click belongs to them (fields, buttons, interactive charts), never to the block. */

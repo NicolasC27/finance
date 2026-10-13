@@ -8,7 +8,7 @@ import { accountLabel } from './accounts.svelte';
 import { budgetState, setBudget } from './budget.svelte';
 import { addRule, restoreRule, rulesState } from './rules.svelte';
 import { getMerchantCategoryMap, getTransactions, updateImported, updateImportedMany } from './store.svelte';
-import { excludeKeys, includeKeys, isExcluded } from './transfers.svelte';
+import { excludeKeys, includeKeys, isHidden } from './transfers.svelte';
 import { addGoal, goalsState, removeGoal } from './goals.svelte';
 import { vacationState } from './vacations.svelte';
 import { getTaxNotices } from './taxes.svelte';
@@ -19,6 +19,7 @@ import { addAsset, assetsState, getAssetTotals, logKm, removeAsset, removeKm } f
 import { vehicleSheet } from './car.svelte';
 import { automateVehicle } from './carAuto.svelte';
 import { getPendingMoney, getPortageEntries, getMatches, portageState } from './portage.svelte';
+import { cashBalance, getCashEntries, isWalletWithdrawal, walletState, walletWithdrawalKeys } from './wallet.svelte';
 import { persistJson } from './storage';
 import { effectiveDate } from './vacationDate';
 import { isHeic, HEIC_MESSAGE, receiptQuestion, receiptRefusal } from './aiReceipt';
@@ -174,8 +175,10 @@ export async function checkRelay(): Promise<void> {
  * rules, wealth. It includes the purchase date (DDMM of the card label, debited
  * 1 to 5 days later) to match receipts; owned items, tracked APART since
  * netWorth doesn't count them; each vehicle's sheet (same computation as the
- * Voiture page, photo removed: useless for analysis and heavy); and portage
- * data (documents read, matched expense reports, entries added to the budget).
+ * Voiture page, photo removed: useless for analysis and heavy); portage
+ * data (documents read, matched expense reports, entries added to the budget);
+ * and the cash wallet (start, balance, cash spends counted in the budget in
+ * place of the withdrawals it holds).
  */
 export function buildSnapshot(): Record<string, unknown> {
 	const merchantMap = getMerchantCategoryMap();
@@ -195,7 +198,8 @@ export function buildSnapshot(): Record<string, unknown> {
 			category,
 			subcategory: subcategorize(tx, overrides, rules, merchantMap) ?? '',
 			flow: flowKind(category),
-			excluded: isExcluded(key),
+			excluded: isHidden(key),
+			wallet: isWalletWithdrawal(key),
 			note: tx.note ?? '',
 			tags: tx.tags ?? []
 		};
@@ -263,7 +267,15 @@ export function buildSnapshot(): Record<string, unknown> {
 			})),
 			argentEnAttente: getPendingMoney(),
 			ecrituresBudget: getPortageEntries().map((t) => ({ date: t.booking_date, amount: round2(signedAmount(t)), label: t.remittance_information[0] ?? '', category: t.virtual_category, note: t.note ?? '' }))
-		}))
+		})),
+		liquide: walletState.wallet.start
+			? {
+					debut: walletState.wallet.start,
+					solde: cashBalance(),
+					regle: 'Les retraits à partir de « debut » vont dans le porte-monnaie (wallet: true, hors budget) ; ces dépenses en liquide les remplacent dans le budget.',
+					ecrituresBudget: getCashEntries().map((t) => ({ date: t.booking_date, amount: round2(signedAmount(t)), label: t.remittance_information[0] ?? '', category: categorize(t, overrides, rules, merchantMap), subcategory: subcategorize(t, overrides, rules, merchantMap) ?? '', note: t.note ?? '' }))
+				}
+			: null
 	};
 }
 
@@ -351,7 +363,8 @@ export async function ask(prompt: string, mode: 'chat' | 'report'): Promise<void
 						const ctx = {
 							categoryIds: new Set(CATEGORIES.map((c) => c.id as string)),
 							txKeys: new Set(getTransactions().map(txKey)),
-							vehicleIds: new Set(assetsState.biens.filter((b) => b.type === 'vehicule').map((b) => b.id))
+							vehicleIds: new Set(assetsState.biens.filter((b) => b.type === 'vehicule').map((b) => b.id)),
+							walletKeys: walletWithdrawalKeys()
 						};
 						const parsed = parseActions(ev.actions, ctx);
 						patch.actions = parsed.actions.map((action) => ({ id: uid(), action, state: 'pending' as const }));
@@ -430,7 +443,7 @@ const effects: ActionEffects = {
 	},
 	addRule,
 	restoreRule,
-	isExcluded,
+	isExcluded: isHidden,
 	excludeKeys,
 	includeKeys,
 	note: (key) => getTransactions().find((t) => txKey(t) === key)?.note ?? '',

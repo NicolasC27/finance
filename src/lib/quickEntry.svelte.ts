@@ -9,7 +9,8 @@ import { getMerchantCategoryMap, getTransactions, addQuickEntries, removeQuickEn
 import { accountState } from './accounts.svelte';
 import { draftToTransaction, everydayCategory, instalmentPlan, instalmentText, instalmentTransactions, isStale, learnQuick, splitVoucherPayment, suggestFromMemory, type QuickDraft, type QuickMemory, type QuickPayment } from './quickEntry';
 import { todayIso } from './forecast';
-import { formatEUR } from './format';
+import { formatEUR, sensitiveEUR } from './format';
+import { addCashSpend, shownCashBalance } from './wallet.svelte';
 import { addSwileSpend, addVoucherSpend, cultureVoucherBalance, hasSwile, portageState, removeSwileSpend, removeVoucher, swileCap, swileSpentOn } from './portage.svelte';
 import { voucherSpendEntry, voucherSpendRank } from './portage';
 import { addSharedClaim, dropClaim, hasClaim } from './refunds.svelte';
@@ -160,25 +161,40 @@ export function voucherAvailable(payment: QuickPayment, date: string): number {
 	return 0;
 }
 
-/** Payment of an entry: the card unless the sentence names Swile or culture vouchers (and they exist). */
-export function defaultPayment(named: 'swile' | 'culture' | undefined): QuickPayment {
+/** Payment of an entry: the card unless the sentence names cash, or Swile or culture vouchers (and they exist). */
+export function defaultPayment(named: 'swile' | 'culture' | 'cash' | undefined): QuickPayment {
+	if (named === 'cash') return 'cash';
 	const o = voucherOptions();
 	return named && o[named] ? named : 'card';
 }
 
 /**
- * Saves a quick entry paid by card, Swile or culture vouchers. The voucher pays what it can (Swile
- * daily cap, voucher balance); the rest becomes a card entry waiting for the statement, labelled
- * so it pairs with the bank line (« complément Swile »). A spend « pour Léa » (one payment) also
- * expects Léa's share back. Returns a summary and an undo.
+ * Saves a quick entry paid by card, Swile, culture vouchers or cash. The voucher pays what it can
+ * (Swile daily cap, voucher balance); the rest becomes a card entry waiting for the statement,
+ * labelled so it pairs with the bank line (« complément Swile »). Cash goes to the cash wallet,
+ * counted at once and never waiting for a statement, even beyond the wallet balance (money received
+ * in cash fills it). A spend « pour Léa » (one payment) also expects Léa's share back. Returns a
+ * summary and an undo.
  */
 export function saveQuickPayment(draft: QuickDraft, account: string, categoryId: CategoryId, subId: string | null, payment: QuickPayment): { summary: string; undo: () => void } {
-	const who = !draft.credit && !draft.instalments ? (draft.forWhom?.trim() ?? '') : '';
+	const who = !draft.credit && (!draft.instalments || payment === 'cash') ? (draft.forWhom?.trim() ?? '') : '';
 	const expectShare = (key: string | null): string => {
 		if (!who || !key || hasClaim(key)) return '';
 		addSharedClaim({ expenseKey: key, who, expected: draft.amount, date: draft.date, categoryId });
 		return `, part attendue de ${who}`;
 	};
+	if (payment === 'cash') {
+		const added = addCashSpend({ date: draft.date, label: draft.label, amount: draft.amount, categoryId, ...(subId ? { subId } : {}), ...(who ? { forWhom: who } : {}), ...(draft.credit ? { credit: true as const } : {}) });
+		rememberQuick(draft.label, categoryId, subId);
+		const owed = expectShare(added.key);
+		return {
+			summary: `${draft.credit ? 'reçu en liquide' : 'payé en liquide'}, ${sensitiveEUR(shownCashBalance())} dans le porte-monnaie${owed}`,
+			undo: () => {
+				if (owed) dropClaim(added.key);
+				added.undo();
+			}
+		};
+	}
 	if (payment === 'card') {
 		const today = todayIso();
 		const plan = instalmentPlan(draft, today);
