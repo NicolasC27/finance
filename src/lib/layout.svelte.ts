@@ -82,7 +82,7 @@ export const layoutState = $state({
 	currentPage: null as string | null,
 	/** Blocks mounted per page (stored ones included): titles, elements and default widths. */
 	registry: {} as Record<string, Record<string, BlockMeta>>,
-	/** Natural content height in px of each mounted block (`page:id`), measured at its tile width. */
+	/** Natural content height in px of each block (`page:id`) measured this session, at its tile width. */
 	natural: {} as Record<string, number>,
 	/** On-screen tiles of each mounted canvas (tree, size, visible and stored blocks). */
 	screens: {} as Record<string, PageScreen>,
@@ -337,7 +337,10 @@ export function registerBlock(page: string, id: string, meta: BlockMeta): void {
 	});
 }
 
-/** Forgets a block that left the screen (unmounted): it no longer takes a tile. */
+/**
+ * Forgets a block that left the screen (unmounted): it no longer takes a tile. Its natural height is
+ * kept, so the next visit of the page places it at its size right away.
+ */
 export function unregisterBlock(page: string, id: string): void {
 	untrack(() => {
 		const known = layoutState.registry[page];
@@ -345,9 +348,6 @@ export function unregisterBlock(page: string, id: string): void {
 		const rest = { ...known };
 		delete rest[id];
 		layoutState.registry = { ...layoutState.registry, [page]: rest };
-		const natural = { ...layoutState.natural };
-		delete natural[blockKey(page, id)];
-		layoutState.natural = natural;
 	});
 }
 

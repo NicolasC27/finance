@@ -260,8 +260,9 @@ body {
 }
 
 /* ---- Split-text reveal of page titles ---- Each word is wrapped in an overflow:hidden container
-   and rises (translateY 110% → 0), 40 ms stagger, 300 ms cubic-bezier(0.2,0.6,0.2,1). Replayed on
-   every page change (remount through the custom router). */
+   and rises (translateY 110% → 0), 40 ms stagger, 300 ms cubic-bezier(0.2,0.6,0.2,1). Played on the
+   first page only: after a page change the router settles it (the page transition is the only
+   movement). */
 .split-wrap {
 	display: inline-block;
 	overflow: hidden;
@@ -853,35 +854,18 @@ select.input-surface {
 	}
 }
 
-/* ---- View Transitions (custom router): cross-fade + slight slide ---- */
-@keyframes vt-fade-slide-in {
-	from {
-		opacity: 0;
-		transform: translateY(8px);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
+/* ---- View Transitions (custom router): fade-through + one rise ---- */
 
-@keyframes vt-fade-out {
-	from {
-		opacity: 1;
-	}
-	to {
-		opacity: 0;
-	}
-}
-
-/* Only the page content moves (the sidebar stays still); the direction follows the sidebar order:
-   going down the list the new page rises, going up it comes down. The page title morphs on its own. */
+/* Only the page content moves (the sidebar stays still). The page carries one name before the swap
+   and another after it, so the two snapshots never morph into each other: the old page fades out
+   where it was, then (once it is gone) the new one fades in and rises once, in the direction of the sidebar order
+   (going down the list it rises, going up it comes down). */
 html[data-nav-dir] .app-main {
-	view-transition-name: page;
+	view-transition-name: page-out;
 }
 
-html[data-nav-dir] .page-title {
-	view-transition-name: page-title;
+html[data-nav-dir][data-nav-in] .app-main {
+	view-transition-name: page-in;
 }
 
 ::view-transition-old(root),
@@ -889,52 +873,35 @@ html[data-nav-dir] .page-title {
 	animation: none;
 }
 
-::view-transition-old(page) {
-	animation: vt-page-out-up 140ms ease both;
+::view-transition-old(page-out) {
+	animation: vt-page-out 90ms ease-in both;
 }
 
-::view-transition-new(page) {
-	animation: vt-page-in-up var(--motion-slow) var(--ease-out) both;
+::view-transition-new(page-in) {
+	animation: vt-page-in-up 260ms var(--ease-out) 90ms both;
 }
 
-html[data-nav-dir='up']::view-transition-old(page) {
-	animation-name: vt-page-out-down;
-}
-
-html[data-nav-dir='up']::view-transition-new(page) {
+html[data-nav-dir='up']::view-transition-new(page-in) {
 	animation-name: vt-page-in-down;
 }
 
-::view-transition-group(page-title) {
-	animation-duration: var(--motion-slow);
-	animation-timing-function: var(--ease-out);
+@keyframes vt-page-out {
+	to {
+		opacity: 0;
+	}
 }
 
 @keyframes vt-page-in-up {
 	from {
 		opacity: 0;
-		transform: translateY(18px);
+		transform: translateY(12px);
 	}
 }
 
 @keyframes vt-page-in-down {
 	from {
 		opacity: 0;
-		transform: translateY(-18px);
-	}
-}
-
-@keyframes vt-page-out-up {
-	to {
-		opacity: 0;
-		transform: translateY(-10px);
-	}
-}
-
-@keyframes vt-page-out-down {
-	to {
-		opacity: 0;
-		transform: translateY(10px);
+		transform: translateY(-12px);
 	}
 }
 
@@ -1079,12 +1046,6 @@ html.light .grain {
 	font-size: 0.5em;
 	letter-spacing: normal;
 	margin-left: 0.16em;
-}
-
-/* Element shared between the sidebar and the Valeur totale card (View Transitions morphing). No
-   effect without the View Transitions API (graceful fallback). */
-.vt-net-worth {
-	view-transition-name: net-worth;
 }
 
 /* Crypto tickers: 400 ms flash through an overlay whose opacity alone is animated. Up = champagne,

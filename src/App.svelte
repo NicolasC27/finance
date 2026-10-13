@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { syncRefundCategories } from '$lib/refunds.svelte';
 	import QuickEntryDialog from '$lib/components/QuickEntryDialog.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ShortcutsDialog from '$lib/components/ShortcutsDialog.svelte';
@@ -27,7 +27,7 @@
 	import { transferState, reviewTransfers } from '$lib/transfers.svelte';
 	import { syncLoans } from '$lib/loans.svelte';
 	import type { Component } from 'svelte';
-	import { route, navigate, initRouter, type RoutePath } from '$lib/router.svelte';
+	import { route, navigate, initRouter, setRoutePreloader, type RoutePath } from '$lib/router.svelte';
 	import { initTheme, applyTheme, type Theme } from '$lib/theme';
 	import { initTransactions, settleDueInstalments, txState } from '$lib/store.svelte';
 	import { todayIso } from '$lib/forecast';
@@ -45,8 +45,9 @@
 	let theme = $state<Theme>('porcelaine');
 
 	/**
-	 * Secondary pages in separate chunks (main bundle: home, budget, transactions): imported on first
-	 * visit, then kept in memory.
+	 * Secondary pages in separate chunks (main bundle: home, budget, transactions): imported when a
+	 * link to them is hovered or focused, or at the latest when they are opened (the router waits a
+	 * moment for them), then kept in memory.
 	 */
 	const lazyPages: Partial<Record<RoutePath, () => Promise<{ default: Component }>>> = {
 		'/rapport': () => import('./pages/Report.svelte'),
@@ -63,10 +64,25 @@
 		'/trier': () => import('./pages/Triage.svelte')
 	};
 	let loadedPages = $state<Partial<Record<RoutePath, Component>>>({});
-	$effect(() => {
-		const path = route.path;
+	const loadingPages = new Map<RoutePath, Promise<void>>();
+
+	/** Code of a lazy page of an active module, imported once; undefined when there is nothing to wait for. */
+	function loadPage(path: RoutePath): Promise<void> | undefined {
 		const loader = lazyPages[path];
-		if (loader && !loadedPages[path]) void loader().then((m) => (loadedPages = { ...loadedPages, [path]: m.default }));
+		if (!loader || !isRouteEnabled(path) || untrack(() => loadedPages[path])) return undefined;
+		let pending = loadingPages.get(path);
+		if (!pending) {
+			pending = loader().then((m) => {
+				loadedPages = { ...loadedPages, [path]: m.default };
+			});
+			pending.catch(() => loadingPages.delete(path));
+			loadingPages.set(path, pending);
+		}
+		return pending;
+	}
+	setRoutePreloader(loadPage);
+	$effect(() => {
+		void loadPage(route.path);
 	});
 	const LazyPage = $derived(loadedPages[route.path] ?? null);
 
