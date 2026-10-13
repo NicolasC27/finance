@@ -6,7 +6,8 @@ import { merchantLabel } from './merchant';
 import { cleanLabel } from './format';
 import { persistJson } from './storage';
 import { budgetState, setOverride } from './budget.svelte';
-import { getMerchantCategoryMap, getTransactions } from './store.svelte';
+import { getMerchantCategoryMap, getTransactions, onQuickEntryReplaced } from './store.svelte';
+import { getPortageEntries } from './portage.svelte';
 import { autoClaims, creditsOf, matchRefunds, totalOwed, type ClaimStatus, type RefundClaim, type RefundSource } from './refunds';
 
 /**
@@ -62,10 +63,11 @@ const mutuelleNames = $derived.by(() => {
 	return [...names];
 });
 
-/** Every claim: typed by hand, plus automatic ones (health visits, advances) not dismissed. */
+/** Every claim: typed by hand (while their operation exists), plus automatic ones (health visits, advances) not dismissed. */
 const claims = $derived.by((): RefundClaim[] => {
 	const mm = getMerchantCategoryMap();
-	const manual = new Map(refundsState.claims.map((c) => [c.expenseKey, c]));
+	const present = new Set([...getTransactions(), ...getPortageEntries()].map(txKey));
+	const manual = new Map(refundsState.claims.filter((c) => present.has(c.expenseKey)).map((c) => [c.expenseKey, c]));
 	const expenses = getTransactions()
 		.filter((tx) => signedAmount(tx) < 0 && tx.booking_date)
 		.map((tx) => ({ key: txKey(tx), date: tx.booking_date, amount: -signedAmount(tx), label: labelOf(tx), categoryId: categorize(tx, budgetState.overrides, undefined, mm), subId: subcategorize(tx, budgetState.overrides, undefined, mm) }));
@@ -101,13 +103,53 @@ export function getTotalOwed(): number {
 }
 
 /** Marks an expense « to be refunded » (or updates its claim). */
-export function addClaim(tx: Transaction, c: { source: RefundSource; who: string; expected: number }): void {
-	const key = txKey(tx);
-	const claim: RefundClaim = { expenseKey: key, source: c.source, who: c.who.trim() || (c.source === 'sante' ? 'Sécu + mutuelle' : labelOf(tx)), expected: Math.round(c.expected * 100) / 100, date: tx.booking_date, categoryId: categorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap()), auto: false };
-	refundsState.claims = [...refundsState.claims.filter((x) => x.expenseKey !== key), claim];
+export function addClaim(tx: Transaction, c: { source: RefundSource; who: string; expected: number; shared?: boolean }): void {
+	const who = c.who.trim() || (c.source === 'sante' ? 'Sécu + mutuelle' : labelOf(tx));
+	putClaim({ expenseKey: txKey(tx), source: c.source, who, expected: c.expected, date: tx.booking_date, categoryId: categorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap()), auto: false, ...(c.shared && c.source === 'personne' ? { shared: true } : {}) });
+}
+
+/** Spend shared with someone who pays back their share (quick entry « pour Léa »). */
+export function addSharedClaim(c: { expenseKey: string; who: string; expected: number; date: string; categoryId: CategoryId }): void {
+	putClaim({ ...c, who: c.who.trim(), source: 'personne', auto: false, shared: true });
+}
+
+/** Has this operation a claim typed by hand? */
+export function hasClaim(expenseKey: string): boolean {
+	return refundsState.claims.some((c) => c.expenseKey === expenseKey);
+}
+
+function putClaim(claim: RefundClaim): void {
+	const key = claim.expenseKey;
+	refundsState.claims = [...refundsState.claims.filter((x) => x.expenseKey !== key), { ...claim, expected: Math.round(claim.expected * 100) / 100 }];
 	refundsState.dismissed = refundsState.dismissed.filter((k) => k !== key);
 	refundsState.closed = refundsState.closed.filter((k) => k !== key);
 	persist();
+}
+
+/** Forgets the claim of an expense without dismissing it (undo of the entry that held it). */
+export function dropClaim(expenseKey: string): void {
+	refundsState.claims = refundsState.claims.filter((x) => x.expenseKey !== expenseKey);
+	refundsState.closed = refundsState.closed.filter((k) => k !== expenseKey);
+	persist();
+}
+
+/**
+ * A claim follows its operation when the key changes (quick entry replaced by the bank operation at
+ * import, or back on undo; identical voucher spends renumbered). A claim already on `to` wins.
+ * Returns whether a claim moved.
+ */
+export function moveClaim(from: string, to: string): boolean {
+	if (from === to || !hasClaim(from) || hasClaim(to)) return false;
+	refundsState.claims = refundsState.claims.map((c) => (c.expenseKey === from ? { ...c, expenseKey: to } : c));
+	refundsState.closed = refundsState.closed.map((k) => (k === from ? to : k));
+	persist();
+	return true;
+}
+onQuickEntryReplaced(moveClaim);
+
+/** People already named in a shared spend: a lowercase « pour léa » is then understood. */
+export function knownPeople(): string[] {
+	return [...new Set(refundsState.claims.filter((c) => c.shared).map((c) => c.who))];
 }
 
 /** Nothing to expect for this expense (an automatic claim stays dismissed). */

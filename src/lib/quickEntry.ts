@@ -25,6 +25,8 @@ export interface QuickDraft {
 	payment?: 'swile' | 'culture';
 	/** Number of instalments of a card payment (« en 3 fois », « 4x »); one payment when absent. */
 	instalments?: number;
+	/** Person the spend was for, who pays back their share (« pour Léa »). */
+	forWhom?: string;
 }
 
 const DAY = 86_400_000;
@@ -75,10 +77,11 @@ function readDate(text: string, today: string): { date: string; used: string[] }
 
 /**
  * Local parser (no AI): the amount (« 20,25 », « 20.25 € », « 20e », « 1 200 € »), the date words,
- * the rest is the label. « + », « reçu », « remboursement »… make it money received. Returns an
- * error message when no amount can be read.
+ * the rest is the label. « + », « reçu », « remboursement »… make it money received. « pour Léa »
+ * names who the spend was for (`people`: names already used, understood in lowercase too). Returns
+ * an error message when no amount can be read.
  */
-export function parseQuickEntry(text: string, today: string): QuickDraft | { error: string } {
+export function parseQuickEntry(text: string, today: string, people: readonly string[] = []): QuickDraft | { error: string } {
 	const typed = text.replace(/\s+/g, ' ').trim();
 	if (!typed) return { error: 'Écris par exemple « leboncoin 20,25 € ».' };
 	const pay = PAYMENT_WORDS.find((p) => p.re.test(typed));
@@ -89,6 +92,7 @@ export function parseQuickEntry(text: string, today: string): QuickDraft | { err
 		.replace(/\s*\b(en|par|avec)?\s*(swile|ch[eè]ques?[- ]culture|carte|cb)\b/gi, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();
+	const who = readForWhom(raw, people);
 	const { date, used } = readDate(raw, today);
 	let rest = raw;
 	for (const u of used) rest = rest.replace(new RegExp(u.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'), 'i'), ' ');
@@ -97,14 +101,46 @@ export function parseQuickEntry(text: string, today: string): QuickDraft | { err
 	if (!pick) return { error: 'Montant introuvable : ajoute-le, par exemple « 20,25 € ».' };
 	const amount = Number(`${pick[2]!.replace(/[  ]/g, '')}.${pick[3] ?? '0'}`);
 	if (!(amount > 0) || amount > 1_000_000) return { error: 'Montant invalide.' };
-	const label = (rest.slice(0, pick.index) + ' ' + rest.slice(pick.index! + pick[0].length))
-		.replace(/\b(pour|de|à|a|chez|le|la|les|du|des)\s*$/i, '')
+	const credit = pick[1] === '+' || CREDIT_WORDS.test(raw);
+	const instalments = credit ? 0 : count;
+	const forWhom = who && !credit && instalments <= 1 ? who : null;
+	const words = rest.slice(0, pick.index) + ' ' + rest.slice(pick.index! + pick[0].length);
+	const label = (forWhom ? words.replace(forWhom.used, ' ') : words)
+		.replace(/(?<!\p{L})(pour|de|à|a|chez|le|la|les|du|des)\s*$/iu, '')
 		.replace(/\s+/g, ' ')
 		.replace(/^[\s,;:–-]+|[\s,;:–-]+$/g, '')
 		.trim();
-	const credit = pick[1] === '+' || CREDIT_WORDS.test(raw);
-	const instalments = credit ? 0 : count;
-	return { label: label || 'Dépense', amount: Math.round(amount * 100) / 100, credit, date, ...(pay ? { payment: pay.payment } : {}), ...(instalments > 1 ? { instalments } : {}) };
+	return { label: label || 'Dépense', amount: Math.round(amount * 100) / 100, credit, date, ...(pay ? { payment: pay.payment } : {}), ...(instalments > 1 ? { instalments } : {}), ...(forWhom ? { forWhom: forWhom.who } : {}) };
+}
+
+const FOR_RE = /\b[Pp]our\s+([\p{L}'’-]+)(?:\s+([\p{L}'’-]+))?/gu;
+const CAPITAL_RE = /^[A-ZÀ-ÖØ-Þ]/u;
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/’/g, "'").toLowerCase();
+/** Words after « pour » that never name someone who pays back: holidays, pronouns, determiners, date words. */
+const NOT_A_PERSON = new Set(
+	"noel paques halloween toussaint saint nouvel anniversaire fete moi toi lui elle elles nous vous eux tous toutes tout toute le la les l' un une des du mon ma mes ton ta tes son sa ses notre nos votre vos leur leurs ce cet cette ces hier avant-hier demain aujourd'hui lundi mardi mercredi jeudi vendredi samedi dimanche janvier fevrier mars avril mai juin juillet aout septembre octobre novembre decembre".split(' ')
+);
+
+/**
+ * Who a spend was for: a person already named in a shared spend (« pour léa », « pour léa martin »,
+ * any case), else a capitalised name (« pour Léa », « pour Léa Martin ») that is not a holiday, a
+ * pronoun or a date word. Returns the name and the words it used.
+ */
+function readForWhom(text: string, people: readonly string[]): { who: string; used: string } | null {
+	const known = people.map((name) => ({ name, words: name.split(/\s+/).map(fold) }));
+	for (const m of text.matchAll(FOR_RE)) {
+		const first = m[1]!;
+		const second = m[2];
+		const upToFirst = m[0].slice(0, m[0].indexOf(first, 4) + first.length);
+		const both = second !== undefined ? known.find((k) => k.words.length > 1 && k.words[0] === fold(first) && k.words[1] === fold(second)) : undefined;
+		if (both) return { who: both.name, used: m[0] };
+		const one = known.find((k) => k.words[0] === fold(first) && !NOT_A_PERSON.has(k.words[0]!));
+		if (one) return { who: one.name, used: upToFirst };
+		if (!CAPITAL_RE.test(first) || NOT_A_PERSON.has(fold(first))) continue;
+		if (second !== undefined && CAPITAL_RE.test(second) && !NOT_A_PERSON.has(fold(second))) return { who: `${first} ${second}`, used: m[0] };
+		return { who: first, used: upToFirst };
+	}
+	return null;
 }
 
 /**

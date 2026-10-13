@@ -6,6 +6,7 @@
 	import { instalmentPlan, instalmentText, parseQuickEntry, type QuickDraft } from '$lib/quickEntry';
 	import { QUICK_SUBCATEGORIES, quickAccounts, saveQuickPayment, suggestCategory } from '$lib/quickEntry.svelte';
 	import { showSuccess, uiState } from '$lib/ui.svelte';
+	import { knownPeople } from '$lib/refunds.svelte';
 	import CategoryMark from './CategoryMark.svelte';
 
 	/**
@@ -23,7 +24,7 @@
 	let handedOver = $state(false);
 
 	const draft = $derived.by(() => {
-		const parsed = parseQuickEntry(text, todayIso());
+		const parsed = parseQuickEntry(text, todayIso(), knownPeople());
 		return 'error' in parsed ? null : parsed;
 	});
 	const suggestion = $derived(draft ? suggestCategory(draft.label, draft.credit) : null);
@@ -34,8 +35,8 @@
 	});
 	const plan = $derived(draft?.instalments && !draft.credit && !draft.payment ? instalmentPlan(draft, todayIso()) : null);
 	const ready = $derived(!!draft && draft.label.trim().length > 0 && draft.amount > 0 && draft.amount < 1_000_000);
-	/** What Enter needs the dialog for: a voucher to split, a category to choose, a date to check. */
-	const needsALook = $derived(!!draft && (draft.payment !== undefined || (!draft.categoryId && suggestion?.source === 'none') || draft.date > todayIso()));
+	/** What Enter needs the dialog for: a voucher to split, a person to check, a category to choose, a date to check. */
+	const needsALook = $derived(!!draft && (draft.payment !== undefined || draft.forWhom !== undefined || (!draft.categoryId && suggestion?.source === 'none') || draft.date > todayIso()));
 
 	function save() {
 		if (!draft || !ready) return;

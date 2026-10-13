@@ -10,7 +10,9 @@ import { accountState } from './accounts.svelte';
 import { draftToTransaction, everydayCategory, instalmentPlan, instalmentText, instalmentTransactions, isStale, learnQuick, splitVoucherPayment, suggestFromMemory, type QuickDraft, type QuickMemory, type QuickPayment } from './quickEntry';
 import { todayIso } from './forecast';
 import { formatEUR } from './format';
-import { addSwileSpend, addVoucherSpend, cultureVoucherBalance, hasSwile, removeSwileSpend, removeVoucher, swileCap, swileSpentOn } from './portage.svelte';
+import { addSwileSpend, addVoucherSpend, cultureVoucherBalance, hasSwile, portageState, removeSwileSpend, removeVoucher, swileCap, swileSpentOn } from './portage.svelte';
+import { voucherSpendEntry, voucherSpendRank } from './portage';
+import { addSharedClaim, dropClaim, hasClaim } from './refunds.svelte';
 
 /**
  * Quick entry, app side: relay call (optional), suggested category, default account, saving with
@@ -167,9 +169,16 @@ export function defaultPayment(named: 'swile' | 'culture' | undefined): QuickPay
 /**
  * Saves a quick entry paid by card, Swile or culture vouchers. The voucher pays what it can (Swile
  * daily cap, voucher balance); the rest becomes a card entry waiting for the statement, labelled
- * so it pairs with the bank line (« complément Swile »). Returns a summary and an undo.
+ * so it pairs with the bank line (« complément Swile »). A spend « pour Léa » (one payment) also
+ * expects Léa's share back. Returns a summary and an undo.
  */
 export function saveQuickPayment(draft: QuickDraft, account: string, categoryId: CategoryId, subId: string | null, payment: QuickPayment): { summary: string; undo: () => void } {
+	const who = !draft.credit && !draft.instalments ? (draft.forWhom?.trim() ?? '') : '';
+	const expectShare = (key: string | null): string => {
+		if (!who || !key || hasClaim(key)) return '';
+		addSharedClaim({ expenseKey: key, who, expected: draft.amount, date: draft.date, categoryId });
+		return `, part attendue de ${who}`;
+	};
 	if (payment === 'card') {
 		const today = todayIso();
 		const plan = instalmentPlan(draft, today);
@@ -183,7 +192,14 @@ export function saveQuickPayment(draft: QuickDraft, account: string, categoryId:
 			return { summary: `en ${plan.length} fois : ${instalmentText(plan, today)}${already}`, undo: () => removeQuickEntries(left) };
 		}
 		const key = saveQuickEntry(draft, account, categoryId, subId);
-		return { summary: 'à rapprocher du relevé', undo: () => removeQuickEntry(key) };
+		const owed = expectShare(key);
+		return {
+			summary: `à rapprocher du relevé${owed}`,
+			undo: () => {
+				if (owed) dropClaim(key);
+				removeQuickEntry(key);
+			}
+		};
 	}
 	const split = splitVoucherPayment(draft.amount, voucherAvailable(payment, draft.date));
 	const spend = { date: draft.date, montant: split.voucher, libelle: draft.label, categoryId, ...(subId ? { subId } : {}) };
@@ -191,9 +207,14 @@ export function saveQuickPayment(draft: QuickDraft, account: string, categoryId:
 	const name = payment === 'swile' ? 'Swile' : 'chèques culture';
 	const key = split.card > 0 ? saveQuickEntry({ ...draft, label: `${draft.label} (complément ${name})`, amount: split.card }, account, categoryId, subId) : null;
 	if (!key) rememberQuick(draft.label, categoryId, subId);
+	const typed = payment === 'swile' ? (portageState.data.swile ?? []) : portageState.data.cheques.depenses;
+	const added = id ? typed.find((x) => x.id === id) : undefined;
+	const claimKey = added ? txKey(voucherSpendEntry(added, payment, voucherSpendRank(typed, added))) : key;
+	const owed = expectShare(claimKey);
 	return {
-		summary: key ? `${formatEUR(split.voucher)} en ${name}, ${formatEUR(split.card)} sur ta carte à rapprocher` : `payé en ${name}`,
+		summary: `${key ? `${formatEUR(split.voucher)} en ${name}, ${formatEUR(split.card)} sur ta carte à rapprocher` : `payé en ${name}`}${owed}`,
 		undo: () => {
+			if (owed && claimKey) dropClaim(claimKey);
 			if (id) (payment === 'swile' ? removeSwileSpend : removeVoucher)(id);
 			if (key) removeQuickEntry(key);
 		}

@@ -17,7 +17,8 @@
 	import { cleanLabel, formatDate, formatEUR, formatMonth, maskAmounts } from '$lib/sensitiveFormat';
 	import { getTransactions } from '$lib/store.svelte';
 	import { showToast } from '$lib/ui.svelte';
-	import { lastRateChange, lastWithholding, purchaseDateFromLabel, shiftPortageMonth, salaryTransfer, type MatchedLine } from '$lib/portage';
+	import { lastRateChange, lastWithholding, purchaseDateFromLabel, shiftPortageMonth, salaryTransfer, voucherSpendEntry, voucherSpendRank, type MatchedLine } from '$lib/portage';
+	import { dropClaim, moveClaim } from '$lib/refunds.svelte';
 	import { setTaxSettings } from '$lib/incomeTax.svelte';
 	import {
 		portageState,
@@ -80,6 +81,22 @@
 
 	/** Total owed TO YOU (client invoices pay your salaries: not added). */
 	const totalPending = $derived((pending.reserve ?? 0) + pending.frais.reduce((s, f) => s + f.montant, 0) + pending.salaires.reduce((s, x) => s + x.montant, 0));
+
+	/**
+	 * Deletes a typed Swile or culture voucher spend with the refund it was waiting for; the
+	 * identical spends typed after it move up one rank and their refunds follow.
+	 */
+	function deleteVoucherSpend(id: string, voucher: 'swile' | 'culture') {
+		const list = voucher === 'swile' ? (data.swile ?? []) : data.cheques.depenses;
+		const spend = list.find((x) => x.id === id);
+		const twins = spend ? list.filter((x) => x.date === spend.date && x.montant === spend.montant && x.libelle === spend.libelle) : [];
+		const keys = twins.map((x) => txKey(voucherSpendEntry(x, voucher, voucherSpendRank(list, x))));
+		const at = twins.findIndex((x) => x.id === id);
+		if (at >= 0) dropClaim(keys[at]!);
+		if (voucher === 'swile') removeSwileSpend(id);
+		else removeVoucher(id);
+		for (let j = at + 1; at >= 0 && j < keys.length; j++) moveClaim(keys[j]!, keys[j - 1]!);
+	}
 
 	/** Target rate typed in: empty = automatic neutral rate. */
 	function onRateChange(el: HTMLInputElement) {
@@ -687,7 +704,7 @@
 												<span class="meta-xs tabular w-20 shrink-0">{formatDate(m.date)}</span>
 												<span class="min-w-0 flex-1 truncate">{m.libelle}</span>
 												<span class="tabular">{formatEUR(m.montant)}</span>
-												<button type="button" class="cursor-pointer text-secondary hover:text-[var(--amber)]" aria-label="Supprimer le repas {m.libelle}" onclick={() => removeSwileSpend(m.id)}>×</button>
+												<button type="button" class="cursor-pointer text-secondary hover:text-[var(--amber)]" aria-label="Supprimer le repas {m.libelle}" onclick={() => deleteVoucherSpend(m.id, 'swile')}>×</button>
 											</li>
 										{/each}
 									</ul>
@@ -744,7 +761,7 @@
 											<span class="tabular shrink-0 whitespace-nowrap text-secondary @min-[17rem]:w-24">{formatDate(m.date)}</span>
 											<span class="min-w-0 flex-1 truncate">{m.libelle}{m.categoryId ? ` · ${getCategory(m.categoryId).label}` : ''}</span>
 											<span class="tabular" style={m.signe > 0 ? 'color: var(--accent);' : ''}>{m.signe > 0 ? '+' : '−'}{formatEUR(m.montant)}</span>
-											<button type="button" class="cursor-pointer text-secondary hover:text-[var(--amber)]" aria-label="Supprimer" onclick={() => removeVoucher(m.id)}>×</button>
+											<button type="button" class="cursor-pointer text-secondary hover:text-[var(--amber)]" aria-label="Supprimer" onclick={() => (m.signe < 0 ? deleteVoucherSpend(m.id, 'culture') : removeVoucher(m.id))}>×</button>
 										</li>
 									{/each}
 								</ul>

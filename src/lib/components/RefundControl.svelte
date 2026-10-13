@@ -4,7 +4,7 @@
 	import { formatDate, formatEUR } from '$lib/format';
 	import { txKey } from '$lib/categories';
 	import { addClaim, refundedBy, refundOf, removeClaim, setClaimClosed } from '$lib/refunds.svelte';
-	import type { RefundSource } from '$lib/refunds';
+	import { shareRange, type RefundSource } from '$lib/refunds';
 
 	/**
 	 * Refund section of an operation's detail: for an expense, the expected refund (automatic for a
@@ -21,6 +21,7 @@
 	let source = $state<RefundSource>('personne');
 	let who = $state('');
 	let expected = $state('');
+	let shared = $state(false);
 
 	const STATES = { pending: 'attendu', partial: 'en partie remboursé', refunded: 'remboursé', overdue: 'en retard', closed: 'soldé à la main' } as const;
 	const SOURCES: { id: RefundSource; label: string }[] = [
@@ -33,12 +34,13 @@
 		source = status?.claim.source ?? 'personne';
 		who = status?.claim.source === 'sante' ? '' : (status?.claim.who ?? '');
 		expected = String(status?.claim.expected ?? Math.abs(amount)).replace('.', ',');
+		shared = status ? !!status.claim.shared : tx.source === 'portage';
 		editing = true;
 	}
 	function save() {
 		const v = Number(expected.replace(/\s/g, '').replace(',', '.'));
-		if (!(v > 0)) return;
-		addClaim(tx, { source, who, expected: v });
+		if (!(v > 0) || (tx.source === 'portage' && source !== 'sante' && !who.trim())) return;
+		addClaim(tx, { source, who, expected: v, shared });
 		editing = false;
 	}
 </script>
@@ -62,13 +64,19 @@
 					{#each SOURCES as s (s.id)}<option value={s.id}>{s.label}</option>{/each}
 				</select>
 				{#if source !== 'sante'}<input type="text" class="input-surface w-36" placeholder={source === 'personne' ? 'Nom de la personne' : 'Magasin'} bind:value={who} aria-label="Nom" />{/if}
+				{#if source === 'personne'}<label class="meta-xs flex cursor-pointer items-center gap-1" title="Elle te rend sa part : un virement de 40 % à 110 % de la dépense la solde"><input type="checkbox" bind:checked={shared} /> partagée</label>{/if}
 				<button type="button" class="btn btn-primary btn-sm" onclick={save}>Enregistrer</button>
 				<button type="button" class="btn btn-secondary btn-sm" onclick={() => (editing = false)}>Annuler</button>
 			</div>
 		{:else if status}
 			<div class="flex flex-wrap items-center gap-2">
 				<span class="chip {status.state === 'refunded' ? 'chip-accent' : status.state === 'overdue' ? 'chip-amber' : 'chip-outline'}">{STATES[status.state]}</span>
-				<span>{formatEUR(status.refunded)} reçus sur {formatEUR(status.claim.expected)} attendus de {status.claim.who}{status.claim.auto ? ' (automatique)' : ''}</span>
+				{#if status.claim.shared}
+					{@const range = shareRange(status.claim.expected)}
+					<span>{status.state === 'refunded' ? `${formatEUR(status.refunded)} reçus de ${status.claim.who}` : `part attendue de ${status.claim.who} : ${formatEUR(range.min)} à ${formatEUR(range.max)}`} · dépense partagée</span>
+				{:else}
+					<span>{formatEUR(status.refunded)} reçus sur {formatEUR(status.claim.expected)} attendus de {status.claim.who}{status.claim.auto ? ' (automatique)' : ''}</span>
+				{/if}
 				{#each status.payments as p (p.key)}<span class="meta-xs">· {formatDate(p.date)} {formatEUR(p.amount)}</span>{/each}
 				<span class="flex-1"></span>
 				<button type="button" class="meta-xs cursor-pointer hover:underline" onclick={(e) => { e.stopPropagation(); open(); }}>modifier</button>

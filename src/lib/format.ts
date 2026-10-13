@@ -149,6 +149,15 @@ export function formatDate(iso: string): string {
 	return Number.isNaN(d.getTime()) ? iso : dateFmt.format(d);
 }
 
+const dayMonthFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
+
+/** formatDate without the year when it is `year` (the current one by default): "2026-07-15" → "15 juil.", "2025-07-15" → "15 juil. 2025". */
+export function formatDateShort(iso: string, year = new Date().getFullYear()): string {
+	if (!iso || !iso.startsWith(`${year}-`)) return formatDate(iso);
+	const d = new Date(`${iso}T12:00:00`);
+	return Number.isNaN(d.getTime()) ? iso : dayMonthFmt.format(d);
+}
+
 /** "2026-07" → "Juillet 2026" (capitalised); unreadable key → « — ». */
 export function formatMonth(monthKey: string): string {
 	if (!/^\d{4}-\d{2}$/.test(monthKey)) return monthKey || '—';
