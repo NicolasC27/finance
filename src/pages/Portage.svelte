@@ -17,6 +17,7 @@
 	import { cleanLabel, formatDate, formatEUR, formatMonth, maskAmounts } from '$lib/sensitiveFormat';
 	import { getTransactions } from '$lib/store.svelte';
 	import { showToast } from '$lib/ui.svelte';
+	import { pageSnapshot } from '$lib/router.svelte';
 	import { lastRateChange, lastWithholding, purchaseDateFromLabel, shiftPortageMonth, salaryTransfer, voucherSpendEntry, voucherSpendRank, type MatchedLine } from '$lib/portage';
 	import { dropClaim, moveClaim } from '$lib/refunds.svelte';
 	import { setTaxSettings } from '$lib/incomeTax.svelte';
@@ -177,6 +178,13 @@
 	/** Reports newest first; the rail shows one at a time (the newest by default) with a dot per month saying whether something is left to do. */
 	const notesDesc = $derived([...data.notes].reverse());
 	let noteSel = $state<string | null>(null);
+	pageSnapshot(
+		'portage',
+		() => ({ noteSel }),
+		(saved) => {
+			if (typeof saved?.noteSel === 'string') noteSel = saved.noteSel;
+		}
+	);
 	const currentNote = $derived(notesDesc.find((n) => n.numero === noteSel) ?? notesDesc[0]);
 	const monthShort = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: '2-digit' });
 	const noteLabel = (mois: string) => (/^\d{4}-(0[1-9]|1[0-2])$/.test(mois) ? monthShort.format(new Date(`${mois}-15T12:00:00`)) : mois);

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Transaction } from '$lib/types';
-	import { signedAmount } from '$lib/data';
+	import { isComputedEntry, signedAmount } from '$lib/data';
 	import { formatDate, formatEUR } from '$lib/format';
 	import { txKey } from '$lib/categories';
 	import { addClaim, refundedBy, refundOf, removeClaim, setClaimClosed } from '$lib/refunds.svelte';
@@ -39,7 +39,7 @@
 	}
 	function save() {
 		const v = Number(expected.replace(/\s/g, '').replace(',', '.'));
-		if (!(v > 0) || (tx.source === 'portage' && source !== 'sante' && !who.trim())) return;
+		if (!(v > 0) || (isComputedEntry(tx) && source !== 'sante' && !who.trim())) return;
 		addClaim(tx, { source, who, expected: v, shared });
 		editing = false;
 	}

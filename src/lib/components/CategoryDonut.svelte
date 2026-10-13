@@ -12,13 +12,15 @@
 	import { formatEUR } from '$lib/format';
 	import NarrowAmount from './NarrowAmount.svelte';
 	import { morphArray } from '$lib/motion.svelte';
+	import { contextActions, type MenuInput } from '$lib/contextMenu.svelte';
 
 	/**
 	 * Expense donut by category (hand-made SVG arcs), total in the centre. v11 drill-down:
 	 * `isSliceClickable` + `onSliceClick` make segments interactive (click, Enter/Space, focusable
 	 * role=button); `onCenterClick` turns the centre into a back button. Slices morph when the month
 	 * changes; hovering a slice (or its legend row) pops it out, thickens it, dims the others and shows
-	 * its amount and share in the centre.
+	 * its amount and share in the centre. `sliceActions` gives the right-click entries of a segment and
+	 * of its legend row.
 	 */
 	let {
 		slices,
@@ -29,7 +31,8 @@
 		onCenterClick,
 		showLegend = true,
 		showCenter = true,
-		diameter = 180
+		diameter = 180,
+		sliceActions
 	}: {
 		slices: DonutSlice[];
 		total: number;
@@ -45,7 +48,12 @@
 		showCenter?: boolean;
 		/** Ring diameter in px (scaled drawing; a tile can make it fill its height). */
 		diameter?: number;
+		/** Right-click entries of a slice (segment and legend row). */
+		sliceActions?: (slice: DonutSlice) => readonly MenuInput[];
 	} = $props();
+
+	/** Entries of one slice for `use:contextActions` (none without `sliceActions`). */
+	const actionsOf = (slice: DonutSlice) => () => sliceActions?.(slice) ?? [];
 
 	const SIZE = 180;
 	const CENTER = SIZE / 2;
@@ -190,6 +198,7 @@
 							aria-label="Voir le détail de {seg.slice.label} : {formatEUR(seg.slice.value)}"
 							onclick={() => onSliceClick?.(seg.slice)}
 							onkeydown={(e) => onSegmentKeydown(seg.slice, e)}
+							use:contextActions={actionsOf(seg.slice)}
 						>
 							<title>{seg.slice.label} — {formatEUR(seg.slice.value)}</title>
 						</path>
@@ -205,6 +214,7 @@
 							style={segStyle}
 							role="img"
 							aria-label="{seg.slice.label} : {formatEUR(seg.slice.value)}"
+							use:contextActions={actionsOf(seg.slice)}
 						>
 							<title>{seg.slice.label} — {formatEUR(seg.slice.value)}</title>
 						</path>
@@ -251,6 +261,7 @@
 					style="background-color: {hovered ? 'var(--surface-hover)' : 'transparent'};"
 					onpointerenter={() => (hoveredId = seg.slice.id)}
 					onpointerleave={() => (hoveredId = null)}
+					use:contextActions={actionsOf(seg.slice)}
 				>
 					{#if isClickable}
 						<button

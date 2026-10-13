@@ -3,11 +3,11 @@
 	import { CATEGORIES, categorize, getCategory, txKey } from '$lib/categories';
 	import { budgetState } from '$lib/budget.svelte';
 	import { setOverrideAndPrompt } from '$lib/rules.svelte';
-	import { cleanLabel, formatDate, formatEUR } from '$lib/format';
-	import { merchantLabel } from '$lib/merchant';
+	import { formatDate, formatEUR } from '$lib/format';
 	import { isPending, signedAmount } from '$lib/data';
 	import { deleteTransactions, restoreTransactions, getMerchantCategoryMap } from '$lib/store.svelte';
 	import { showToast } from '$lib/ui.svelte';
+	import { listLabel } from '$lib/merchantSearch';
 	import MerchantMark from './MerchantMark.svelte';
 	import InstalmentChip from './InstalmentChip.svelte';
 
@@ -33,8 +33,8 @@
 	const amount = $derived(signedAmount(tx));
 	const categoryId = $derived(categorize(tx, budgetState.overrides, undefined, getMerchantCategoryMap()));
 	const category = $derived(getCategory(categoryId));
-	// List label: short merchantLabel (SPEC v13 §A), raw label in the tooltip
-	const displayLabel = $derived(merchantLabel(tx.remittance_information) || cleanLabel(tx.remittance_information));
+	// List label: short merchantLabel (SPEC v13 §A), raw label in the tooltip; computed entries (portage, cash wallet) keep their written label
+	const displayLabel = $derived(listLabel(tx));
 	const rawLabel = $derived(tx.remittance_information.join(' ').replace(/\s+/g, ' ').trim());
 
 	function onCategoryChange(event: Event) {

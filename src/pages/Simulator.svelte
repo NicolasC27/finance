@@ -8,6 +8,7 @@
 	import LoanRowEditor from '$lib/components/LoanRowEditor.svelte';
 	import LoanStudyPanel from '$lib/components/LoanStudyPanel.svelte';
 	import { showSuccess } from '$lib/ui.svelte';
+	import { pageSnapshot } from '$lib/router.svelte';
 
 	/**
 	 * What-if simulator: a scenario of monthly and one-off changes edited on the left, compared side
@@ -74,6 +75,16 @@
 		removeScenario(draft.id);
 		draft = blank();
 	}
+
+	/** Back, Forward and a reload reopen the saved scenario on screen (unsaved edits are not kept). */
+	pageSnapshot(
+		'simulator',
+		() => ({ scenario: saved?.id ?? null }),
+		(snap) => {
+			const s = scenariosState.list.find((x) => x.id === snap.scenario);
+			if (s) load(s);
+		}
+	);
 
 	function dateIn(m: number): string {
 		const d = new Date(now.getFullYear(), now.getMonth() + m, 15);

@@ -39,6 +39,7 @@
 	import { PREF_KEYS } from '$lib/prefs';
 	import { initWeather } from '$lib/weather.svelte';
 	import Toast from '$lib/components/Toast.svelte';
+	import ContextMenu from '$lib/components/ContextMenu.svelte';
 
 	/** Root: sidebar layout + custom router outlet, Cmd+K palette, Kraken modal. */
 
@@ -261,6 +262,7 @@
 		<div class={layoutState.wide ? 'px-3 py-3 sm:px-4 lg:px-5 lg:py-4' : 'mx-auto max-w-[1280px] px-4 py-4 sm:px-6 lg:px-14 lg:py-7 xl:px-20'}>
 			<!-- A render error (unexpected data) no longer takes the whole app down: message + retry -->
 			<svelte:boundary onerror={(e) => console.error(e)}>
+			{#key route.visit}
 			{#if !isRouteEnabled(route.path)}
 				<ModuleDisabled module={moduleOfRoute(route.path)!} />
 			{:else if route.path === '/budget'}
@@ -274,6 +276,7 @@
 			{:else}
 				<Dashboard />
 			{/if}
+			{/key}
 			{#snippet failed(error, reset)}
 				<div class="card p-4 text-sm" role="alert">
 					<p class="font-medium" style="color: var(--amber);">Cette page n’a pas pu s’afficher.</p>
@@ -298,6 +301,7 @@
 	{#if transferState.reviewOpen}
 		<TransferReviewDialog />
 	{/if}
+	<ContextMenu />
 	<Toast />
 	<!-- Global grain texture (SVG feTurbulence, non-interactive) -->
 	<div class="grain" aria-hidden="true"></div>

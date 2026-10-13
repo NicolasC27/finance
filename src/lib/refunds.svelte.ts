@@ -8,6 +8,7 @@ import { persistJson } from './storage';
 import { budgetState, setOverride } from './budget.svelte';
 import { getMerchantCategoryMap, getTransactions, onQuickEntryReplaced } from './store.svelte';
 import { getPortageEntries } from './portage.svelte';
+import { getCashEntries } from './wallet.svelte';
 import { autoClaims, creditsOf, matchRefunds, totalOwed, type ClaimStatus, type RefundClaim, type RefundSource } from './refunds';
 
 /**
@@ -66,7 +67,7 @@ const mutuelleNames = $derived.by(() => {
 /** Every claim: typed by hand (while their operation exists), plus automatic ones (health visits, advances) not dismissed. */
 const claims = $derived.by((): RefundClaim[] => {
 	const mm = getMerchantCategoryMap();
-	const present = new Set([...getTransactions(), ...getPortageEntries()].map(txKey));
+	const present = new Set([...getTransactions(), ...getPortageEntries(), ...getCashEntries()].map(txKey));
 	const manual = new Map(refundsState.claims.filter((c) => present.has(c.expenseKey)).map((c) => [c.expenseKey, c]));
 	const expenses = getTransactions()
 		.filter((tx) => signedAmount(tx) < 0 && tx.booking_date)

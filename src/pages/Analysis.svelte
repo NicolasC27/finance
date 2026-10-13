@@ -7,6 +7,7 @@
 	import { budgetState } from '$lib/budget.svelte';
 	import { getTransactions, getMerchantCategoryMap } from '$lib/store.svelte';
 	import { getBudgetTransactions } from '$lib/transfers.svelte';
+	import { latestMerchantQuery } from '$lib/merchantSearch';
 	import { monthlyAnalytics, movingAverage, pctChange } from '$lib/analytics';
 	import { isExpenseCategory } from '$lib/flow';
 	import { monthCutoffDay, lastFlowDate } from '$lib/totals';
@@ -16,7 +17,7 @@
 	import { merchantKey, merchantLabel } from '$lib/merchant';
 	import { isPending, spendAmount } from '$lib/data';
 	import { monthKeyOf, formatDate } from '$lib/format';
-	import { navigate } from '$lib/router.svelte';
+	import { navigate, pageSnapshot } from '$lib/router.svelte';
 	import PageTitle from '$lib/components/PageTitle.svelte';
 	import ModuleOptionsButton from '$lib/components/ModuleOptionsButton.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
@@ -282,8 +283,17 @@
 	const merchantsTotal = $derived(merchants.reduce((a, r) => a + r.total, 0));
 	// 10 rows by default (density: the page was 2.25 screens tall); 'Voir plus' extends
 	let merchantsShown = $state(10);
+	/** Back, Forward and a reload bring back the merchant filter and the rows shown (period, series and smoothing are already kept in localStorage). */
+	pageSnapshot(
+		'analysis',
+		() => ({ merchantQuery, merchantsShown }),
+		(saved) => {
+			if (typeof saved?.merchantQuery === 'string') merchantQuery = saved.merchantQuery;
+			if (typeof saved?.merchantsShown === 'number' && saved.merchantsShown >= 10) merchantsShown = saved.merchantsShown;
+		}
+	);
 	function openMerchant(r: MerchantRow) {
-		uiState.txSearch = r.label;
+		uiState.txSearch = latestMerchantQuery(getBudgetTransactions().filter((tx) => !isPending(tx) && merchantKey(tx.remittance_information) === r.key)) || r.label;
 		navigate('/transactions');
 	}
 

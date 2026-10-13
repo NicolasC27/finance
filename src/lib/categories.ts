@@ -316,8 +316,9 @@ export function setVacationPredicate(fn: ((tx: Transaction) => boolean) | null):
 /** Categories a vacation absorbs: variable everyday spending, never fixed charges or income. */
 export const VACATION_ELIGIBLE: ReadonlySet<CategoryId> = new Set<CategoryId>(['alimentation', 'loisirs', 'transport', 'voiture', 'autre']);
 
-/** Car during a vacation: only fuel, tolls and parking follow the trip (never loan, insurance or maintenance). */
+/** Car during a vacation: only fuel, tolls and parking follow the trip (never loan, insurance or maintenance); a cash entry by its typed subcategory. */
 function isTripCarExpense(tx: Transaction): boolean {
+	if (tx.virtual_category) return tx.virtual_subcategory === 'carburant' || tx.virtual_subcategory === 'peages-parkings';
 	const sub = tx.bank_subcategory ? normalizeHeader(tx.bank_subcategory) : '';
 	if (sub) return sub === 'carburant' || sub === 'parking peage';
 	const m = subMerchantDictFor(merchantKey(tx.remittance_information), rawLabelKey(tx.remittance_information));
@@ -337,18 +338,29 @@ export function isWealthMovement(tx: Transaction): boolean {
 	return INTERNAL_TRANSFER_RE.test(tx.remittance_information.join(' '));
 }
 
+/** Label of the budget entry of cash never detailed, written off from the cash wallet (wallet.ts). */
+export const CASH_WRITE_OFF_LABEL = 'Liquide non détaillé';
+
+/** Write-off of the cash wallet: dated the day it was written off, not the days the cash went, so never moved into Vacances by a holiday. */
+function isCashWriteOff(tx: Transaction): boolean {
+	return tx.source === 'cash' && tx.remittance_information[0] === CASH_WRITE_OFF_LABEL;
+}
+
 /**
  * Classification (SPEC v10 §3), pure function testable outside the browser:
- * 0) computed entry (Portage): its category is fixed at the source;
+ * 0) computed entry of the Portage tab: its category is fixed at the source;
  * 1) individual override 2) learned rule (inclusion on merchantKey) — both
  *    take priority over the defaults and over the implicit « revenus » of
  *    credits, since the user decided explicitly; on a wealth movement (Kraken
  *    line, transfer to oneself) a « Vacances » set by mistake is ignored;
- * 3) natural category (baseCategory);
+ * 3) natural category (baseCategory); a cash wallet entry's is the category
+ *    typed with it, and no learned rule replaces that choice;
  * 4) vacation: VARIABLE spending during a declared period becomes « vacances »
  *    — never fixed charges of « autre » (loan payment, instalment, fee, direct
  *    debits and transfers: hundreds of euros were absorbed over a real
- *    two-month period).
+ *    two-month period). Cash spent during a holiday follows it like a card
+ *    payment, as the withdrawals it replaces did; a write-off of the cash
+ *    wallet never does (dated when written off, it stays in « Autre »).
  */
 export function categorize(
 	tx: Transaction,
@@ -356,16 +368,16 @@ export function categorize(
 	rules?: CatRule[],
 	merchantMap?: MerchantCategoryMap
 ): CategoryId {
-	if (tx.virtual_category) return tx.virtual_category;
+	if (tx.virtual_category && tx.source !== 'cash') return tx.virtual_category;
 	const key = txKey(tx);
 	const wealth = isWealthMovement(tx);
 	if (overrides && overrides[key]) return wealth && overrides[key] === 'vacances' ? 'epargne' : overrides[key];
 
-	const rule = ruleFor(tx, rules ?? loadCatRuleStore().rules);
+	const rule = tx.virtual_category ? undefined : ruleFor(tx, rules ?? loadCatRuleStore().rules);
 	if (rule) return wealth && rule.categoryId === 'vacances' ? 'epargne' : rule.categoryId;
 
 	const base = baseCategory(tx, merchantMap);
-	if (VACATION_ELIGIBLE.has(base) && (base !== 'voiture' || isTripCarExpense(tx)) && !wealth && !FIXED_CHARGE_RE.test(tx.remittance_information.join(' ').trim()) && vacationPredicate?.(tx)) return 'vacances';
+	if (VACATION_ELIGIBLE.has(base) && (base !== 'voiture' || isTripCarExpense(tx)) && !wealth && !isCashWriteOff(tx) && !FIXED_CHARGE_RE.test(tx.remittance_information.join(' ').trim()) && vacationPredicate?.(tx)) return 'vacances';
 	return base;
 }
 
@@ -385,6 +397,7 @@ export function naturalCategory(tx: Transaction, merchantMap?: MerchantCategoryM
 
 /**
  * Natural category of an operation:
+ * - Computed entry (portage, cash wallet): the category it was given (typed with a cash spend).
  * - Cheque deposit: income, even when the bank reverses it (a « REM CHQ … »
  *   debit = rejected/cancelled cheque → negative income, not a big expense).
  * - Loan instalment credited on the loan account (« MENSUALITE PRELEVEE »):
@@ -423,6 +436,7 @@ function baseCategory(tx: Transaction, merchantMap?: MerchantCategoryMap): Categ
 }
 
 function computeBaseCategory(tx: Transaction, merchantMap?: MerchantCategoryMap): CategoryId {
+	if (tx.virtual_category) return tx.virtual_category;
 	if (/^REM(ISE)?\s+CHQ\b|^REMISE\s+CHEQUE\b/i.test(tx.remittance_information.join(' '))) return 'revenus';
 
 	if (/^MENSUALITE\s+PRELEVEE/i.test(tx.remittance_information.join(' '))) return 'autre';

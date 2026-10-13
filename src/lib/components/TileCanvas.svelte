@@ -21,7 +21,8 @@
 		pointerDown(e: PointerEvent, id: string, host: HTMLElement): void;
 		contextMenu(e: MouseEvent, id: string, host: HTMLElement): void;
 		keyDown(e: KeyboardEvent, id: string, host: HTMLElement): void;
-		openMenu(id: string, x: number, y: number): void;
+		/** Block menu at a point; with a target, the entries its content offers (`use:contextActions`) come first. */
+		openMenu(id: string, x: number, y: number, target?: EventTarget | null): void;
 	}
 
 	export const TILE_CONTEXT = 'tuiles';
@@ -79,6 +80,9 @@
 	} from '$lib/layout.svelte';
 	import { uiState } from '$lib/ui.svelte';
 	import { pressedScrollbar, tileOuterHeight } from '$lib/tileMeasure';
+	import { clampToViewport, isMenuKey, type MenuAction, type MenuItem } from '$lib/contextMenuModel';
+	import { closesMenu, collectActions, focusedTrigger, focusMenu, holdOpensMenu, insideMenu, menuKeydown, restoreFocus, runMenuAction, swallowClickAfterRelease, type MenuTrigger } from '$lib/contextMenu.svelte';
+	import ContextMenuItems from './ContextMenuItems.svelte';
 
 	/**
 	 * Tiled canvas of a page's blocks, like Hyprland's dwindle layout: the tiles fill the canvas with a
@@ -95,12 +99,15 @@
 	 *   horizontal one sets the height of the row above it (double click: fit it to its content); the
 	 *   canvas bottom edge grows or shrinks the last row;
 	 * - right click without dragging: the block menu (Shift + right click keeps the browser menu), with
-	 *   « Ajuster la hauteur au contenu »;
+	 *   « Ajuster la hauteur au contenu »; the entries the clicked content offers (`use:contextActions`)
+	 *   come first, above the block entries;
 	 * - keyboard on a focused tile: Alt + arrows swap with the neighbour, Alt + Shift + arrows resize
 	 *   by 24 px (up and down from the bottom edge), Alt + Enter fullscreen, Menu key or Shift + F10
-	 *   open the menu.
+	 *   open the menu (on any focused element of the tile, with its entries); in the menu, arrows,
+	 *   Home, End and a letter move, Escape or Tab closes it and gives the focus back.
 	 * Narrow or touch screens: one column in tree order with natural heights; a long press (or a right
-	 * click) opens the menu. Every change can be undone from its toast.
+	 * click) opens the menu, also on a control that offers entries. Every change can be undone from
+	 * its toast.
 	 *
 	 * Until the user changes something, the page derives its tiles from the defaults: rows from the
 	 * former order and widths, row heights from the blocks' natural heights (no stretching to the window:
@@ -124,9 +131,12 @@
 	let landingId = $state<string | null>(null);
 	let gesture = $state(false);
 	let label = $state<{ x: number; y: number; text: string } | null>(null);
-	let menu = $state<{ id: string; x: number; y: number } | null>(null);
+	let menu = $state.raw<{ id: string; x: number; y: number; content: MenuItem[]; trigger: MenuTrigger | null; keyboard: boolean } | null>(null);
 	let menuEl = $state<HTMLElement | null>(null);
 	let menuHeight = $state(0);
+	let menuWidth = $state(0);
+	/** Until then, the browser menu event that follows a keyboard opening is ignored. */
+	let keyboardQuiet = 0;
 	let chipOpen = $state(false);
 	let rightPressed = false;
 
@@ -267,27 +277,37 @@
 		return () => clearTimeout(timer);
 	});
 
-	/** Menu listeners while it is open: outside click, Escape, scroll or resize close it. */
+	/**
+	 * Menu listeners while it is open: outside click, Escape or Tab (focus back to where it was), a scroll
+	 * outside the menu or a resize close it; it takes the focus (its first entry from the keyboard).
+	 */
 	$effect(() => {
-		if (!menu) return;
+		const open = menu;
+		if (!open) return;
+		void tick().then(() => menuEl && focusMenu(menuEl, open.keyboard));
 		const close = () => (menu = null);
 		const onDown = (e: PointerEvent) => {
-			if (!menuEl?.contains(e.target as Node)) menu = null;
+			if (!insideMenu(e.target, menuEl)) menu = null;
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== 'Escape') return;
+			if (!closesMenu(e)) return;
+			e.preventDefault();
 			e.stopImmediatePropagation();
 			menu = null;
+			restoreFocus(open.trigger);
+		};
+		const onScroll = (e: Event) => {
+			if (!insideMenu(e.target, menuEl)) menu = null;
 		};
 		document.addEventListener('pointerdown', onDown, true);
 		window.addEventListener('keydown', onKey, true);
 		window.addEventListener('resize', close);
-		window.addEventListener('scroll', close, true);
+		window.addEventListener('scroll', onScroll, true);
 		return () => {
 			document.removeEventListener('pointerdown', onDown, true);
 			window.removeEventListener('keydown', onKey, true);
 			window.removeEventListener('resize', close);
-			window.removeEventListener('scroll', close, true);
+			window.removeEventListener('scroll', onScroll, true);
 		};
 	});
 
@@ -310,16 +330,6 @@
 		if (!(target instanceof Element)) return true;
 		if (target.closest(INTERACTIVE)) return true;
 		return target instanceof HTMLElement && pressedScrollbar(target, e.offsetX, e.offsetY);
-	}
-
-	/** Swallows the click the browser sends after a drag or a long press. */
-	function swallowNextClick(): void {
-		const stop = (e: Event) => {
-			e.stopPropagation();
-			e.preventDefault();
-		};
-		window.addEventListener('click', stop, { capture: true, once: true });
-		setTimeout(() => window.removeEventListener('click', stop, { capture: true }), 80);
 	}
 
 	/** Page-wide gesture state: no text selection, no tile transitions. */
@@ -346,8 +356,9 @@
 	}
 
 	function pointerDown(e: PointerEvent, id: string, host: HTMLElement): void {
+		if (e.pointerType === 'mouse') keyboardQuiet = 0;
 		if (!tiled) {
-			if (e.pointerType !== 'mouse' && e.button === 0 && !ignoredTarget(e)) holdForMenu(e, id);
+			if (e.pointerType !== 'mouse' && e.button === 0 && (!ignoredTarget(e) || holdOpensMenu(e.target))) holdForMenu(e, id);
 			return;
 		}
 		if (e.button === 2) {
@@ -408,19 +419,20 @@
 
 	/**
 	 * Drag of a lifted tile: it follows the pointer while the drop zone under it is computed from the
-	 * tile rectangles; release applies it (move, swap or dock), Escape cancels.
+	 * tile rectangles; release applies it (move, swap or dock), Escape cancels. A tile that moved
+	 * swallows the click of its release, dropped or cancelled with the button still down.
 	 */
 	function lift(pointerId: number, id: string, host: HTMLElement, startX: number, startY: number): void {
 		if (!host.isConnected) return;
 		menu = null;
 		setGesture(true);
 		moving = { id, dx: 0, dy: 0, zone: null };
-		const finish = (apply: boolean) => {
+		const finish = (apply: boolean, released: boolean) => {
 			window.removeEventListener('keydown', onKey, true);
 			const zone = moving?.zone ?? null;
 			const moved = !!moving && Math.hypot(moving.dx, moving.dy) > MOVE_SLOP;
 			setGesture(false);
-			if (moved) swallowNextClick();
+			if (moved) swallowClickAfterRelease(released);
 			if (apply && zone && tree) {
 				const next = zone.kind === 'dock' ? dockTile(tree, id, zone.side) : moveTile(tree, id, zone.target, zone.zone);
 				landingId = id;
@@ -438,14 +450,14 @@
 				const p = local(ev);
 				moving = { id, dx: ev.clientX - startX, dy: ev.clientY - startY, zone: dropZone(layout.tiles, { w: width, h: height }, p.x, p.y, id) };
 			},
-			(_ev, cancelled) => finish(!cancelled)
+			(_ev, cancelled) => finish(!cancelled, true)
 		);
 		const onKey = (ev: KeyboardEvent) => {
 			if (ev.key !== 'Escape') return;
 			ev.preventDefault();
 			ev.stopImmediatePropagation();
 			stop();
-			finish(false);
+			finish(false, false);
 		};
 		window.addEventListener('keydown', onKey, true);
 	}
@@ -517,11 +529,12 @@
 
 	/**
 	 * Right button held on a tile: a drag moves its nearest edges (pixel resize, label with the new
-	 * size); a release without drag opens the menu there. Decided on release, since Linux sends the
-	 * contextmenu event on press.
+	 * size); a release without drag opens the menu there, with the entries of the pressed content.
+	 * Decided on release, since Linux sends the contextmenu event on press.
 	 */
 	function startRightDrag(e: PointerEvent, id: string, _host: HTMLElement): void {
 		if (e.shiftKey || !tree) return;
+		const target = e.target;
 		const base = tree;
 		const baseHeight = height;
 		const r = layout.tiles.get(id);
@@ -553,7 +566,7 @@
 			(ev, cancelled) => {
 				setTimeout(() => (rightPressed = false), 300);
 				if (resizing) endResize(base, baseHeight, cancelled, 'Taille du bloc modifiée');
-				else if (!cancelled) openMenu(id, ev.clientX, ev.clientY);
+				else if (!cancelled) openMenu(id, ev.clientX, ev.clientY, target);
 			}
 		);
 	}
@@ -609,10 +622,11 @@
 	function holdForMenu(e: PointerEvent, id: string): void {
 		const startX = e.clientX;
 		const startY = e.clientY;
+		const target = e.target;
 		const timer = setTimeout(() => {
 			stop();
-			swallowNextClick();
-			openMenu(id, startX, startY);
+			swallowClickAfterRelease();
+			openMenu(id, startX, startY, target);
 		}, TOUCH_HOLD_MS);
 		const onMove = (ev: PointerEvent) => {
 			if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 8) stop();
@@ -635,18 +649,20 @@
 	function contextMenu(e: MouseEvent, id: string, host: HTMLElement): void {
 		if (e.shiftKey) return;
 		e.preventDefault();
-		if (tiled && rightPressed) return;
+		if ((tiled && rightPressed) || Date.now() < keyboardQuiet) return;
 		const fromKeyboard = e.clientX === 0 && e.clientY === 0;
 		const box = host.getBoundingClientRect();
-		openMenu(id, fromKeyboard ? box.left + 16 : e.clientX, fromKeyboard ? box.top + 16 : e.clientY);
+		openMenu(id, fromKeyboard ? box.left + 16 : e.clientX, fromKeyboard ? box.top + 16 : e.clientY, e.target, fromKeyboard);
 	}
 
-	/** Keyboard on a focused tile (see the component doc). */
+	/** Keyboard on a focused tile, or Menu key on a focused element inside it (see the component doc). */
 	function keyDown(e: KeyboardEvent, id: string, host: HTMLElement): void {
-		if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+		if (isMenuKey(e)) {
 			e.preventDefault();
+			keyboardQuiet = Date.now() + 600;
+			const own = e.target instanceof Element && e.target !== host ? e.target.getBoundingClientRect() : null;
 			const box = host.getBoundingClientRect();
-			openMenu(id, box.left + 16, box.top + 16);
+			openMenu(id, own ? own.left + Math.min(16, own.width / 2) : box.left + 16, own ? own.bottom + 2 : box.top + 16, e.target, true);
 			return;
 		}
 		if (!e.altKey) return;
@@ -679,23 +695,28 @@
 		commit(movedEdges(tree, [{ path: edges[edge]!, delta: grow }]), 'Taille du bloc modifiée');
 	}
 
-	function openMenu(id: string, x: number, y: number): void {
+	function openMenu(id: string, x: number, y: number, target: EventTarget | null = null, keyboard = false): void {
 		chipOpen = false;
-		menu = { id, x, y };
+		menu = { id, x, y, keyboard, content: target ? collectActions(target) : [], trigger: focusedTrigger() };
 	}
 
-	/** Menu position kept inside the window. */
+	/** Menu position kept inside the window (it flips left or up of the pointer when there is no room). */
 	const menuStyle = $derived.by(() => {
 		if (!menu) return '';
-		const w = 236;
-		const left = Math.max(8, Math.min(menu.x, window.innerWidth - w - 8));
-		const top = menu.y + menuHeight + 8 > window.innerHeight ? Math.max(8, window.innerHeight - menuHeight - 8) : menu.y;
-		return `left: ${left}px; top: ${top}px; width: ${w}px;`;
+		const p = clampToViewport(menu.x, menu.y, Math.max(menuWidth, 276), menuHeight, window.innerWidth, window.innerHeight);
+		return `left: ${p.left}px; top: ${p.top}px; width: 276px;`;
 	});
 
 	function menuAction(run: () => void): void {
 		menu = null;
 		run();
+	}
+
+	/** An entry of the content: the menu closes, the page runs it, the focus comes back if it was lost. */
+	function pickContent(action: MenuAction): void {
+		const trigger = menu?.trigger ?? null;
+		menu = null;
+		runMenuAction(action, trigger);
 	}
 
 	/** « Ajuster la hauteur au contenu »: the row ending at the bottom of the block fits its content. */
@@ -809,7 +830,23 @@
 
 {#if menu}
 	{@const id = menu.id}
-	<div bind:this={menuEl} bind:offsetHeight={menuHeight} class="tile-menu" style={menuStyle} role="menu" aria-label="Options du bloc {menuMeta?.title ?? ''}" data-tile-menu>
+	<div
+		bind:this={menuEl}
+		bind:offsetHeight={menuHeight}
+		bind:offsetWidth={menuWidth}
+		class="tile-menu"
+		style={menuStyle}
+		role="menu"
+		tabindex="-1"
+		aria-label="Options du bloc {menuMeta?.title ?? ''}"
+		data-tile-menu
+		onkeydown={(e) => menuEl && menuKeydown(e, menuEl)}
+		oncontextmenu={(e) => e.preventDefault()}
+	>
+		{#if menu.content.length > 0}
+			<ContextMenuItems items={menu.content} pick={pickContent} />
+			<div class="tile-menu-sep" aria-hidden="true"></div>
+		{/if}
 		<p class="tile-menu-title">{menuMeta?.title ?? 'Bloc'}</p>
 		<!-- Most used actions as big icon buttons -->
 		<div class="tile-menu-quick">
@@ -998,6 +1035,10 @@
 		position: fixed;
 		z-index: 85;
 		min-width: 276px;
+		max-height: calc(100vh - 16px);
+		overflow-y: auto;
+		scrollbar-width: thin;
+		outline: none;
 		padding: 8px;
 		border: 1px solid var(--hairline);
 		border-radius: 14px;

@@ -4,6 +4,7 @@
 	import { getMerchantCategoryMap } from '$lib/store.svelte';
 	import { isPending, sortByDate, signedAmount } from '$lib/data';
 	import { detectRecurring, normalizeLabel, type RecurringItem } from '$lib/forecast';
+	import { latestMerchantQuery } from '$lib/merchantSearch';
 	import { getCategory, isWealthMovement } from '$lib/categories';
 	import { flowKind } from '$lib/flow';
 	import { formatDate, formatEUR, formatEURCompact } from '$lib/format';
@@ -105,7 +106,7 @@
 	let showOthers = $state(false);
 
 	function open(r: Row) {
-		uiState.txSearch = r.label;
+		uiState.txSearch = latestMerchantQuery(confirmed.filter((tx) => normalizeLabel(tx) === r.key)) || r.label;
 		navigate('/transactions');
 	}
 	const CADENCE: Record<string, string> = { hebdomadaire: 'hebdo', mensuelle: 'mensuel', trimestrielle: 'trimestriel' };

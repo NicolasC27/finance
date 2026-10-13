@@ -1,4 +1,4 @@
-import { tick } from 'svelte';
+import { onDestroy, tick } from 'svelte';
 import { navDirection } from './navOrder';
 import { beginPageChange, settleEntrances } from './motion.svelte';
 
@@ -19,9 +19,13 @@ export function normalizePath(pathname: string): RoutePath {
 	return KNOWN.includes(p as RoutePath) ? (p as RoutePath) : '/';
 }
 
-/** Current route (reactive). */
-export const route = $state<{ path: RoutePath }>({
-	path: normalizePath(typeof location === 'undefined' ? '/' : location.pathname)
+/**
+ * Current route (reactive). `visit` changes when Back or Forward lands on another history entry of
+ * the same page: the app shell re-creates the page so that entry's snapshot is restored.
+ */
+export const route = $state<{ path: RoutePath; visit: number }>({
+	path: normalizePath(typeof location === 'undefined' ? '/' : location.pathname),
+	visit: 0
 });
 
 /** Loads the code of a page before it is shown (lazy pages), set by the app shell. */
@@ -41,36 +45,87 @@ let navToken = 0;
 let shownTransition: ViewTransition | null = null;
 
 /**
- * History entry on screen and the scroll position each visited entry was left at, kept for the tab
- * (sessionStorage) so Back, Forward and a reload all return to where the page was left.
+ * History entry on screen, the scroll position each visited entry was left at and the view state of
+ * its page (see pageSnapshot), kept for the tab (sessionStorage) so Back, Forward and a reload all
+ * return to the page as it was left.
  */
 const SCROLLS_KEY = 'budget:scroll-positions';
-const SCROLLS_KEPT = 50;
+const SNAPSHOTS_KEY = 'budget:page-snapshots';
+const ENTRIES_KEPT = 50;
 let entryKey = '';
 let scrolls = new Map<string, number>();
+let snapshots = new Map<string, Record<string, unknown>>();
+const capturers = new Map<string, () => unknown>();
 
 function newEntryKey(): string {
 	return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function loadScrolls(): Map<string, number> {
+function readEntries<T>(storageKey: string, valid: (value: unknown) => value is T): Map<string, T> {
 	try {
-		const saved: unknown = JSON.parse(sessionStorage.getItem(SCROLLS_KEY) ?? '[]');
-		return new Map(Array.isArray(saved) ? saved.filter((e): e is [string, number] => Array.isArray(e) && typeof e[0] === 'string' && typeof e[1] === 'number') : []);
+		const saved: unknown = JSON.parse(sessionStorage.getItem(storageKey) ?? '[]');
+		return new Map(Array.isArray(saved) ? saved.filter((e): e is [string, T] => Array.isArray(e) && typeof e[0] === 'string' && valid(e[1])) : []);
 	} catch {
 		return new Map();
 	}
 }
 
-/** Notes where the entry on screen was left (moved last, so the oldest entries are dropped first). */
+/** Saves the newest entries (storage full or disabled: they stay in memory). */
+function writeEntries(storageKey: string, entries: Map<string, unknown>): void {
+	try {
+		sessionStorage.setItem(storageKey, JSON.stringify([...entries].slice(-ENTRIES_KEPT)));
+	} catch {
+		return;
+	}
+}
+
+/** Entry on screen, read from the history once: the first page is created before initRouter runs. */
+function ensureEntry(): void {
+	if (entryKey) return;
+	scrolls = readEntries(SCROLLS_KEY, (v): v is number => typeof v === 'number');
+	snapshots = readEntries(SNAPSHOTS_KEY, (v): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v));
+	entryKey = typeof history.state?.key === 'string' ? history.state.key : newEntryKey();
+}
+
+/** Notes how the entry on screen was left, scroll and page view state (moved last, so the oldest entries are dropped first). */
 function leaveEntry(): void {
 	scrolls.delete(entryKey);
 	scrolls.set(entryKey, window.scrollY);
-	try {
-		sessionStorage.setItem(SCROLLS_KEY, JSON.stringify([...scrolls].slice(-SCROLLS_KEPT)));
-	} catch {
-		/* storage full or disabled: positions stay in memory */
+	writeEntries(SCROLLS_KEY, scrolls);
+	const parts: Record<string, unknown> = {};
+	for (const [id, capture] of capturers) {
+		try {
+			parts[id] = $state.snapshot(capture());
+		} catch (e) {
+			console.error(`pageSnapshot ${id}`, e);
+		}
 	}
+	snapshots.delete(entryKey);
+	if (Object.keys(parts).length > 0) snapshots.set(entryKey, parts);
+	writeEntries(SNAPSHOTS_KEY, snapshots);
+}
+
+/**
+ * Keeps part of a page's view state (filters, view, sort, open row…) with the history entry, like a
+ * SvelteKit snapshot: `capture` runs when the entry is left (page change, reload), `restore` runs
+ * during this call when the entry is revisited (Back, Forward, reload), so the page renders as it
+ * was left from its first frame. A new visit (link, sidebar) starts fresh. `id` is unique in the app;
+ * `capture` returns a plain JSON object (anything else is never handed back). Call during component
+ * initialisation, after the states that `restore` sets.
+ */
+export function pageSnapshot<T extends object>(id: string, capture: () => T, restore: (saved: T) => void): void {
+	ensureEntry();
+	const parts = snapshots.get(entryKey);
+	const part = parts?.[id];
+	if (parts && typeof part === 'object' && part !== null && !Array.isArray(part)) {
+		const saved = part as T;
+		delete parts[id];
+		restore(saved);
+	}
+	capturers.set(id, capture);
+	onDestroy(() => {
+		if (capturers.get(id) === capture) capturers.delete(id);
+	});
 }
 
 function pushEntry(to: RoutePath): void {
@@ -172,13 +227,12 @@ export function navigate(to: RoutePath): void {
  * Installs the global listeners: popstate, interception of internal links (every internal
  * <a href="/..."> without a modifier goes through the router) and their preloading on hover or
  * focus. An unknown URL ('/foo') shows the Dashboard AND fixes the URL, otherwise clicking
- * 'Dashboard' never replaced it. Scroll positions are kept by the router (manual restoration): Back,
- * Forward and a reload return to where each entry was left.
+ * 'Dashboard' never replaced it. Scroll positions and page snapshots are kept by the router (manual
+ * restoration): Back, Forward and a reload return to each entry as it was left.
  */
 export function initRouter(): () => void {
 	history.scrollRestoration = 'manual';
-	scrolls = loadScrolls();
-	entryKey = typeof history.state?.key === 'string' ? history.state.key : newEntryKey();
+	ensureEntry();
 	if (route.path === '/' && !/^\/(index(\.html)?)?$/.test(location.pathname.replace(/\/+$/, '') || '/')) {
 		history.replaceState({ key: entryKey }, '', '/');
 	} else if (history.state?.key !== entryKey) {
@@ -208,8 +262,10 @@ export function initRouter(): () => void {
 			return;
 		}
 		navToken++;
+		const otherEntry = key !== entryKey;
 		enter();
-		restoreScroll(target(), 1500);
+		if (otherEntry) route.visit++;
+		void tick().then(() => restoreScroll(target(), 1500));
 	};
 
 	const onPageHide = () => leaveEntry();

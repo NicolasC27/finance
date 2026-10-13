@@ -15,6 +15,15 @@ export async function loadDemoTransactions(): Promise<Transaction[]> {
 // Scopes (bank accounts / wealth lines): single source in scope.ts
 export { NON_BANK_ACCOUNTS, isBankTx, isWealthLine } from './scope';
 
+/**
+ * Entry computed outside the bank (source 'portage': portage documents; 'cash': cash wallet): in
+ * the budget, never in the balances, never a bank date nor a direct debit, and it keeps its written
+ * label.
+ */
+export function isComputedEntry(tx: Transaction): boolean {
+	return tx.source === 'portage' || tx.source === 'cash';
+}
+
 /** A transaction without a value date is "pending". */
 export function isPending(tx: Transaction): boolean {
 	return !tx.booking_date || !tx.value_date;

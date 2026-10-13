@@ -121,6 +121,16 @@ export function declineRule(): void {
 }
 
 /**
+ * Withdraws the prompt `raised` by a change that is undone, while it is still the one shown (one
+ * answered or replaced since stays as it is), and puts back `previous`, the prompt it replaced (an
+ * unanswered offer raised by an earlier change). Nothing is persisted: the keyword can be offered
+ * again.
+ */
+export function withdrawPrompt(raised: typeof rulesState.prompt, previous: typeof rulesState.prompt = null): void {
+	if (raised && rulesState.prompt === raised) rulesState.prompt = previous;
+}
+
+/**
  * Override + immediate rule for the merchant (sorting box: 'toujours pour ce commerçant'
  * ticked), without going through the prompt.
  */
@@ -137,9 +147,13 @@ export function setOverrideAndRule(tx: Transaction, categoryId: CategoryId): { k
 	return { keyword, ...(previous ? { previous } : {}) };
 }
 
-/** Undoes a rule created by setOverrideAndRule: removed, or put back to its previous state. */
-export function restoreRule(keyword: string, previous?: CatRule): void {
+/**
+ * Undoes a rule created by setOverrideAndRule: removed, or put back to its previous state;
+ * `dismissed` puts the keyword back among the refused ones when it was before.
+ */
+export function restoreRule(keyword: string, previous?: CatRule, dismissed = false): void {
 	rulesState.rules = [...rulesState.rules.filter((r) => r.keyword !== keyword), ...(previous ? [previous] : [])];
+	if (dismissed && !rulesState.dismissed.includes(keyword)) rulesState.dismissed = [...rulesState.dismissed, keyword];
 	persist();
 	touchOverrides();
 }

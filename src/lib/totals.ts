@@ -1,5 +1,5 @@
 import type { CategoryId, Transaction } from './types';
-import { isPending, signedAmount } from './data';
+import { isComputedEntry, isPending, signedAmount } from './data';
 import { isWealthLine } from './scope';
 import { flowKind } from './flow';
 
@@ -86,12 +86,12 @@ export function daysInMonth(monthKey: string): number {
 }
 
 /**
- * Last operation date of the budget scope ('' if none); computed entries (portage, dated at the
- * end of the month) are not bank data dates.
+ * Last operation date of the budget scope ('' if none); computed entries (portage dated at the end
+ * of the month, a cash spend typed today or ahead) are not bank data dates.
  */
 export function lastFlowDate(txs: Transaction[]): string {
 	let last = '';
-	for (const tx of txs) if (isBudgetFlow(tx) && tx.source !== 'portage' && tx.booking_date > last) last = tx.booking_date;
+	for (const tx of txs) if (isBudgetFlow(tx) && !isComputedEntry(tx) && tx.booking_date > last) last = tx.booking_date;
 	return last;
 }
 

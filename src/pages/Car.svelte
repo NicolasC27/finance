@@ -20,7 +20,7 @@
 	import { firstRegistrationOf, marketValue, patchClearValue, plateDate, valuationLinks, priceTrend, type Milestone } from '$lib/vehicle';
 	import { vehicleSheet } from '$lib/car.svelte';
 	import { prepareQuestion } from '$lib/ai.svelte';
-	import { navigate } from '$lib/router.svelte';
+	import { navigate, pageSnapshot } from '$lib/router.svelte';
 	import { onMount } from 'svelte';
 	import { refreshValuation, autoState, automateVehicle, confirmValue, ignoreProposal, importCarDocuments, retainValue, acceptProposal } from '$lib/carAuto.svelte';
 	import { showToast, uiState, showSuccess } from '$lib/ui.svelte';
@@ -38,6 +38,13 @@
 
 	const vehicles = $derived(assetsState.biens.filter((b) => b.type === 'vehicule').sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate)));
 	let selectedId = $state<string | null>(null);
+	pageSnapshot(
+		'car',
+		() => ({ selectedId }),
+		(saved) => {
+			if (typeof saved?.selectedId === 'string') selectedId = saved.selectedId;
+		}
+	);
 	const v = $derived(vehicles.find((b) => b.id === selectedId) ?? vehicles[0]);
 	const computed = $derived(v ? marketValue(v, today, modulesState.car.marketEffect) : null);
 	let formOpen = $state<'ajout' | 'modif' | null>(null);

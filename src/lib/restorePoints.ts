@@ -70,6 +70,7 @@ const KEY_NAMES: Readonly<Record<string, string>> = {
 	'budget:accounts': 'comptes',
 	'budget:vacations': 'vacances',
 	'budget:portage': 'portage',
+	'budget:cash-wallet': 'porte-monnaie (liquide)',
 	'budget:loans': 'crédits',
 	'budget:refunds': 'remboursements attendus',
 	'budget:layout': 'disposition des pages',

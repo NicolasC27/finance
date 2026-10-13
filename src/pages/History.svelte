@@ -5,6 +5,7 @@
 	import { diffSnapshots, pointKind, type PointInfo, type PointKind, type SnapshotDiff } from '$lib/restorePoints';
 	import { currentData, hasRestorePoints, listRestorePoints, readRestorePoint, restorePoint, rollbackTo } from '$lib/history.svelte';
 	import { showSuccess, showToast } from '$lib/ui.svelte';
+	import { pageSnapshot } from '$lib/router.svelte';
 
 	/**
 	 * History of the data: restore points grouped by day and filtered by kind; the selected point
@@ -31,6 +32,14 @@
 	let diff = $state<SnapshotDiff | null>(null);
 	let confirming = $state(false);
 	let busy = $state(false);
+	pageSnapshot(
+		'history',
+		() => ({ kind, selected }),
+		(saved) => {
+			if (KINDS.some((k) => k.id === saved?.kind)) kind = saved.kind;
+			if (typeof saved?.selected === 'number') selected = saved.selected;
+		}
+	);
 
 	const counts = $derived.by(() => {
 		const c = new Map<string, number>([['all', points.length]]);
@@ -61,9 +70,20 @@
 			loading = false;
 		}
 	}
+	/**
+	 * On open: the points. A type or a point restored by Back or a reload is dropped once the list
+	 * says it is gone (the type's chip would be hidden over an empty list); a point still there shows
+	 * its comparison again.
+	 */
 	onMount(() => {
-		if (hasRestorePoints()) void refresh();
-		else loading = false;
+		if (!hasRestorePoints()) return void (loading = false);
+		void refresh().then(() => {
+			if (error) return;
+			if (!counts.get(kind)) kind = 'all';
+			if (selected === null) return;
+			if (points.some((p) => p.id === selected)) void compare(selected);
+			else selected = null;
+		});
 	});
 
 	async function create() {
@@ -79,10 +99,15 @@
 		confirming = false;
 		if (selected === p.id) return void (selected = null);
 		selected = p.id;
+		await compare(p.id);
+	}
+
+	/** What going back to point `id` would change (kept only if that point is still the selected one). */
+	async function compare(id: number) {
 		diff = null;
 		try {
-			const d = diffSnapshots(await readRestorePoint(p.id), currentData());
-			if (selected === p.id) diff = d;
+			const d = diffSnapshots(await readRestorePoint(id), currentData());
+			if (selected === id) diff = d;
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : String(e));
 			selected = null;

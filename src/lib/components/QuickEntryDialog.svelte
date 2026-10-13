@@ -11,6 +11,7 @@
 	import { knownPeople } from '$lib/refunds.svelte';
 	import { shareRange } from '$lib/refunds';
 	import { todayIso } from '$lib/forecast';
+	import { cashChipLabel, cashStartPreview, shownCashBalance, walletStarted } from '$lib/wallet.svelte';
 	import DateField from './DateField.svelte';
 
 	/**
@@ -18,7 +19,8 @@
 	 * type by the local parser; Enter asks the AI relay when it is set (then Enter again saves). The
 	 * preview stays editable (label, amount, direction, category, date, account, instalments). The
 	 * operation is counted at once and replaced by the bank operation when the statement is imported;
-	 * in several times, the next instalments wait for their bank debit.
+	 * in several times, the next instalments wait for their bank debit. Paid (or received) in cash,
+	 * it goes to the cash wallet: counted at once, no statement to wait for.
 	 */
 
 	const today = todayIso;
@@ -50,8 +52,21 @@
 	const sourceText = $derived(edits.categoryId || edits.subId !== undefined ? 'ton choix, retenu pour la suite' : fromAi ? "proposé par l'IA, retenu pour la suite" : SOURCES[suggestion.source]);
 	const options = $derived(uiState.quickEntryOpen ? voucherOptions() : { swile: false, culture: false });
 	const named = $derived('error' in local ? undefined : local.payment);
-	const payment = $derived<QuickPayment>(credit ? 'card' : (edits.payment ?? defaultPayment(named)));
-	const split = $derived(payment === 'card' ? null : splitVoucherPayment(amount, voucherAvailable(payment, date)));
+	const payment = $derived<QuickPayment>(credit ? ((edits.payment ?? (named === 'cash' ? 'cash' : 'card')) === 'cash' ? 'cash' : 'card') : (edits.payment ?? defaultPayment(named)));
+	const split = $derived(payment === 'swile' || payment === 'culture' ? splitVoucherPayment(amount, voucherAvailable(payment, date)) : null);
+	const beyondWallet = $derived(payment === 'cash' && !credit && walletStarted() && amount > shownCashBalance());
+	const opening = $derived(payment === 'cash' ? cashStartPreview(date) : null);
+	const cashHint = $derived(
+		credit
+			? 'ajouté au porte-monnaie'
+			: beyondWallet
+				? 'plus que le porte-monnaie : le reste vient d’ailleurs'
+				: walletStarted()
+					? 'sorti du porte-monnaie, sans relevé à attendre'
+					: opening
+						? `ouvre le porte-monnaie avec ton retrait du ${formatDate(opening.date)}`
+						: 'ouvre le porte-monnaie à cette date'
+	);
 	const instalments = $derived(credit || payment !== 'card' ? 1 : (edits.instalments ?? ('error' in local ? undefined : local.instalments) ?? 1));
 	const plan = $derived(instalments > 1 && amount > 0 ? instalmentPlan({ label, amount, credit, date, instalments }, today()) : null);
 	const times = $derived([...new Set([1, 3, 4, instalments])].sort((a, b) => a - b));
@@ -192,21 +207,22 @@
 								{#if forWhom.trim() && amount > 0}<span class="meta-xs" title="Dépense partagée : un virement de cette personne entre 40 % et 110 % de la dépense la solde, et va dans sa catégorie">son virement de {formatEUR(range.min)} à {formatEUR(range.max)} sera reconnu</span>{/if}
 							</div>
 						{/if}
-						{#if !credit && (options.swile || options.culture)}
-							<span class="meta-xs">Payé avec</span>
-							<div class="flex flex-wrap items-center gap-2">
-								<div class="flex gap-1" role="group" aria-label="Moyen de paiement" use:segmented>
-									<button type="button" class="chip cursor-pointer {payment === 'card' ? 'chip-accent' : 'chip-muted'}" aria-pressed={payment === 'card'} onclick={() => (edits = { ...edits, payment: 'card' })}>Carte</button>
-									{#if options.swile}<button type="button" class="chip cursor-pointer {payment === 'swile' ? 'chip-accent' : 'chip-muted'}" aria-pressed={payment === 'swile'} onclick={() => (edits = { ...edits, payment: 'swile' })}>Swile</button>{/if}
-									{#if options.culture}<button type="button" class="chip cursor-pointer {payment === 'culture' ? 'chip-accent' : 'chip-muted'}" aria-pressed={payment === 'culture'} onclick={() => (edits = { ...edits, payment: 'culture' })}>Chèques culture</button>{/if}
-								</div>
-								{#if split}
-									<span class="meta-xs">
-										{#if split.voucher === 0}<span style="color: var(--amber);">{payment === 'swile' ? 'plafond Swile du jour atteint' : 'plus de chèques culture'} : tout sur ta carte</span>{:else if split.card > 0}{formatEUR(split.voucher)} en {payment === 'swile' ? 'Swile' : 'chèques'} + <span style="color: var(--accent);">{formatEUR(split.card)} sur ta carte</span>{payment === 'swile' ? ' (plafond du jour)' : ''}{:else}tout en {payment === 'swile' ? 'Swile' : 'chèques culture'}{/if}
-									</span>
-								{/if}
+						<span class="meta-xs">{credit ? 'Reçu sur' : 'Payé avec'}</span>
+						<div class="flex flex-wrap items-center gap-2">
+							<div class="flex gap-1" role="group" aria-label={credit ? 'Reçu sur' : 'Moyen de paiement'} use:segmented>
+								<button type="button" class="chip cursor-pointer {payment === 'card' ? 'chip-accent' : 'chip-muted'}" aria-pressed={payment === 'card'} onclick={() => (edits = { ...edits, payment: 'card' })}>{credit ? 'Compte' : 'Carte'}</button>
+								{#if !credit && options.swile}<button type="button" class="chip cursor-pointer {payment === 'swile' ? 'chip-accent' : 'chip-muted'}" aria-pressed={payment === 'swile'} onclick={() => (edits = { ...edits, payment: 'swile' })}>Swile</button>{/if}
+								{#if !credit && options.culture}<button type="button" class="chip cursor-pointer {payment === 'culture' ? 'chip-accent' : 'chip-muted'}" aria-pressed={payment === 'culture'} onclick={() => (edits = { ...edits, payment: 'culture' })}>Chèques culture</button>{/if}
+								<button type="button" class="chip cursor-pointer {payment === 'cash' ? 'chip-accent' : 'chip-muted'}" aria-pressed={payment === 'cash'} onclick={() => (edits = { ...edits, payment: 'cash' })} title="Porte-monnaie séparé : tes retraits le remplissent, chaque dépense en liquide compte dans sa catégorie">{cashChipLabel()}</button>
 							</div>
-						{/if}
+							{#if payment === 'cash'}
+								<span class="meta-xs">{cashHint}</span>
+							{:else if split}
+								<span class="meta-xs">
+									{#if split.voucher === 0}<span style="color: var(--amber);">{payment === 'swile' ? 'plafond Swile du jour atteint' : 'plus de chèques culture'} : tout sur ta carte</span>{:else if split.card > 0}{formatEUR(split.voucher)} en {payment === 'swile' ? 'Swile' : 'chèques'} + <span style="color: var(--accent);">{formatEUR(split.card)} sur ta carte</span>{payment === 'swile' ? ' (plafond du jour)' : ''}{:else}tout en {payment === 'swile' ? 'Swile' : 'chèques culture'}{/if}
+								</span>
+							{/if}
+						</div>
 						{#if !credit && payment === 'card'}
 							<span class="meta-xs">En</span>
 							<div class="flex flex-wrap items-center gap-2">
@@ -218,7 +234,7 @@
 								{#if plan}<span class="meta-xs" title="Les échéances suivantes comptent quand la banque les prélève ; elles sont dans l'échéancier">{instalmentText(plan, today())}</span>{/if}
 							</div>
 						{/if}
-						{#if accounts.length > 1}
+						{#if accounts.length > 1 && payment !== 'cash'}
 							<span class="meta-xs">Compte</span>
 							<select class="input-surface w-full" bind:value={account} aria-label="Compte">
 								{#each accounts as a (a.id)}
