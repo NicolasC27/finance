@@ -836,7 +836,7 @@
 	/** Net of the selection, shown in the bar and updated while sliding. */
 	const selectedTotal = $derived(Math.round(selectedTxs.filter(countedFlow).reduce((sum, tx) => sum + signedAmount(tx), 0) * 100) / 100);
 
-	/** Sorted by date: rows listed under each day, and their net counted like the page totals (shown when a day has 2+ rows). */
+	/** Sorted by date: rows listed under each day, and their net counted like the page totals (a day with 2+ rows: date tooltip on a wide screen, day header on a phone). */
 	const dayTotals = $derived.by(() => {
 		if (sortKey !== 'date') return null;
 		const m = new Map<string, { net: number; count: number }>();
@@ -859,10 +859,6 @@
 
 	/** Sorted by date, the rows that open a day on the page (the first row of a page always does). */
 	const dayStarts = $derived(paginated.map((tx, i) => sortKey === 'date' && (i === 0 || dayOf(paginated[i - 1]!) !== dayOf(tx))));
-	/** Second row of a dated day on the page, right under its first row: its empty date cell carries the day's net. */
-	const dayNetRows = $derived(dayStarts.map((start, i) => !start && i > 0 && dayStarts[i - 1]! && !!dayOf(paginated[i]!) && expandedKey !== txKey(paginated[i - 1]!)));
-	/** First row of a day whose second row is not right under it (page break, detail open): the net goes after the date. */
-	const dayNetInline = $derived(dayStarts.map((start, i) => start && !!dayOf(paginated[i]!) && !dayNetRows[i + 1]));
 	const dayNetTitle = (d: { net: number; count: number }) => `${d.count} opérations ce jour, net sans les opérations en cours ni les virements masqués : ${formatEUR(d.net)}`;
 	/** Tags present in the selection ('− Tag'), most frequent first. */
 	const selectedTagCounts = $derived(tagInventory(selectedTxs));
@@ -2246,8 +2242,8 @@
 						{@const isSelected = selected.has(txKey(tx))}
 						{@const newDay = dayStarts[rowIndex] ?? false}
 						{@const showDate = sortKey !== 'date' || newDay || !dayOf(tx)}
-						{@const day = dayOf(tx) && (newDay || dayNetRows[rowIndex]) ? dayTotals?.get(dayOf(tx)) : undefined}
-						<!-- Sorted by date, the date is written once per day (and on the first row of a page) under a full rule; a day with 2+ rows shows its net under the date, in the empty date cell of its second row -->
+						{@const day = dayOf(tx) ? dayTotals?.get(dayOf(tx)) : undefined}
+						<!-- Sorted by date, the date alone is written once per day (and on the first row of a page) under a full rule; the day's net is in the date cell's tooltip on every row of the day -->
 						<tr
 							class="row row-hover press group cursor-pointer border-t transition-colors select-none"
 							class:row-cursor={cursor === rowIndex}
@@ -2282,10 +2278,9 @@
 							<td class="tabular px-4 py-1 whitespace-nowrap {newDay && dayOf(tx) ? 'font-medium' : 'text-secondary'}" title={day && day.count > 1 ? dayNetTitle(day) : undefined}>
 								{#if showDate}
 									{tx.booking_date ? formatDateShort(tx.booking_date) : '—'}
-									{#if day && day.count > 1 && dayNetInline[rowIndex]}<span class="meta-xs ml-1.5 font-normal"><span class="sr-only">net du jour : </span>{signedCompact(day.net)}</span>{/if}
+									{#if newDay && day && day.count > 1}<span class="sr-only"> net du jour : {formatEUR(day.net)}</span>{/if}
 								{:else}
 									<span class="sr-only">{tx.booking_date ? formatDate(tx.booking_date) : 'en cours'}</span>
-									{#if day && dayNetRows[rowIndex]}<span class="meta-xs"><span class="sr-only">net du jour : </span>{signedCompact(day.net)}</span>{/if}
 								{/if}
 							</td>
 							<td class="w-px py-1 pr-0 pl-4">
@@ -2466,7 +2461,7 @@
 				{@const day = dayOf(tx) ? dayTotals?.get(dayOf(tx)) : undefined}
 				<p class="meta-xs flex items-baseline justify-between px-1 pt-1">
 					<span class="font-medium" style="color: var(--text);">{dayOf(tx) ? formatDate(tx.booking_date) : 'En cours'}</span>
-					{#if day && day.count > 1}<span class="tabular" title="{day.count} opérations ce jour, net sans les opérations en cours ni les virements masqués : {formatEUR(day.net)}"><span class="sr-only">net du jour : </span>{signedCompact(day.net)}</span>{/if}
+					{#if day && day.count > 1}<span class="tabular" title={dayNetTitle(day)}><span class="sr-only">net du jour : </span>{signedCompact(day.net)}</span>{/if}
 				</p>
 			{/if}
 			<div
