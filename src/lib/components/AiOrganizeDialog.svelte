@@ -11,7 +11,9 @@
 	 */
 
 	const PAGE_NAMES: Record<string, string> = {
-		dashboard: 'Accueil',
+		dashboard: 'Accueil (chiffres)',
+		'dashboard-main': 'Accueil',
+		'dashboard-detail': 'Accueil (vue détaillée)',
 		budget: 'Budget',
 		analyse: 'Analyse',
 		patrimoine: 'Patrimoine',

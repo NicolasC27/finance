@@ -20,7 +20,7 @@
 </script>
 
 {#if logo}
-	<BrandMark {logo} color={groupColor(group)} {size} title />
+	<BrandMark {logo} color={groupColor(group)} {size} title={logo.name} />
 {:else}
 	<Mark color={groupColor(group)} {size} title={groupLabel(group)}>
 		{#if group === 'loan'}

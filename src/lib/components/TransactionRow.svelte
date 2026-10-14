@@ -51,7 +51,7 @@
 
 <div class="row-hover fade-slide group flex items-center gap-2.5 rounded-lg px-2 {compact ? 'py-1' : 'py-1.5'}" class:quick-pending={tx.source === 'manual'}>
 	<!-- Brand logo or category mark, the same on every operation list -->
-	<MerchantMark label={displayLabel} id={categoryId} size={22} />
+	<MerchantMark label={displayLabel} id={categoryId} size={22} month={tx.booking_date.slice(0, 7)} />
 
 	<div class="min-w-0 flex-1">
 		<p class="truncate text-[13px] font-medium" title={rawLabel}>

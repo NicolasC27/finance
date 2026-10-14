@@ -1,4 +1,4 @@
-import { dwindleInsert, hasLeaf, removeLeaf, replaceLeaf, sanitizeTree, type TileNode } from './tiles';
+import { dwindleInsert, hasLeaf, leafIds, removeLeaf, replaceLeaf, sanitizeTree, type TileNode } from './tiles';
 
 /**
  * Block layout rules, pure and testable: optional elements, the former order and widths (read once to
@@ -297,5 +297,72 @@ export function migrateKpis(layout: PersistedLayout): PersistedLayout {
 
 	const order = { ...layout.order };
 	if (inOrder) order[page] = layout.order[page]!.flatMap((id) => (id === 'kpis' ? all : [id]));
+	return { ...layout, blocks, tiles, order };
+}
+
+/** The three canvases of the home page: the figures row keeps the historical 'dashboard' namespace. */
+export const DASHBOARD_KPI_BLOCKS = ['kpi-solde', 'kpi-entrees', 'kpi-sorties', 'kpi-budget'] as const;
+export const DASHBOARD_MAIN_BLOCKS = ['ribbon', 'recent', 'upcoming'] as const;
+export const DASHBOARD_DETAIL_BLOCKS = ['balance', 'donut', 'savings', 'insights', 'refunds', 'precaution', 'comptes', 'notes'] as const;
+export const DASHBOARD_CANVASES: readonly string[] = ['dashboard', 'dashboard-main', 'dashboard-detail'];
+
+/** Canvases a page-level action (reset) covers: the three of the home page together, else the page itself. */
+export function canvasesOf(page: string): readonly string[] {
+	return DASHBOARD_CANVASES.includes(page) ? DASHBOARD_CANVASES : [page];
+}
+
+const SPLIT_TARGETS: ReadonlyMap<string, string> = new Map([
+	...DASHBOARD_MAIN_BLOCKS.map((id) => [id, 'dashboard-main'] as const),
+	...DASHBOARD_DETAIL_BLOCKS.map((id) => [id, 'dashboard-detail'] as const)
+]);
+
+/**
+ * One-time split of the former single home canvas: every block other than the figures moves to
+ * 'dashboard-main' or 'dashboard-detail' with its choices (elements, former order, stored flag);
+ * the saved tree keeps only the figures and is measured again. A layout already split comes back
+ * as is (same object).
+ */
+export function migrateDashboardSplit(layout: PersistedLayout): PersistedLayout {
+	const page = 'dashboard';
+	const prefix = blockKey(page, '');
+	const moves = (id: string): boolean => SPLIT_TARGETS.has(id);
+	const pageTiles = layout.tiles[page];
+	const movedLeaves = leafIds(pageTiles?.tree).filter(moves);
+	const movedStored = (pageTiles?.stored ?? []).filter(moves);
+	const movedOrder = (layout.order[page] ?? []).filter(moves);
+	const movedBlocks = Object.keys(layout.blocks).filter((key) => key.startsWith(prefix) && moves(key.slice(prefix.length)));
+	if (!movedLeaves.length && !movedStored.length && !movedOrder.length && !movedBlocks.length) return layout;
+
+	const blocks = { ...layout.blocks };
+	for (const key of movedBlocks) {
+		const id = key.slice(prefix.length);
+		blocks[blockKey(SPLIT_TARGETS.get(id)!, id)] = blocks[key]!;
+		delete blocks[key];
+	}
+
+	const tiles = { ...layout.tiles };
+	if (pageTiles) {
+		const next: PageTiles = { ...pageTiles, stored: (pageTiles.stored ?? []).filter((id) => !moves(id)) };
+		if (movedLeaves.length) {
+			const tree = movedLeaves.reduce<TileNode | null>((t, id) => removeLeaf(t, id), pageTiles.tree ?? null);
+			if (tree) next.tree = tree;
+			else delete next.tree;
+			delete next.height;
+		}
+		tiles[page] = next;
+		for (const id of movedStored) {
+			const target = SPLIT_TARGETS.get(id)!;
+			tiles[target] = { ...tiles[target], stored: [...new Set([...(tiles[target]?.stored ?? []), id])] };
+		}
+	}
+
+	const order = { ...layout.order };
+	if (movedOrder.length) {
+		order[page] = layout.order[page]!.filter((id) => !moves(id));
+		for (const id of movedOrder) {
+			const target = SPLIT_TARGETS.get(id)!;
+			order[target] = [...(order[target] ?? []), id];
+		}
+	}
 	return { ...layout, blocks, tiles, order };
 }

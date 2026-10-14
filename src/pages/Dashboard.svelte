@@ -16,16 +16,17 @@
 	import { getBudgetTransactions } from '$lib/transfers.svelte';
 	import { getAccountsView, krakenState, refreshPrices } from '$lib/wealth.svelte';
 	import { krakenLedgerState } from '$lib/krakenLedger.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import Block from '$lib/components/Block.svelte';
 	import TileCanvas from '$lib/components/TileCanvas.svelte';
 	import type { BlockElement } from '$lib/layoutModel';
 	import NotesCard from '$lib/components/NotesCard.svelte';
 	import SavingsGoalCard from '$lib/components/SavingsGoalCard.svelte';
-	import { orderedIds, isFullscreen, storeByDefault } from '$lib/layout.svelte';
+	import { orderedIds, isFullscreen, storeByDefault, layoutState, setFullscreen } from '$lib/layout.svelte';
+	import { DASHBOARD_DETAIL_BLOCKS, DASHBOARD_KPI_BLOCKS, DASHBOARD_MAIN_BLOCKS } from '$lib/layoutModel';
 	import { isSectionCollapsed, toggleSectionCollapse } from '$lib/ui.svelte';
 	import type { AccountKind } from '$lib/csvCore';
-	import { formatMonth, monthKeyOf, formatEUR, formatEURCompact, formatDate, truncateLabel, sensitiveEUR } from '$lib/format';
+	import { formatMonth, monthKeyOf, formatEUR, formatDate, truncateLabel, sensitiveEUR } from '$lib/format';
 	import { merchantLabel } from '$lib/merchant';
 	import { merchantSearchQuery } from '$lib/merchantSearch';
 	import { buildEditorialSummary } from '$lib/report';
@@ -37,7 +38,13 @@
 	import CategoryDonut, { type DonutSlice } from '$lib/components/CategoryDonut.svelte';
 	import BudgetRing from '$lib/components/BudgetRing.svelte';
 	import InsightsCard from '$lib/components/InsightsCard.svelte';
-	import PageTitle from '$lib/components/PageTitle.svelte';
+	import GlanceHero from '$lib/components/GlanceHero.svelte';
+	import VisitLine from '$lib/components/VisitLine.svelte';
+	import MonthRibbon from '$lib/components/MonthRibbon.svelte';
+	import { buildRibbon } from '$lib/monthRibbon';
+	import { getRecurring, getSchedule } from '$lib/schedule.svelte';
+	import { registerVisit } from '$lib/sinceVisit.svelte';
+	import GlanceModeToggle, { type AccueilMode } from '$lib/components/GlanceModeToggle.svelte';
 	import WeatherBadge from '$lib/components/WeatherBadge.svelte';
 	import CashWalletCheck from '$lib/components/CashWalletCheck.svelte';
 	import { getCashEntries } from '$lib/wallet.svelte';
@@ -228,6 +235,36 @@
 		} catch {
 		}
 	}
+
+	/**
+	 * « Coup d'œil / À fond » (SPEC-DA, Volet A §2), persisted; default glance: the daily answer in
+	 * 3 seconds, the detail one gesture away.
+	 */
+	const MODE_KEY = 'budget:accueil-mode';
+	function loadMode(): AccueilMode {
+		try {
+			return localStorage.getItem(MODE_KEY) === 'deep' ? 'deep' : 'glance';
+		} catch {
+			return 'glance';
+		}
+	}
+	let accueilMode = $state<AccueilMode>(loadMode());
+	function setAccueilMode(m: AccueilMode) {
+		accueilMode = m;
+		try {
+			localStorage.setItem(MODE_KEY, m);
+		} catch {
+		}
+	}
+
+	/** « Vue détaillée » accordion of the glance mode (session only; the mode itself is persisted). */
+	let detailOpen = $state(false);
+	/** The detail canvas mounts on the first opening, then stays mounted (measured tiles, no replay). */
+	let detailMounted = $state(false);
+	function toggleDetail() {
+		detailOpen = !detailOpen;
+		if (detailOpen) detailMounted = true;
+	}
 	/** The point just before the window gives the opening balance. */
 	const chartPoints = $derived.by(() => {
 		const days = RANGES.find((r) => r.key === chartRangeKey)?.days ?? 0;
@@ -307,6 +344,11 @@
 			if ([...m.keys()].some((k) => k !== null)) set.add(catId);
 		}
 		return set;
+	});
+
+	// « Depuis ta dernière visite »: compared once the data is loaded
+	$effect(() => {
+		if (txState.loaded) untrack(registerVisit);
 	});
 
 	// Leaves the drill-down when the category is no longer detected (data/filters changed), once the
@@ -550,11 +592,42 @@
 		return out;
 	});
 
+	/**
+	 * « Fil du mois »: spending of the days gone by, debits of the schedule and recurring income
+	 * expected on the days to come (a past month shows only what happened).
+	 */
+	const RIBBON_KINDS = new Set(['debit', 'loan', 'tax', 'car']);
+	const ribbon = $derived.by(() => {
+		if (!currentMonth) return [];
+		const today = todayIso();
+		const ahead = currentMonth >= today.slice(0, 7);
+		const expectedIncome = ahead
+			? getRecurring()
+					.filter((r) => r.kind === 'credit' && r.active && r.categoryId === 'revenus')
+					.map((r) => ({ date: r.nextDate, label: r.label, amount: r.amount }))
+			: [];
+		const due = ahead ? getSchedule(45).filter((i) => RIBBON_KINDS.has(i.kind)) : [];
+		return buildRibbon({ month: currentMonth, today, txs: confirmedBudget, catOf, due, expectedIncome });
+	});
+	const RIBBON_ELEMENTS: BlockElement[] = [{ id: 'legende', label: 'Légende et totaux' }];
+
 	/** End of the projection ('solde projeté' insight: same source as the curve). */
 	const projectionEnd = $derived(projection.length > 0 ? { balance: projection[projection.length - 1]!.balance, endIso: projection[projection.length - 1]!.iso } : null);
 
-	/** Customisable Dashboard blocks (default order). */
-	const DASH_BLOCKS = ['kpi-solde', 'kpi-entrees', 'kpi-sorties', 'kpi-budget', 'balance', 'donut', 'savings', 'recent', 'insights', 'upcoming', 'refunds', 'precaution', 'comptes', 'notes'] as const;
+	/**
+	 * Customisable Dashboard blocks (default order: the KPI row, then recent, balance, donut,
+	 * savings, insights, upcoming, refunds, precaution, comptes, notes), split over three canvases
+	 * (SPEC-DA, Volet A §2). Each block stays in the same canvas whatever the mode, so its tile
+	 * choices stay valid: the KPI row keeps the historical 'dashboard' namespace, the glance grid
+	 * answers the day (recent operations, next deadlines) under the « Ce mois » rule, and the
+	 * detail grid holds the charts and analysis — inline in deep mode, under the « Vue détaillée »
+	 * accordion in glance mode.
+	 */
+	const KPI_BLOCKS = DASHBOARD_KPI_BLOCKS;
+	const MAIN_BLOCKS = DASHBOARD_MAIN_BLOCKS;
+	const DETAIL_BLOCKS = DASHBOARD_DETAIL_BLOCKS;
+	/** The palette's page commands act on the detail grid once it is on screen, else on « Ce mois ». */
+	const detailShown = $derived(accueilMode === 'deep' || detailOpen);
 
 	/** Height left to the balance chart under its header when its tile has a set height. */
 	let balanceArea = $state(0);
@@ -618,13 +691,25 @@
 	];
 
 	/**
+	 * The command palette opens the Bloc-notes fullscreen by its historical key ('dashboard:notes');
+	 * the block lives in the detail canvas now — forward the request and unfold the accordion so the
+	 * block is on screen.
+	 */
+	$effect(() => {
+		if (layoutState.fullscreen !== 'dashboard:notes') return;
+		detailMounted = true;
+		detailOpen = true;
+		setFullscreen('dashboard-detail', 'notes', true);
+	});
+
+	/**
 	 * One-time hand-over of the former notepad collapse (`notes` section, collapsed by default): the
-	 * Bloc-notes block starts stored (out of the tiles, in the « blocs rangés » chip); the section is
-	 * then marked expanded.
+	 * Bloc-notes block starts stored (out of the tiles, in the « blocs rangés » chip of the detail
+	 * canvas); the section is then marked expanded.
 	 */
 	onMount(() => {
 		if (!isSectionCollapsed('notes')) return;
-		storeByDefault('dashboard', 'notes');
+		storeByDefault('dashboard-detail', 'notes');
 		toggleSectionCollapse('notes');
 	});
 </script>
@@ -649,32 +734,20 @@
 		<div class="sm:col-span-2 lg:col-span-4"><Skeleton h={310} rounded={8} /></div>
 	</div>
 {:else}
-	<!-- Header: the month IS the title; the computed summary sentence (SPEC v12 §4) follows it directly -->
+	<!-- Editorial hero (SPEC-DA, Volet A §1): dateline kicker, the month as the title, the computed
+	     summary sentence (SPEC v12 §4) as the hero line; the mode switch sits with the controls -->
 	<header class="mb-4 flex flex-wrap items-start justify-between gap-3">
-		<div>
-		<PageTitle title={currentMonth ? formatMonth(currentMonth) : 'Accueil'} />
-		{#if currentMonth && summary}
-			<p class="sommaire-phrase mt-1" aria-live="off">
-				{#if summary.sober}
-					Mois en cours — {summary.count} opération{summary.count > 1 ? 's' : ''}.
-				{:else}
-					<!-- Current month: comparison at the same day of the previous month (before: '−94 %' on the 3rd) -->
-					{formatEURCompact(summary.expenses)} dépensés {summary.cutoffDay ? `au ${summary.cutoffDay}` : 'ce mois'}{#if summary.variation}{' — '}<span
-							class="sommaire-var"
-							style="color: {summary.variation.down ? 'var(--accent)' : 'var(--debit)'};"
-							>{summary.variation.pct} % de {summary.variation.down ? 'moins' : 'plus'} {summary.cutoffDay
-								? `qu'au ${summary.cutoffDay} ${summary.variation.prevMonthName}`
-								: `qu'en ${summary.variation.prevMonthName}`}</span
-						>{/if}{#if summary.savings !== null}{' ; '}épargne de {formatEURCompact(summary.savings)}{/if}.
-				{/if}
-			</p>
-		{/if}
+		<div class="min-w-0">
+			<GlanceHero title={currentMonth ? formatMonth(currentMonth) : 'Accueil'} summary={currentMonth ? summary : null} />
+			<!-- What changed since the previous visit, nothing when nothing did -->
+			<VisitLine />
 		</div>
 		<div class="flex flex-wrap items-center gap-3">
 			<!-- Honesty check of the cash wallet, nothing unless a check is due -->
 			<CashWalletCheck />
 			<!-- Today's weather of the chosen town (Réglages › Météo), nothing until one is chosen -->
 			<WeatherBadge />
+			<GlanceModeToggle mode={accueilMode} onchange={setAccueilMode} />
 			{#if months.length > 1}
 				<!-- ‹ month › navigation: same selection as the Budget page -->
 				<MonthNavigator {months} />
@@ -698,12 +771,13 @@
 			</p>
 		</div>
 	{:else}
-	<!-- Bento: asymmetric 12-column grid (vertical stack on mobile); every block is customisable -->
-	<TileCanvas page="dashboard" defaults={DASH_BLOCKS}>
-		{#each orderedIds('dashboard', DASH_BLOCKS) as id (id)}
+	<!-- Bento: asymmetric 12-column grid (vertical stack on mobile); every block is customisable.
+	     The KPI row is its own canvas so the « Ce mois » rule sits between it and the grid. -->
+	<TileCanvas page="dashboard" defaults={KPI_BLOCKS} primary={false}>
+		{#each orderedIds('dashboard', KPI_BLOCKS) as id (id)}
 			{#if id === 'kpi-solde'}
 				<!-- Current accounts only: savings and loans are on Patrimoine -->
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title={isLatestMonth ? 'Solde actuel' : 'Solde fin de mois'} size="XS" elements={STAT_ELEMENTS} bare>
+				<Block page="dashboard" {id} defaults={KPI_BLOCKS} title={isLatestMonth ? 'Solde actuel' : 'Solde fin de mois'} size="XS" elements={STAT_ELEMENTS} bare>
 					{#snippet children(show, _size, box)}
 						<div style={box ? `height: ${box.h}px;` : ''}>
 							<StatCard
@@ -721,7 +795,7 @@
 					{/snippet}
 				</Block>
 			{:else if id === 'kpi-entrees'}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title={cutoffDay ? `Entrées au ${cutoffDay}` : 'Entrées du mois'} size="XS" elements={STAT_ELEMENTS} bare>
+				<Block page="dashboard" {id} defaults={KPI_BLOCKS} title={cutoffDay ? `Entrées au ${cutoffDay}` : 'Entrées du mois'} size="XS" elements={STAT_ELEMENTS} bare>
 					{#snippet children(show, _size, box)}
 						<div style={box ? `height: ${box.h}px;` : ''}>
 							<StatCard
@@ -738,7 +812,7 @@
 					{/snippet}
 				</Block>
 			{:else if id === 'kpi-sorties'}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title={cutoffDay ? `Sorties au ${cutoffDay}` : 'Sorties du mois'} size="XS" elements={STAT_ELEMENTS} bare>
+				<Block page="dashboard" {id} defaults={KPI_BLOCKS} title={cutoffDay ? `Sorties au ${cutoffDay}` : 'Sorties du mois'} size="XS" elements={STAT_ELEMENTS} bare>
 					{#snippet children(show, _size, box)}
 						<div style={box ? `height: ${box.h}px;` : ''}>
 							<StatCard
@@ -756,7 +830,7 @@
 				</Block>
 			{:else if id === 'kpi-budget'}
 				<!-- Budget health: % of the overall budget consumed this month -->
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Budget consommé" size="XS" elements={BUDGET_KPI_ELEMENTS} bare>
+				<Block page="dashboard" {id} defaults={KPI_BLOCKS} title="Budget consommé" size="XS" elements={BUDGET_KPI_ELEMENTS} bare>
 					{#snippet children(show, _size, box)}
 						<div class="card card-lift hero-in-1 p-4" style={box ? `height: ${box.h}px;` : ''}>
 							<div class="flex items-start justify-between gap-3">
@@ -787,8 +861,65 @@
 						</div>
 					{/snippet}
 				</Block>
-			{:else if id === 'balance'}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Évolution du solde" size="L" sizes={['M', 'L', 'XL']} elements={BALANCE_ELEMENTS} class="fade-slide" style="--stagger: 240ms;">
+			{/if}
+		{/each}
+	</TileCanvas>
+
+	<div class="section-rule">Ce mois</div>
+
+	<!-- Glance grid: the daily answer — recent operations and next deadlines -->
+	<TileCanvas page="dashboard-main" defaults={MAIN_BLOCKS} primary={!detailShown}>
+		{#each orderedIds('dashboard-main', MAIN_BLOCKS) as id (id)}
+			{#if id === 'ribbon'}
+				<Block page="dashboard-main" {id} defaults={MAIN_BLOCKS} title="Fil du mois" size="XL" sizes={['L', 'XL']} elements={RIBBON_ELEMENTS} class="hero-in-3">
+					{#snippet children(show)}
+						<MonthRibbon days={ribbon} showLegend={show('legende')} />
+					{/snippet}
+				</Block>
+			{:else if id === 'recent'}
+				<Block page="dashboard-main" {id} defaults={MAIN_BLOCKS} title="Transactions récentes" size="L" sizes={['M', 'L', 'XL']} elements={RECENT_ELEMENTS} class="hero-in-3">
+					{#snippet children(show)}
+						<div class="mb-3 flex items-center justify-between gap-3">
+							<h2 class="label-xs">Transactions récentes</h2>
+							{#if show('lien')}
+								<a href="/transactions" class="text-xs font-medium transition-colors hover:underline" style="color: var(--accent);">
+									Tout voir
+								</a>
+							{/if}
+						</div>
+						<div class="divide-y divide-[var(--border-subtle)]">
+							<QuickEntryRow compact />
+							{#each recent.slice(0, show('plus') ? 12 : 6) as tx (txKey(tx))}
+								<div use:contextActions={() => recentActions(tx)}>
+									<TransactionRow {tx} compact showDate={show('date')} showCategory={show('categorie')} />
+								</div>
+							{/each}
+						</div>
+					{/snippet}
+				</Block>
+			{:else if id === 'upcoming'}
+				<Block page="dashboard-main" {id} defaults={MAIN_BLOCKS} title="Échéances à venir" size="L" sizes={['M', 'L', 'XL']} elements={UPCOMING_ELEMENTS} class="hero-in-3">
+					{#snippet children(show)}
+						<div class="@container">
+							{#await upcomingCard}
+								<Skeleton h={120} rounded={8} />
+							{:then { default: UpcomingCard }}
+								<UpcomingCard showTotal={show('total')} showList={show('liste')} showConfidence={show('fiabilite')} />
+							{/await}
+						</div>
+					{/snippet}
+				</Block>
+			{/if}
+		{/each}
+	</TileCanvas>
+
+	<!-- Detail grid (charts and analysis): inline in deep mode, under the « Vue détaillée »
+	     accordion in glance mode. One snippet, rendered at a single place at a time. -->
+	{#snippet detailCanvas()}
+		<TileCanvas page="dashboard-detail" defaults={DETAIL_BLOCKS} primary={detailShown}>
+			{#each orderedIds('dashboard-detail', DETAIL_BLOCKS) as id (id)}
+				{#if id === 'balance'}
+				<Block page="dashboard-detail" {id} defaults={DETAIL_BLOCKS} title="Évolution du solde" size="L" sizes={['M', 'L', 'XL']} elements={BALANCE_ELEMENTS} class="fade-slide" style="--stagger: 240ms;">
 					{#snippet children(show, _size, box)}
 						<div class="flex flex-col" style={box ? `height: ${box.h}px;` : ''}>
 						<div class="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
@@ -815,13 +946,13 @@
 							{/if}
 						</div>
 						<div class="min-h-0 flex-1" bind:clientHeight={balanceArea}>
-							<BalanceChart sensitive points={chartPoints} annotations={show('reperes') ? chartAnnotations : []} projection={show('projection') ? projection : []} height={box ? Math.max(120, balanceArea - 4) : isFullscreen('dashboard', 'balance') ? 520 : 360} />
+							<BalanceChart sensitive points={chartPoints} annotations={show('reperes') ? chartAnnotations : []} projection={show('projection') ? projection : []} height={box ? Math.max(120, balanceArea - 4) : isFullscreen('dashboard-detail', 'balance') ? 520 : 360} />
 						</div>
 						</div>
 					{/snippet}
 				</Block>
 			{:else if id === 'donut'}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Dépenses du mois" size="S" sizes={['S', 'M', 'L']} elements={DONUT_ELEMENTS} class="fade-slide" style="--stagger: 300ms;">
+				<Block page="dashboard-detail" {id} defaults={DETAIL_BLOCKS} title="Dépenses du mois" size="S" sizes={['S', 'M', 'L']} elements={DONUT_ELEMENTS} class="fade-slide" style="--stagger: 300ms;">
 					{#snippet children(show, _size, box)}
 						<h2 class="label-xs mb-3">{donutView.title}</h2>
 						{#if drilled}
@@ -850,34 +981,13 @@
 					{/snippet}
 				</Block>
 			{:else if id === 'savings'}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Objectif d'épargne" size="S" sizes={['S', 'M']} elements={SAVINGS_ELEMENTS} class="hero-in-3">
+				<Block page="dashboard-detail" {id} defaults={DETAIL_BLOCKS} title="Objectif d'épargne" size="S" sizes={['S', 'M']} elements={SAVINGS_ELEMENTS} class="hero-in-3">
 					{#snippet children(show)}
 						<SavingsGoalCard transactions={txOfMonth} monthKey={currentMonth} showRing={show('jauge')} showPace={show('rythme')} />
 					{/snippet}
 				</Block>
-			{:else if id === 'recent'}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Transactions récentes" size="L" sizes={['M', 'L', 'XL']} elements={RECENT_ELEMENTS} class="hero-in-3">
-					{#snippet children(show)}
-						<div class="mb-3 flex items-center justify-between gap-3">
-							<h2 class="label-xs">Transactions récentes</h2>
-							{#if show('lien')}
-								<a href="/transactions" class="text-xs font-medium transition-colors hover:underline" style="color: var(--accent);">
-									Tout voir
-								</a>
-							{/if}
-						</div>
-						<div class="divide-y divide-[var(--border-subtle)]">
-							<QuickEntryRow compact />
-							{#each recent.slice(0, show('plus') ? 12 : 6) as tx (txKey(tx))}
-								<div use:contextActions={() => recentActions(tx)}>
-									<TransactionRow {tx} compact showDate={show('date')} showCategory={show('categorie')} />
-								</div>
-							{/each}
-						</div>
-					{/snippet}
-				</Block>
 			{:else if id === 'insights'}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Points clés du mois" size="S" sizes={['S', 'M', 'L']} elements={INSIGHTS_ELEMENTS} class="hero-in-3">
+				<Block page="dashboard-detail" {id} defaults={DETAIL_BLOCKS} title="Points clés du mois" size="S" sizes={['S', 'M', 'L']} elements={INSIGHTS_ELEMENTS} class="hero-in-3">
 					{#snippet children(show, _size, box)}
 						<h2 class="label-xs mb-3" bind:clientHeight={insightsHead}>Points clés du mois</h2>
 						<InsightsCard
@@ -894,32 +1004,20 @@
 						/>
 					{/snippet}
 				</Block>
-			{:else if id === 'upcoming'}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Échéances à venir" size="L" sizes={['M', 'L', 'XL']} elements={UPCOMING_ELEMENTS} class="hero-in-3">
-					{#snippet children(show)}
-						<div class="@container">
-							{#await upcomingCard}
-								<Skeleton h={120} rounded={8} />
-							{:then { default: UpcomingCard }}
-								<UpcomingCard showTotal={show('total')} showList={show('liste')} showConfidence={show('fiabilite')} />
-							{/await}
-						</div>
-					{/snippet}
-				</Block>
 			{:else if id === 'refunds'}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="À recevoir" size="S" sizes={['S', 'M', 'L']} elements={REFUNDS_ELEMENTS}>
+				<Block page="dashboard-detail" {id} defaults={DETAIL_BLOCKS} title="À recevoir" size="S" sizes={['S', 'M', 'L']} elements={REFUNDS_ELEMENTS}>
 					{#snippet children(show)}
 						<RefundsCard showSettings={show('reglage')} />
 					{/snippet}
 				</Block>
 			{:else if id === 'precaution' && accountsView.length > 0}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Épargne de précaution" size="S" sizes={['S', 'M', 'L']} elements={EMERGENCY_ELEMENTS}>
+				<Block page="dashboard-detail" {id} defaults={DETAIL_BLOCKS} title="Épargne de précaution" size="S" sizes={['S', 'M', 'L']} elements={EMERGENCY_ELEMENTS}>
 					{#snippet children(show)}
 						<EmergencyFundCard showDetails={show('detail')} />
 					{/snippet}
 				</Block>
 			{:else if id === 'comptes' && (cashback || accountsView.length > 0)}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Comptes" size="S" sizes={['S', 'M']} elements={ACCOUNTS_ELEMENTS}>
+				<Block page="dashboard-detail" {id} defaults={DETAIL_BLOCKS} title="Comptes" size="S" sizes={['S', 'M']} elements={ACCOUNTS_ELEMENTS}>
 					{#snippet children(show)}
 						{@const withCashback = !!cashback && show('cashback')}
 						{@const withAccounts = accountsView.length > 0 && show('comptes')}
@@ -965,20 +1063,103 @@
 					{/snippet}
 				</Block>
 			{:else if id === 'notes'}
-				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Bloc-notes" size="XL" sizes={['M', 'L', 'XL']} elements={NOTES_ELEMENTS} class="hero-in-3">
+				<Block page="dashboard-detail" {id} defaults={DETAIL_BLOCKS} title="Bloc-notes" size="XL" sizes={['M', 'L', 'XL']} elements={NOTES_ELEMENTS} class="hero-in-3">
 					{#snippet children(show, _size, box)}
 						<!-- With a set tile height the text area fills the tile -->
 						<div style={box ? `height: ${box.h}px;` : ''}>
-							<NotesCard tall={isFullscreen('dashboard', 'notes')} collapsible={false} showStatus={show('statut')} showCount={show('compteur')} />
+							<NotesCard tall={isFullscreen('dashboard-detail', 'notes')} collapsible={false} showStatus={show('statut')} showCount={show('compteur')} />
 						</div>
 					{/snippet}
 				</Block>
 			{/if}
 		{/each}
+		</TileCanvas>
+	{/snippet}
 
-	</TileCanvas>
+	{#if accueilMode === 'glance'}
+		<!-- Glance: the detail grid is one gesture away, under a quiet accordion -->
+		<div class="section-rule detail-rule">
+			<span>Vue détaillée</span>
+			<button type="button" class="detail-toggle" aria-expanded={detailOpen} aria-controls="dashboard-detail-panel" onclick={toggleDetail}>
+				<svg class="detail-chevron" class:open={detailOpen} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+				{detailOpen ? 'Replier' : 'Déplier'}
+			</button>
+		</div>
+		<div class="detail-panel" class:open={detailOpen} id="dashboard-detail-panel" inert={!detailOpen}>
+			<div class="detail-panel-inner">
+				{#if detailMounted}
+					{@render detailCanvas()}
+				{/if}
+			</div>
+		</div>
+	{:else}
+		<!-- Deep: every block, same canvases, no accordion -->
+		<div class="section-rule">Vue détaillée</div>
+		{@render detailCanvas()}
+	{/if}
 	{/if}
 {/if}
 
 <style>
+	/* « Vue détaillée » toggle: quiet, right after the rule label */
+	.detail-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 2px 4px;
+		border-radius: 6px;
+		font-size: 10.5px;
+		font-weight: 500;
+		letter-spacing: 0.08em;
+		color: var(--text-3);
+		cursor: pointer;
+		transition: color var(--motion-base) ease;
+	}
+
+	.detail-toggle:hover {
+		color: var(--accent);
+	}
+
+	.detail-chevron {
+		transition: transform var(--motion-base) var(--ease-out);
+	}
+
+	.detail-chevron.open {
+		transform: rotate(180deg);
+	}
+
+	/* Soft accordion: grid-rows 0fr → 1fr animates the height without measuring, opacity follows;
+	   visibility waits for the closing fold to finish before hiding the panel */
+	.detail-panel {
+		display: grid;
+		grid-template-rows: 0fr;
+		visibility: hidden;
+		opacity: 0;
+		transition:
+			grid-template-rows var(--motion-slow) var(--ease-out),
+			opacity var(--motion-base) var(--ease-out),
+			visibility 0s var(--motion-slow);
+	}
+
+	.detail-panel.open {
+		grid-template-rows: 1fr;
+		visibility: visible;
+		opacity: 1;
+		transition:
+			grid-template-rows var(--motion-slow) var(--ease-out),
+			opacity var(--motion-base) var(--ease-out),
+			visibility 0s;
+	}
+
+	.detail-panel-inner {
+		min-height: 0;
+		overflow: hidden;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.detail-panel,
+		.detail-chevron {
+			transition: none;
+		}
+	}
 </style>

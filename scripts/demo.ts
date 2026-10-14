@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import type { Transaction } from '../src/lib/types.ts';
 import type { PortageData } from '../src/lib/portage.ts';
 import type { Asset } from '../src/lib/assets.ts';
-import { categorize } from '../src/lib/categories.ts';
+import { categorize, txKey } from '../src/lib/categories.ts';
 import { subcategorize } from '../src/lib/subcategories.ts';
 import { monthlyCost, kmPerYear, kmPoints, nextMilestones } from '../src/lib/vehicle.ts';
 
@@ -304,8 +304,21 @@ export function generateDemo(today = '2026-10-03'): Record<string, string> {
 			}
 		]
 	};
+	// Previous visit two days ago, before the last operations: the home page says what came since
+	const visit = new Date(`${today}T19:00:00Z`);
+	visit.setUTCDate(visit.getUTCDate() - 2);
+	const visitDay = visit.toISOString().slice(0, 10);
+	const keptFrom = new Date(visit.getTime() - 62 * 86_400_000).toISOString().slice(0, 10);
 	const data: Record<string, unknown> = {
 		'budget:imported-txs': txs,
+		'budget:last-visit': {
+			at: visit.toISOString(),
+			day: visitDay,
+			keys: txs.filter((t) => t.booking_date >= keptFrom && t.booking_date < visitDay).map(txKey),
+			month: today.slice(0, 7),
+			spent: {},
+			due: []
+		},
 		'budget:accounts': [
 			{ id: CURRENT_ACCOUNT, label: 'C/C EUROCOMPTE CONFORT M ALEX MARTIN', last4: '2345', kind: 'courant', balance: balanceOf(CURRENT_ACCOUNT, 2140), balanceAt: today, currency: 'EUR' },
 			{ id: SAVINGS_ACCOUNT, label: 'LIVRET BLEU M ALEX MARTIN', last4: '7890', kind: 'livret', balance: balanceOf(SAVINGS_ACCOUNT, 9800), balanceAt: today, currency: 'EUR' },

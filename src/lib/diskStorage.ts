@@ -192,8 +192,9 @@ class DiskStorage {
 	/**
 	 * On a network failure the keys stay queued (retry in 5 s); a conflict is
 	 * never resent: a 409 means the key changed in another tab, nothing is
-	 * overwritten and the user reloads. keepalive is only used for small values
-	 * (browser limit ~64 KB).
+	 * overwritten and the user reloads. Preference keys go without a version:
+	 * the last tab wins, a theme or a visit snapshot is never a conflict.
+	 * keepalive is only used for small values (browser limit ~64 KB).
 	 */
 	private async envoyer(keepalive: boolean, given?: Map<string, string | undefined>): Promise<void> {
 		if (!given && this.timer) {
@@ -208,7 +209,7 @@ class DiskStorage {
 			keys.map(async (key) => {
 				const value = given ? given.get(key) : this.mem.get(key);
 				const headers: Record<string, string> = { ...HEADERS, 'content-type': 'text/plain;charset=utf-8' };
-				if (this.versions) headers['x-budget-version'] = this.versions.get(key) ?? '';
+				if (this.versions && !PREF_KEYS.has(key)) headers['x-budget-version'] = this.versions.get(key) ?? '';
 				try {
 					const res = await fetch(`${ENDPOINT}/${encodeURIComponent(key)}`, {
 						method: value === undefined ? 'DELETE' : 'PUT',

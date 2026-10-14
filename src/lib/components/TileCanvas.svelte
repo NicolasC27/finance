@@ -113,7 +113,8 @@
 	 * former order and widths, row heights from the blocks' natural heights (no stretching to the window:
 	 * no empty space inside the tiles). Stored blocks wait in the « blocs rangés » chip under the canvas.
 	 */
-	let { page, defaults, children }: { page: string; defaults: readonly string[]; children: Snippet } = $props();
+	/** `primary`: the canvas the palette's page commands (« Organiser la page par l'IA ») act on when a page has several. */
+	let { page, defaults, primary = true, children }: { page: string; defaults: readonly string[]; primary?: boolean; children: Snippet } = $props();
 
 	const HOLD_MS = 200;
 	const TOUCH_HOLD_MS = 450;
@@ -222,6 +223,7 @@
 	setContext(TILE_CONTEXT, ctx);
 
 	$effect(() => {
+		if (!primary) return;
 		layoutState.currentPage = page;
 		return () => {
 			if (layoutState.currentPage === page) layoutState.currentPage = null;

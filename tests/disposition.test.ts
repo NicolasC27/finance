@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { countColumns, effectiveOrder, isElementShown, pageHasChoices, resetPageLayout, sanitizeLayout, sizeOfWidth, storedOf, tilesWithBroughtBack, tilesWithStored, withCanvasHeight, withPrefs, type BlockElement, migrateKpis } from '../src/lib/layoutModel';
+import { countColumns, effectiveOrder, isElementShown, pageHasChoices, resetPageLayout, sanitizeLayout, sizeOfWidth, storedOf, tilesWithBroughtBack, tilesWithStored, withCanvasHeight, withPrefs, type BlockElement, migrateDashboardSplit, migrateKpis } from '../src/lib/layoutModel';
 import { leafIds, layoutTiles, naturalCanvasHeight, LEAF_ESTIMATE, MIN_TILE, TILE_GAP, type TileNode } from '../src/lib/tiles';
 
 const IDS = ['kpis', 'balance', 'donut', 'notes'] as const;
@@ -193,4 +193,29 @@ test('a section collapsed by default that appears after the page got tiles is st
 	const absent = tilesWithStored({ tree: { id: 'resume' }, height: 500 }, [], 'conseils');
 	assert.deepEqual(absent.stored, ['conseils']);
 	assert.deepEqual(leafIds(absent.tree), ['resume']);
+});
+
+test('home split: blocks move to their canvas with their choices, the figures keep the saved tree, once', () => {
+	const old = sanitizeLayout({
+		order: { dashboard: ['kpi-solde', 'recent', 'balance', 'kpi-budget'] },
+		blocks: { 'dashboard:balance': { elements: { projection: false } }, 'dashboard:recent': { elements: { plus: true } }, 'dashboard:kpi-solde': { elements: { courbe: false } } },
+		tiles: {
+			dashboard: {
+				tree: { dir: 'col', ratio: 0.2, a: { dir: 'row', ratio: 0.5, a: { id: 'kpi-solde' }, b: { id: 'kpi-budget' } }, b: { dir: 'row', ratio: 0.5, a: { id: 'recent' }, b: { id: 'balance' } } },
+				height: 1500,
+				stored: ['kpi-sorties', 'notes']
+			}
+		}
+	});
+	const next = migrateDashboardSplit(old);
+	assert.deepEqual(leafIds(next.tiles.dashboard!.tree), ['kpi-solde', 'kpi-budget']);
+	assert.equal(next.tiles.dashboard!.height, undefined, 'measured again');
+	assert.deepEqual(next.tiles.dashboard!.stored, ['kpi-sorties']);
+	assert.deepEqual(next.tiles['dashboard-detail']!.stored, ['notes']);
+	assert.deepEqual(next.blocks['dashboard-detail:balance'], { elements: { projection: false } });
+	assert.deepEqual(next.blocks['dashboard-main:recent'], { elements: { plus: true } });
+	assert.deepEqual(next.blocks['dashboard:kpi-solde'], { elements: { courbe: false } });
+	assert.equal(next.blocks['dashboard:balance'], undefined);
+	assert.deepEqual(next.order, { dashboard: ['kpi-solde', 'kpi-budget'], 'dashboard-main': ['recent'], 'dashboard-detail': ['balance'] });
+	assert.equal(migrateDashboardSplit(next), next, 'runs once');
 });

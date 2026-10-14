@@ -15,13 +15,13 @@
 				var raw = localStorage.getItem('budget:theme');
 				if (raw === 'dark') raw = 'encre';
 				else if (raw === 'light') raw = 'papier';
-				if (['porcelaine', 'porcelaine-nuit', 'encre', 'papier', 'ardoise', 'foret', 'sable'].indexOf(raw) >= 0) t = raw;
+				if (['porcelaine', 'porcelaine-nuit', 'encre', 'papier', 'ardoise', 'foret', 'sable', 'aube'].indexOf(raw) >= 0) t = raw;
 			} catch (e) {
 				/* localStorage unavailable: the default theme stays */
 			}
 			document.documentElement.dataset.theme = t;
-			document.documentElement.classList.toggle('light', t === 'porcelaine' || t === 'papier' || t === 'sable');
-			var bg = { porcelaine: '#edeff3', 'porcelaine-nuit': '#0f131b', encre: '#1c1c1c', papier: '#f7f5f0', ardoise: '#1a1d20', foret: '#171c18', sable: '#f2ede4' };
+			document.documentElement.classList.toggle('light', t === 'porcelaine' || t === 'papier' || t === 'sable' || t === 'aube');
+			var bg = { porcelaine: '#edeff3', 'porcelaine-nuit': '#0f131b', encre: '#1c1c1c', papier: '#f7f5f0', ardoise: '#1a1d20', foret: '#171c18', sable: '#f2ede4', aube: '#f5efe3' };
 			document.querySelector('meta[name="theme-color"]').setAttribute('content', bg[t]);
 		</script>
 		<style>
@@ -46,6 +46,9 @@
 			}
 			html[data-theme='sable'] {
 				background-color: #f2ede4;
+			}
+			html[data-theme='aube'] {
+				background-color: #f5efe3;
 			}
 		</style>
 	</head>

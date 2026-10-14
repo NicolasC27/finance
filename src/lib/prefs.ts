@@ -16,8 +16,10 @@ export const PREF_KEYS: ReadonlySet<string> = new Set([
 	'budget:compact-rows',
 	'budget:account-badges',
 	'budget:brand-logos',
-	'budget:weather-place'
+	'budget:weather-place',
+	'budget:last-visit',
+	'budget:accueil-mode'
 ]);
 
 /** Preferences kept by « Tout réinitialiser »: the look of the app, never what it shows. */
-export const KEPT_ON_RESET: ReadonlySet<string> = new Set(['budget:theme', 'budget:sidebar', 'budget:ui-collapse', 'budget:privacy', 'budget:compact-rows', 'budget:account-badges', 'budget:brand-logos']);
+export const KEPT_ON_RESET: ReadonlySet<string> = new Set(['budget:theme', 'budget:sidebar', 'budget:ui-collapse', 'budget:privacy', 'budget:compact-rows', 'budget:account-badges', 'budget:brand-logos', 'budget:accueil-mode']);

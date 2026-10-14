@@ -3,7 +3,15 @@
  * `light` class stays the switch of the existing component overrides (Porcelaine, Papier and Sable).
  */
 
-export type Theme = 'porcelaine' | 'porcelaine-nuit' | 'encre' | 'papier' | 'ardoise' | 'foret' | 'sable';
+export type Theme =
+	| 'porcelaine'
+	| 'porcelaine-nuit'
+	| 'encre'
+	| 'papier'
+	| 'ardoise'
+	| 'foret'
+	| 'sable'
+	| 'aube';
 
 export interface ThemeMeta {
 	id: Theme;
@@ -20,7 +28,8 @@ export const THEMES: ThemeMeta[] = [
 	{ id: 'papier', label: 'Papier', mode: 'light', bg: '#f7f5f0', accent: '#8a6d3b' },
 	{ id: 'ardoise', label: 'Ardoise', mode: 'dark', bg: '#1a1d20', accent: '#9db4b8' },
 	{ id: 'foret', label: 'Forêt', mode: 'dark', bg: '#171c18', accent: '#9caf88' },
-	{ id: 'sable', label: 'Sable', mode: 'light', bg: '#f2ede4', accent: '#9a6b3f' }
+	{ id: 'sable', label: 'Sable', mode: 'light', bg: '#f2ede4', accent: '#9a6b3f' },
+	{ id: 'aube', label: 'Aube', mode: 'light', bg: '#f5efe3', accent: '#c2430a' }
 ];
 
 const THEME_KEY = 'budget:theme';

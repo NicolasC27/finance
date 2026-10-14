@@ -1,7 +1,7 @@
 import { budgetState } from './budget.svelte';
 import { getBudgetTransactions } from './transfers.svelte';
 import { isComputedEntry, isPending, isPlannedInstalment, signedAmount, sortByDate } from './data';
-import { detectRecurring, forecastRefIso } from './forecast';
+import { detectRecurring, forecastRefIso, type RecurringItem } from './forecast';
 import { getMerchantCategoryMap } from './store.svelte';
 import { categorize, txKey } from './categories';
 import { flowKind } from './flow';
@@ -26,12 +26,13 @@ export const MAX_HORIZON = 365;
 
 const confirmed = $derived(getBudgetTransactions().filter((tx) => !isPending(tx) && !isComputedEntry(tx)));
 const fromIso = $derived(forecastRefIso(sortByDate(confirmed)[confirmed.length - 1]?.booking_date ?? ''));
+const recurring = $derived(fromIso ? detectRecurring(confirmed, budgetState.overrides, fromIso, getMerchantCategoryMap()) : []);
 
 const schedule = $derived.by((): ScheduleItem[] => {
 	const from = fromIso;
 	if (!from) return [];
 	const to = addDays(from, MAX_HORIZON);
-	const recurring = detectRecurring(confirmed, budgetState.overrides, from, getMerchantCategoryMap())
+	const debits = recurring
 		.filter((r) => r.kind === 'debit' && r.active && r.fixed && flowKind(r.categoryId) === 'expense' && !VARIABLE_SUBS.has(r.subId ?? ''))
 		.map((r) => ({ key: r.key, label: r.label, amount: r.amount, cadence: r.cadence, nextDate: r.nextDate, confidence: r.confidence, tax: r.categoryId === 'impots', loan: r.categoryId !== 'impots' && isLoanLabel(r.label), categoryId: r.categoryId }));
 	const loans = getLoanCosts().map((c) => ({
@@ -54,7 +55,7 @@ const schedule = $derived.by((): ScheduleItem[] => {
 	return buildSchedule(
 		[
 			rentItems(rentSource(rentPayments, from), from, to),
-			recurringItems(recurring, from, to),
+			recurringItems(debits, from, to),
 			instalmentItems(instalments, from, to),
 			loanItems(loans, addDays(from, -5), to),
 			taxItems(getTaxNotices(), from, to),
@@ -66,6 +67,11 @@ const schedule = $derived.by((): ScheduleItem[] => {
 		to
 	);
 });
+
+/** Recurring operations detected from the reference day (credits included: the home ribbon reads the expected income). */
+export function getRecurring(): RecurringItem[] {
+	return recurring;
+}
 
 /** Reference day of the schedule (today, or the last operation when it is later). */
 export function getScheduleFrom(): string {
