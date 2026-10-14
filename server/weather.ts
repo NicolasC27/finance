@@ -1,4 +1,4 @@
-import { parseForecast, parsePlaces, type Place, type Weather } from '../src/lib/weather.ts';
+import { parseDaily, parseForecast, parsePlaces, type DailyWeather, type Place, type Weather } from '../src/lib/weather.ts';
 
 /**
  * Weather through the local server, so the browser never calls another site. Two calls leave,
@@ -15,6 +15,8 @@ const CACHE_MS = 20 * 60_000;
 const CACHE_MAX = 50;
 
 const cache = new Map<string, { at: number; weather: Weather }>();
+const DAILY_CACHE_MS = 60 * 60_000;
+const dailyCache = new Map<string, { at: number; daily: DailyWeather[] }>();
 
 const COORDINATE = /^-?\d{1,3}(\.\d+)?$/;
 
@@ -60,4 +62,27 @@ export async function weatherAt(lat: number, lon: number, now = Date.now()): Pro
 	cache.set(key, { at: now, weather });
 	while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
 	return weather;
+}
+
+/** The 16-day forecast at a place (for the days of a trip close to departure): cached an hour, the stale entry when Open-Meteo fails. */
+export async function dailyAt(lat: number, lon: number, now = Date.now()): Promise<DailyWeather[]> {
+	const key = `${lat},${lon}`;
+	const hit = dailyCache.get(key);
+	if (hit && now - hit.at < DAILY_CACHE_MS) return hit.daily;
+	const url = `${FORECAST}?latitude=${lat}&longitude=${lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto&forecast_days=16`;
+	let daily: DailyWeather[];
+	try {
+		daily = parseDaily(await getJson(url));
+	} catch (e) {
+		if (hit) return hit.daily;
+		throw e;
+	}
+	if (!daily.length) {
+		if (hit) return hit.daily;
+		throw new Error('Open-Meteo : réponse incomplète');
+	}
+	dailyCache.delete(key);
+	dailyCache.set(key, { at: now, daily });
+	while (dailyCache.size > CACHE_MAX) dailyCache.delete(dailyCache.keys().next().value!);
+	return daily;
 }

@@ -8,13 +8,17 @@
 	import LoanRowEditor from '$lib/components/LoanRowEditor.svelte';
 	import LoanStudyPanel from '$lib/components/LoanStudyPanel.svelte';
 	import { showSuccess } from '$lib/ui.svelte';
+	import { tripActuals, tripsState } from '$lib/trips.svelte';
+	import { monthsUntil } from '$lib/tripEstimates';
+	import { plannedTotal } from '$lib/trips';
 	import { pageSnapshot } from '$lib/router.svelte';
 
 	/**
 	 * What-if simulator: a scenario of monthly and one-off changes edited on the left, compared side
 	 * by side with today's situation (monthly budget, savings rate, net worth at 5 / 10 / 20 years,
 	 * savings goals) and on a 20-year chart; new loans get a full study (real cost, bank acceptance,
-	 * borrowing capacity). Only saved scenarios are stored; the real data never changes.
+	 * borrowing capacity). A one-off change can be dated (in N months); each coming trip with a
+	 * budget is offered as an example. Only saved scenarios are stored; the real data never changes.
 	 */
 
 	const TYPES: { id: ChangeType; label: string; hint: string }[] = [
@@ -44,6 +48,15 @@
 	const base = $derived(getBaseline());
 	const months = $derived(getBudgetAverages().months);
 	const todayIso = new Date().toISOString().slice(0, 10);
+	/** The trips to come with a budget: what is still to pay, spent at the departure. */
+	const tripPresets = $derived(
+		tripsState.trips
+			.filter((t) => t.start > todayIso && plannedTotal(t) > 0)
+			.map((t) => {
+				const spent = Object.values(tripActuals(t)).reduce((s, v) => s + v, 0);
+				return { label: `Voyage : ${t.name}`, changes: [{ type: 'oneoff' as const, label: `Voyage ${t.name}`, amount: Math.max(0, Math.round((plannedTotal(t) - spent) * 100) / 100), month: monthsUntil(todayIso, t.start) }] };
+			})
+	);
 	const defaults = $derived(getStudyDefaults());
 	const study = $derived(profileState.study);
 	const today = $derived(simulate(base, [], YEARS * 12));
@@ -168,7 +181,7 @@
 
 		<div class="mt-2 flex flex-wrap items-center gap-1.5">
 			<span class="meta-xs">Exemples :</span>
-			{#each PRESETS as p (p.label)}
+			{#each [...PRESETS, ...tripPresets] as p (p.label)}
 				<button type="button" class="chip chip-outline cursor-pointer" onclick={() => applyPreset(p)}>{p.label}</button>
 			{/each}
 		</div>
@@ -193,6 +206,11 @@
 									<input type="number" step="any" class="input-surface tabular w-24 !px-1.5 !py-0.5 text-right text-xs" bind:value={c.amount} aria-label="Montant ({t.hint})" />
 									{c.type === 'income' || c.type === 'expense' ? '€/mois' : '€'}
 								</label>
+								{#if c.type === 'oneoff'}
+									<label class="flex items-center gap-1" title="Dans combien de mois l’argent part (vide = maintenant)">
+										dans <input type="number" min="0" max="240" class="input-surface tabular w-14 !px-1.5 !py-0.5 text-right text-xs" bind:value={c.month} aria-label="Dans combien de mois" /> mois
+									</label>
+								{/if}
 							</div>
 						{/if}
 					</li>

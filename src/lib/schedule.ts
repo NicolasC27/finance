@@ -7,7 +7,7 @@
 import { CATEGORIES, getCategory } from './categories';
 import type { CategoryId } from './types';
 
-export type ScheduleKind = 'debit' | 'loan' | 'tax' | 'car' | 'savings' | 'goal';
+export type ScheduleKind = 'debit' | 'loan' | 'tax' | 'car' | 'savings' | 'goal' | 'trip';
 
 export interface ScheduleItem {
 	/** Stable id (source + date): duplicates of one source collapse on it. */
@@ -36,7 +36,8 @@ export const KIND_LABELS: Readonly<Record<ScheduleKind, string>> = {
 	tax: 'Impôts',
 	car: 'Voiture',
 	savings: 'Épargne salariale',
-	goal: 'Objectifs'
+	goal: 'Objectifs',
+	trip: 'Vacances'
 };
 
 /**
@@ -64,6 +65,7 @@ export function scheduleGroup(item: ScheduleItem): ScheduleGroup {
 	if (item.kind === 'loan' || item.kind === 'savings' || item.kind === 'goal') return item.kind;
 	if (item.kind === 'tax') return 'impots';
 	if (item.kind === 'car') return 'voiture';
+	if (item.kind === 'trip') return 'vacances';
 	return item.categoryId ?? 'autre';
 }
 
@@ -80,7 +82,7 @@ export function groupColor(group: ScheduleGroup): string {
 	return isOwnGroup(group) ? OWN_GROUPS[group].color : getCategory(group).color;
 }
 
-const KIND_ORDER: readonly ScheduleKind[] = ['tax', 'loan', 'debit', 'car', 'savings', 'goal'];
+const KIND_ORDER: readonly ScheduleKind[] = ['tax', 'loan', 'debit', 'car', 'savings', 'goal', 'trip'];
 
 const DAY = 86_400_000;
 const utc = (d: string) => Date.parse(`${d}T00:00:00Z`);
@@ -253,6 +255,29 @@ export function goalItems(goals: readonly GoalSource[], from: string, to: string
 	return goals
 		.filter((g) => g.targetDate && g.targetDate >= from && g.targetDate <= to && g.currentAmount < g.targetAmount)
 		.map((g) => ({ id: `goal:${g.id}`, date: g.targetDate!, kind: 'goal' as const, label: `Objectif · ${g.name}`, detail: 'date visée', amount: Math.round((g.targetAmount - g.currentAmount) * 100) / 100, href: '/budget', sensitive: true }));
+}
+
+export interface TripSource {
+	id: string;
+	name: string;
+	/** Departure (ISO), '' without dates. */
+	start: string;
+	/** Planned total of the envelopes (€). */
+	planned: number;
+	checklist: readonly { id: string; label: string; date: string; done: boolean }[];
+}
+
+/** Open dated checklist items of the trips, and the departure day itself with the planned budget. */
+export function tripItems(trips: readonly TripSource[], from: string, to: string): ScheduleItem[] {
+	const out: ScheduleItem[] = [];
+	for (const t of trips) {
+		for (const c of t.checklist) {
+			if (c.done || !c.date || c.date < from || c.date > to) continue;
+			out.push({ id: `trip:${t.id}:${c.id}`, date: c.date, kind: 'trip', label: `${c.label} · ${t.name}`, detail: 'réservation à faire', href: `/vacances/${t.id}` });
+		}
+		if (t.start && t.start >= from && t.start <= to) out.push({ id: `trip:${t.id}:depart`, date: t.start, kind: 'trip', label: `Départ · ${t.name}`, detail: 'budget prévu du voyage', ...(t.planned > 0 ? { amount: t.planned } : {}), href: `/vacances/${t.id}` });
+	}
+	return out;
 }
 
 /** Expected instalment of a payment in several times (quick entry waiting for the bank debit). */

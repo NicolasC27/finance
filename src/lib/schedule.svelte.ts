@@ -12,7 +12,9 @@ import { getCarExpenses, vehicleSheet } from './car.svelte';
 import { natixisState } from './natixisHoldings.svelte';
 import { goalsState } from './goals.svelte';
 import { isModuleActive } from './modules.svelte';
-import { addDays, isLoanLabel, buildSchedule, carItems, goalItems, instalmentItems, loanItems, recurringItems, rentItems, rentSource, savingsItems, taxItems, VARIABLE_SUBS, type ScheduleItem } from './schedule';
+import { addDays, isLoanLabel, buildSchedule, carItems, goalItems, instalmentItems, loanItems, recurringItems, rentItems, rentSource, savingsItems, taxItems, tripItems, VARIABLE_SUBS, type ScheduleItem } from './schedule';
+import { tripsState } from './trips.svelte';
+import { plannedTotal } from './trips';
 import { subcategorize } from './subcategories';
 
 /**
@@ -60,7 +62,8 @@ const schedule = $derived.by((): ScheduleItem[] => {
 			taxItems(getTaxNotices(), from, to),
 			carItems(cars, from, to),
 			savingsItems(natixisState.holdings?.holdings ?? [], from, to),
-			goalItems(goalsState.goals, from, to)
+			goalItems(goalsState.goals, from, to),
+			tripItems(isModuleActive('vacances') ? tripsState.trips.map((t) => ({ id: t.id, name: t.name, start: t.start, planned: plannedTotal(t), checklist: t.checklist })) : [], from, to)
 		],
 		from,
 		to

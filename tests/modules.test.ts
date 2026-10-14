@@ -17,7 +17,8 @@ test('existing user: every module holding data stays on', () => {
 			'budget:biens': [{ type: 'vehicule' }],
 			'budget:portage': { mois: [1] },
 			'budget:krak-card': { '2026-09': {} },
-			'budget:ia-chat': [{ role: 'user' }]
+			'budget:ia-chat': [{ role: 'user' }],
+			'budget:trips': [{ id: 'trip-1', name: 'Lisbonne' }]
 		})
 	);
 	assert.deepEqual(all, [...ALL_MODULES]);

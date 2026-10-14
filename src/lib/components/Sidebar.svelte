@@ -142,6 +142,7 @@
 		{ href: '/patrimoine', label: 'Patrimoine', short: 'Patrimoine', key: 'P' },
 		{ href: '/crypto', label: 'Crypto', short: 'Crypto', key: 'C' },
 		{ href: '/voiture', label: 'Voiture', short: 'Voiture', key: 'V' },
+		{ href: '/vacances', label: 'Vacances', short: 'Vacances', key: 'L' },
 		{ href: '/portage', label: 'Portage', short: 'Portage', key: 'O' },
 		{ href: '/ia', label: 'Analyse IA', short: 'IA', key: 'J' }
 	];
@@ -267,6 +268,11 @@
 						<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<path d="M5 16.5V12l1.8-4.6A2 2 0 0 1 8.7 6h6.6a2 2 0 0 1 1.9 1.4L19 12v4.5" />
 							<path d="M3.5 12h17v4.5h-17zM7 16.5V19M17 16.5V19" />
+						</svg>
+					{:else if link.href === '/vacances'}
+						<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z" />
+							<path d="M3.5 12h17M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z" />
 						</svg>
 					{:else if link.href === '/portage'}
 						<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -545,6 +551,9 @@
 		{:else if href === '/voiture'}
 			<path d="M5 16.5V12l1.8-4.6A2 2 0 0 1 8.7 6h6.6a2 2 0 0 1 1.9 1.4L19 12v4.5" />
 			<path d="M3.5 12h17v4.5h-17zM7 16.5V19M17 16.5V19" />
+		{:else if href === '/vacances'}
+			<path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z" />
+			<path d="M3.5 12h17M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z" />
 		{:else if href === '/portage'}
 			<path d="M4 8h16v11H4z" />
 			<path d="M9 8V5h6v3M4 13h16" />

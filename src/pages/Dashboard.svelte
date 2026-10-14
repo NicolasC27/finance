@@ -43,6 +43,9 @@
 	import { getCashEntries } from '$lib/wallet.svelte';
 	import { avgDailyNet, todayIso } from '$lib/forecast';
 	import Skeleton from '$lib/components/Skeleton.svelte';
+	import { tripsState } from '$lib/trips.svelte';
+	import { nextTrip } from '$lib/trips';
+	import { isRouteEnabled } from '$lib/modules.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { navigate, pageSnapshot } from '$lib/router.svelte';
 	import { uiState } from '$lib/ui.svelte';
@@ -50,6 +53,14 @@
 
 	// 'À venir' card in a separate chunk (gzip budget of the main bundle)
 	const upcomingCard = import('$lib/components/UpcomingCard.svelte');
+	const nextTripCard = import('$lib/components/NextTripCard.svelte');
+	const tripToday = new Date().toISOString().slice(0, 10);
+	/** The trip under way or the next one, when the Vacances module is on. */
+	const upcomingTrip = $derived(isRouteEnabled('/vacances') ? nextTrip(tripsState.trips, tripToday) : null);
+	const TRIP_ELEMENTS: BlockElement[] = [
+		{ id: 'budget', label: 'Budget et épargne' },
+		{ id: 'reservation', label: 'Prochaine réservation' }
+	];
 	import AnimatedAmount from '$lib/components/AnimatedAmount.svelte';
 
 	/** Dashboard page: asymmetric bento layout (12-column grid ≥1100px). */
@@ -554,7 +565,7 @@
 	const projectionEnd = $derived(projection.length > 0 ? { balance: projection[projection.length - 1]!.balance, endIso: projection[projection.length - 1]!.iso } : null);
 
 	/** Customisable Dashboard blocks (default order). */
-	const DASH_BLOCKS = ['kpi-solde', 'kpi-entrees', 'kpi-sorties', 'kpi-budget', 'balance', 'donut', 'savings', 'recent', 'insights', 'upcoming', 'refunds', 'precaution', 'comptes', 'notes'] as const;
+	const DASH_BLOCKS = ['kpi-solde', 'kpi-entrees', 'kpi-sorties', 'kpi-budget', 'balance', 'donut', 'savings', 'recent', 'insights', 'upcoming', 'voyage', 'refunds', 'precaution', 'comptes', 'notes'] as const;
 
 	/** Height left to the balance chart under its header when its tile has a set height. */
 	let balanceArea = $state(0);
@@ -904,6 +915,16 @@
 								<UpcomingCard showTotal={show('total')} showList={show('liste')} showConfidence={show('fiabilite')} />
 							{/await}
 						</div>
+					{/snippet}
+				</Block>
+			{:else if id === 'voyage' && upcomingTrip}
+				<Block page="dashboard" {id} defaults={DASH_BLOCKS} title="Prochain voyage" size="S" sizes={['S', 'M', 'L']} elements={TRIP_ELEMENTS}>
+					{#snippet children(show)}
+						{#await nextTripCard}
+							<Skeleton h={84} rounded={8} />
+						{:then { default: NextTripCard }}
+							<NextTripCard trip={upcomingTrip} today={tripToday} showBudget={show('budget')} showBooking={show('reservation')} />
+						{/await}
 					{/snippet}
 				</Block>
 			{:else if id === 'refunds'}

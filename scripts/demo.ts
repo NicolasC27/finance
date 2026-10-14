@@ -19,6 +19,8 @@ import type { Asset } from '../src/lib/assets.ts';
 import { categorize } from '../src/lib/categories.ts';
 import { subcategorize } from '../src/lib/subcategories.ts';
 import { monthlyCost, kmPerYear, kmPoints, nextMilestones } from '../src/lib/vehicle.ts';
+import { defaultChecklist } from '../src/lib/trips.ts';
+import { templateItems } from '../src/lib/packing.ts';
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const DEMO_DIR = join(APP, 'demo', 'donnees');
@@ -147,7 +149,12 @@ export function generateDemo(today = '2026-10-03'): Record<string, string> {
 		['2025-08-09', -36.2, cardLabel(8, 8, 'BIARRITZ', 'SURF SCHOOL')],
 		['2025-08-12', -61.4, cardLabel(8, 11, 'BAYONNE', 'TOTAL ACCESS')],
 		['2026-02-16', -385, cardLabel(2, 14, 'TIGNES', 'ESF COURS DE SKI')],
-		['2026-02-18', -212, cardLabel(2, 16, 'TIGNES', 'SKIPASS TIGNES')]
+		['2026-02-18', -212, cardLabel(2, 16, 'TIGNES', 'SKIPASS TIGNES')],
+		['2025-05-02', -62, cardLabel(5, 1, 'ROMA', 'TRATTORIA DA ENZO')],
+		['2025-05-05', -68, cardLabel(5, 3, 'ROMA', 'MUSEI VATICANI')],
+		['2025-05-06', -31.5, cardLabel(5, 4, 'ROMA', 'PIZZERIA TRASTEVERE')],
+		['2026-10-02', -320, cardLabel(10, 1, 'LISBOA', 'TAP AIR PORTUGAL')],
+		['2026-10-03', -560.5, cardLabel(10, 2, 'LISBOA', 'AIRBNB STUDIO BAIXA')]
 	] as const)
 		add(date, amount, label);
 
@@ -327,15 +334,93 @@ export function generateDemo(today = '2026-10-03'): Record<string, string> {
 		'budget:natixis-perfs': { perfs: { 'MONETAIRE ISR (DEMO)': 3.1, 'ACTIONS MONDE ISR (DEMO)': 8.4 }, year: 2025 },
 		'budget:budgets': { alimentation: 650, logement: 820, energie: 110, transport: 40, voiture: 420, abonnements: 110, loisirs: 180, sante: 60, vacances: 150, impots: 280, autre: 40 },
 		'budget:biens': assets,
-		'budget:modules': { active: ['analyse', 'patrimoine', 'crypto', 'voiture', 'portage', 'ia', 'rapport'] },
+		'budget:modules': { active: ['analyse', 'patrimoine', 'crypto', 'voiture', 'vacances', 'portage', 'ia', 'rapport'] },
 		'budget:portage': portage,
 		'budget:goals': [
 			{ id: 'g-apport', name: 'Apport appartement', targetAmount: 30000, currentAmount: 14800, targetDate: '2028-06-30', createdAt: 1767225600000 },
 			{ id: 'g-japon', name: 'Voyage au Japon', targetAmount: 4000, currentAmount: 2650, targetDate: '2027-04-01', createdAt: 1767225600000 }
 		],
 		'budget:vacations': [
+			{ id: 'v-rome', label: 'Rome en mai', start: '2025-05-01', end: '2025-05-05' },
 			{ id: 'v-ete', label: 'Pays basque', start: '2025-08-02', end: '2025-08-14' },
-			{ id: 'v-ski', label: 'Ski à Tignes', start: '2026-02-14', end: '2026-02-21' }
+			{ id: 'v-ski', label: 'Ski à Tignes', start: '2026-02-14', end: '2026-02-21' },
+			{ id: 'v-lisbonne', label: 'Lisbonne', start: '2027-04-10', end: '2027-04-16' }
+		],
+		'budget:atlas': [
+			{ id: 'visit-1', country: 'Italie', year: 2022 },
+			{ id: 'visit-2', country: 'Espagne', year: 2023 },
+			{ id: 'visit-3', country: 'Maroc', year: 2021 },
+			{ id: 'visit-4', country: 'Grèce', year: 2024 }
+		],
+		'budget:wishes': [
+			{ id: 'wish-1', name: 'Islande', country: 'Islande', budget: 3400, days: 10, season: 'ete', notes: 'Route 1 en van, aurores en septembre ?', createdAt: 1790000200000 },
+			{ id: 'wish-2', name: 'Vietnam', country: 'Vietnam', budget: 2800, days: 15, season: 'hiver', notes: '', createdAt: 1790000300000 },
+			{ id: 'wish-3', name: 'Écosse', country: 'Royaume-Uni', budget: 1500, days: 7, season: 'printemps', notes: 'Highlands et Skye.', createdAt: 1790000400000 }
+		],
+		'budget:trips': [
+			{
+				id: 'trip-rome',
+				name: 'Rome en mai',
+				destination: 'Rome',
+				country: 'Italie',
+				start: '2025-05-01',
+				end: '2025-05-05',
+				travellers: 2,
+				status: 'termine',
+				notes: 'Colisée à l’ouverture, Trastevere le soir.',
+				photo: '',
+				periodId: 'v-rome',
+				goalId: null,
+				envelopes: { transport: 180, hebergement: 420, repas: 260, activites: 90, extras: 40 },
+				checklist: [],
+				quotes: [],
+				days: [
+					{ id: 'dr1', title: 'Centre antique', notes: '', places: [{ id: 'pr1', name: 'Colisée', url: '', cost: 36, envelope: 'activites', lat: 41.8902, lon: 12.4922 }, { id: 'pr2', name: 'Panthéon', url: '', cost: null, envelope: 'activites', lat: 41.8986, lon: 12.4769 }] },
+					{ id: 'dr2', title: 'Vatican', notes: '', places: [{ id: 'pr3', name: 'Musées du Vatican', url: '', cost: 40, envelope: 'activites', lat: 41.9065, lon: 12.4536 }, { id: 'pr4', name: 'Dîner à Trastevere', url: '', cost: 55, envelope: 'repas', lat: 41.8897, lon: 12.4694 }] }
+				],
+				packing: [
+					{ id: 'pk-r1', category: 'tech', label: 'Adaptateur de prise', qty: 1, shared: true, done: true, forgot: true },
+					{ id: 'pk-r2', category: 'vetements', label: 'Chaussures confortables', qty: 2, shared: false, done: true, forgot: false },
+					{ id: 'pk-r3', category: 'divers', label: 'Gourde', qty: 2, shared: false, done: true, forgot: false }
+				],
+				createdAt: 1745000000000
+			},
+			{
+				id: 'trip-lisbonne',
+				name: 'Lisbonne',
+				destination: 'Lisbonne',
+				country: 'Portugal',
+				start: '2027-04-10',
+				end: '2027-04-16',
+				travellers: 2,
+				status: 'prevu',
+				notes: 'Alfama, Belém, une journée à Sintra.',
+				photo: '',
+				periodId: 'v-lisbonne',
+				goalId: null,
+				envelopes: { transport: 320, hebergement: 560, repas: 350, activites: 120, extras: 80 },
+				checklist: defaultChecklist({ start: '2027-04-10', end: '2027-04-16', country: 'Portugal' }),
+				quotes: [
+					{ id: 'q-booking', site: 'Booking', label: 'Appartement Alfama, 2 pers.', price: 620, url: 'https://www.booking.com/', conditions: 'annulation gratuite jusqu’à J−7', date: '2026-10-01', envelope: 'hebergement', bought: false },
+					{ id: 'q-airbnb', site: 'Airbnb', label: 'Studio Baixa', price: 560, url: 'https://www.airbnb.fr/', conditions: 'non remboursable', date: '2026-10-03', envelope: 'hebergement', bought: true },
+					{ id: 'q-vols', site: 'Google Flights', label: 'Vols A/R Lyon–Lisbonne, 2 pers.', price: 320, url: 'https://www.google.com/travel/flights', conditions: 'bagage cabine seulement', date: '2026-10-03', envelope: 'transport', bought: true }
+				],
+				days: [
+					{ id: 'd1', title: 'Arrivée et Alfama', notes: 'Vol du matin, métro depuis l’aéroport.', places: [{ id: 'p1', name: 'Tram 28', url: '', cost: 6.5, envelope: 'transport', lat: 38.7158, lon: -9.1356 }, { id: 'p2', name: 'Miradouro de Santa Luzia', url: '', cost: null, envelope: 'activites', lat: 38.7118, lon: -9.1301 }, { id: 'p3', name: 'Dîner à Alfama', url: '', cost: 45, envelope: 'repas', lat: null, lon: null }] },
+					{ id: 'd2', title: 'Belém', notes: '', places: [{ id: 'p4', name: 'Monastère des Hiéronymites', url: 'https://www.patrimoniocultural.gov.pt/', cost: 24, envelope: 'activites', lat: 38.6979, lon: -9.2065 }, { id: 'p5', name: 'Pastéis de Belém', url: '', cost: 8, envelope: 'repas', lat: 38.6975, lon: -9.2033 }, { id: 'p6', name: 'Tour de Belém', url: '', cost: 16, envelope: 'activites', lat: 38.6916, lon: -9.216 }] },
+					{ id: 'd3', title: 'Sintra', notes: 'Partir tôt : la file au palais de Pena.', places: [{ id: 'p7', name: 'Train Rossio – Sintra A/R', url: '', cost: 12, envelope: 'transport', lat: 38.7141, lon: -9.1409 }, { id: 'p8', name: 'Palais de Pena', url: '', cost: 40, envelope: 'activites', lat: 38.7876, lon: -9.3906 }, { id: 'p9', name: 'Quinta da Regaleira', url: '', cost: 30, envelope: 'activites', lat: 38.7963, lon: -9.3961 }] },
+					{ id: 'd4', title: 'Baixa et Chiado', notes: '', places: [{ id: 'p10', name: 'Elevador de Santa Justa', url: '', cost: 12, envelope: 'activites', lat: 38.7122, lon: -9.1394 }, { id: 'p11', name: 'Time Out Market', url: '', cost: 40, envelope: 'repas', lat: 38.707, lon: -9.1458 }] },
+					{ id: 'd5', title: 'Cascais', notes: '', places: [{ id: 'p12', name: 'Train A/R Cais do Sodré – Cascais', url: '', cost: 10, envelope: 'transport', lat: 38.7059, lon: -9.1453 }, { id: 'p13', name: 'Vélos jusqu’au Guincho', url: '', cost: 20, envelope: 'activites', lat: 38.6979, lon: -9.4215 }] },
+					{ id: 'd6', title: 'LX Factory et Bairro Alto', notes: '', places: [{ id: 'p16', name: 'LX Factory', url: '', cost: null, envelope: 'activites', lat: 38.7034, lon: -9.1786 }, { id: 'p14', name: 'Soirée fado', url: '', cost: 60, envelope: 'activites', lat: 38.7133, lon: -9.1448 }] },
+					{ id: 'd7', title: 'Retour', notes: 'Vol à 18 h.', places: [{ id: 'p15', name: 'Aerobus', url: '', cost: 8, envelope: 'transport', lat: 38.7756, lon: -9.1354 }] }
+				],
+				packing: (() => {
+					let k = 0;
+					return templateItems(['ville'], 2, [], () => `pk-${++k}`).map((i, n) => (n < 4 ? { ...i, done: true } : i));
+				})(),
+				createdAt: 1790000000000
+			},
+			{ id: 'trip-japon', name: 'Japon', destination: 'Tokyo et Kyoto', country: 'Japon', start: '', end: '', travellers: 2, status: 'idee', notes: 'Financé par l’objectif « Voyage au Japon ». Deux semaines, saison des érables ?', photo: '', periodId: null, goalId: 'g-japon', envelopes: { transport: 1800, hebergement: 1400, repas: 700, activites: 300 }, checklist: defaultChecklist({ start: '', end: '', country: 'Japon' }), quotes: [], days: [{ id: 'dj1', title: 'Tokyo : Asakusa et Shibuya', notes: '', places: [{ id: 'pj1', name: 'Senso-ji', url: '', cost: null, envelope: 'activites', lat: 35.7148, lon: 139.7967 }, { id: 'pj3', name: 'Carrefour de Shibuya', url: '', cost: null, envelope: 'activites', lat: 35.6595, lon: 139.7005 }] }, { id: 'dj2', title: 'Kyoto : Fushimi Inari à l’aube', notes: '', places: [{ id: 'pj2', name: 'Fushimi Inari-taisha', url: '', cost: null, envelope: 'activites', lat: 34.9671, lon: 135.7727 }] }], packing: [], createdAt: 1790000100000 }
 		],
 		'budget:ia-chat': chat,
 		'budget:ia-reports': [{ id: 'r1', title: 'Rapport de septembre 2026', prompt: 'Rapport du mois', createdAt: `${today}T08:30:00.000Z`, html: SAMPLE_REPORT }]

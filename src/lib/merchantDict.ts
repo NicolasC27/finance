@@ -424,7 +424,9 @@ export const MERCHANT_DICT: Partial<Record<CategoryId, string[]>> = {
 		'VUELING',
 		'VOLOTEA',
 		'KLM',
-		'LUFTHANSA'
+		'LUFTHANSA',
+		'TAP AIR PORTUGAL',
+		'TAP PORTUGAL'
 	],
 	sante: [
 		'DR MARTIN PAUL',

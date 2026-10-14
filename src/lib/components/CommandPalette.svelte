@@ -67,6 +67,7 @@
 		{ href: '/ia', label: 'Analyse IA', hint: 'Questions, modifications et rapports par Claude (relais local)' },
 		{ href: '/portage', label: 'Portage', hint: 'Activité, salaire, notes de frais, tickets resto, chèques culture' },
 		{ href: '/voiture', label: 'Voiture', hint: 'Fiche véhicule : compteur, coût par mois, contrôle technique' },
+		{ href: '/vacances', label: 'Vacances', hint: 'Voyages : plan jour par jour sur une carte, budget, réservations, valise, fiche pratique' },
 		{ href: '/historique', label: 'Historique des données', hint: 'Points de restauration : différences, revenir en arrière' },
 		{ href: '/simulateur', label: 'Simulateur', hint: 'Et si… : crédit, déménagement, revenu en baisse, nouvel abonnement' },
 		{ href: '/impot', label: 'Impôt sur le revenu', hint: 'Estimation de l’année, prélèvement à la source, régularisation de septembre' }

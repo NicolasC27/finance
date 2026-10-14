@@ -5,9 +5,9 @@
  * never erased. Module ids are the page routes without the slash (stored values, kept as they are).
  */
 
-export type ModuleId = 'analyse' | 'patrimoine' | 'crypto' | 'voiture' | 'portage' | 'ia' | 'rapport';
+export type ModuleId = 'analyse' | 'patrimoine' | 'crypto' | 'voiture' | 'vacances' | 'portage' | 'ia' | 'rapport';
 
-export type ModuleRoute = '/analyse' | '/patrimoine' | '/crypto' | '/voiture' | '/portage' | '/ia' | '/rapport';
+export type ModuleRoute = '/analyse' | '/patrimoine' | '/crypto' | '/voiture' | '/vacances' | '/portage' | '/ia' | '/rapport';
 
 export interface ModuleMeta {
 	id: ModuleId;
@@ -22,6 +22,7 @@ export const MODULES: readonly ModuleMeta[] = [
 	{ id: 'patrimoine', label: 'Patrimoine', description: 'Comptes, crédits, épargne salariale, biens, rendement réel et projection.', route: '/patrimoine' },
 	{ id: 'crypto', label: 'Crypto', description: 'Portefeuille Kraken, récompenses, positions et fiscalité des plus-values.', route: '/crypto' },
 	{ id: 'voiture', label: 'Voiture', description: 'Coût réel par mois, valeur retenue, compteur et prochaines échéances.', route: '/voiture' },
+	{ id: 'vacances', label: 'Vacances', description: 'Voyages : plan jour par jour sur une carte, budget, réservations, valise, fiche pratique.', route: '/vacances' },
 	{ id: 'portage', label: 'Portage', description: "Portage salarial : salaire, notes de frais, titres-restaurant, alertes d'impôt.", route: '/portage' },
 	{ id: 'ia', label: 'Analyse IA', description: 'Questions et rapports par Claude via le relais local, actions confirmées une à une.', route: '/ia' },
 	{ id: 'rapport', label: 'Rapport', description: 'Rapport mensuel imprimable : flux du mois, catégories, faits marquants.', route: '/rapport' }
@@ -106,6 +107,7 @@ export function modulesFromData(get: (key: string) => string | null): ModuleId[]
 		patrimoine: hasTransactions || WEALTH_KEYS.some((k) => hasContent(readJson(get, k))),
 		crypto: hasCryptoTx || CRYPTO_KEYS.some((k) => hasContent(readJson(get, k))),
 		voiture: hasVehicle,
+		vacances: hasContent(readJson(get, 'budget:trips')),
 		portage: hasContent(readJson(get, 'budget:portage')),
 		ia: AI_KEYS.some((k) => hasContent(readJson(get, k))),
 		rapport: hasTransactions

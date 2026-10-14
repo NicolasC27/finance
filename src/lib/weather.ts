@@ -12,6 +12,10 @@ export interface Place {
 	country: string;
 	lat: number;
 	lon: number;
+	/** IANA time zone of the place (« Europe/Lisbon »), when the geocoder gave it. */
+	timezone?: string;
+	/** ISO 3166-1 alpha-2 code of the country (« PT »), for the flag. */
+	countryCode?: string;
 }
 
 export interface Weather {
@@ -25,6 +29,16 @@ export interface Weather {
 	precipitation: number;
 	/** ISO date-time of the observation, local to the place. */
 	at: string;
+}
+
+/** One day of the 16-day forecast. */
+export interface DailyWeather {
+	/** ISO date, local to the place. */
+	date: string;
+	code: number;
+	max: number;
+	min: number;
+	precipitation: number;
 }
 
 export type SkyIcon = 'sun' | 'cloud-sun' | 'cloud' | 'fog' | 'drizzle' | 'rain' | 'snow' | 'showers' | 'storm';
@@ -67,9 +81,26 @@ export function parsePlaces(json: unknown): Place[] {
 		const lat = num(r.latitude);
 		const lon = num(r.longitude);
 		if (typeof r.name !== 'string' || !r.name || lat === null || lon === null) continue;
-		out.push({ name: r.name, region: typeof r.admin1 === 'string' ? r.admin1 : '', country: typeof r.country === 'string' ? r.country : '', lat, lon });
+		const place: Place = { name: r.name, region: typeof r.admin1 === 'string' ? r.admin1 : '', country: typeof r.country === 'string' ? r.country : '', lat, lon };
+		if (typeof r.timezone === 'string' && r.timezone) place.timezone = r.timezone;
+		if (typeof r.country_code === 'string' && /^[A-Za-z]{2}$/.test(r.country_code)) place.countryCode = r.country_code.toUpperCase();
+		out.push(place);
 	}
 	return out;
+}
+
+const fold = (s: string) => s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+/** The place meant by a trip's destination among the geocoder's answers: the first one in the trip's country when known, the first one otherwise. */
+export function pickPlace(places: readonly Place[], country: string): Place | null {
+	const wanted = fold(country);
+	return (wanted ? places.find((p) => fold(p.country) === wanted) : undefined) ?? places[0] ?? null;
+}
+
+/** Flag of an ISO 3166-1 alpha-2 code as regional indicator symbols (« PT » → 🇵🇹), '' for anything else. */
+export function flagEmoji(code: string | undefined): string {
+	if (!code || !/^[A-Za-z]{2}$/.test(code)) return '';
+	return String.fromCodePoint(...[...code.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
 }
 
 /** Current weather and the day's range of a forecast answer; null when a field is missing. */
@@ -83,6 +114,22 @@ export function parseForecast(json: unknown): Weather | null {
 	const at = typeof j?.current?.time === 'string' ? j.current.time : '';
 	if (code === null || temperature === null || max === null || min === null) return null;
 	return { code, temperature, max, min, precipitation, at };
+}
+
+/** The days of a daily forecast answer, in order; a day missing a value is skipped. */
+export function parseDaily(json: unknown): DailyWeather[] {
+	const d = (json as { daily?: Record<string, unknown[]> } | null)?.daily;
+	const time = d?.time;
+	if (!Array.isArray(time)) return [];
+	const out: DailyWeather[] = [];
+	time.forEach((date, i) => {
+		const code = num(d?.weather_code?.[i]);
+		const max = num(d?.temperature_2m_max?.[i]);
+		const min = num(d?.temperature_2m_min?.[i]);
+		if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || code === null || max === null || min === null) return;
+		out.push({ date, code, max, min, precipitation: num(d?.precipitation_sum?.[i]) ?? 0 });
+	});
+	return out;
 }
 
 export const QUERY_RULE = 'Nom de ville attendu (2 à 60 caractères : lettres, chiffres, espaces, apostrophes, tirets, virgules, points).';

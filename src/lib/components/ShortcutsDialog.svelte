@@ -34,6 +34,7 @@
 				{ keys: ['G', 'J'], label: 'Analyse IA' },
 				{ keys: ['G', 'O'], label: 'Portage' },
 				{ keys: ['G', 'V'], label: 'Voiture' },
+				{ keys: ['G', 'L'], label: 'Vacances' },
 				{ keys: ['G', 'Y'], label: 'Historique des données' },
 				{ keys: ['G', 'W'], label: 'Simulateur' },
 				{ keys: ['G', 'F'], label: 'Impôt sur le revenu' },

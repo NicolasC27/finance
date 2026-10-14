@@ -105,7 +105,7 @@ export function subcategoriesFor(categoryId: CategoryId): Subcategory[] {
  */
 export const SUB_MERCHANT_DICT: Record<string, string[]> = {
 	hebergement: ['AIRBNB', 'BOOKING', 'ABRITEL', 'HOMEAWAY', 'VRBO', 'EXPEDIA', 'HOTELS COM', 'HOTEL', 'HOTELS', 'IBIS', 'NOVOTEL', 'MERCURE', 'CAMPANILE', 'KYRIAD', 'ACCOR', 'HOSTEL', 'AUBERGE', 'CAMPING', 'GITE', 'PIERRE VACANCES', 'CENTER PARCS', 'CLUB MED', 'BELAMBRA', 'VVF', 'HUTTOPIA'],
-	vols: ['AIR FRANCE', 'EASYJET', 'RYANAIR', 'TRANSAVIA', 'VUELING', 'VOLOTEA', 'KLM', 'LUFTHANSA'],
+	vols: ['AIR FRANCE', 'EASYJET', 'RYANAIR', 'TRANSAVIA', 'VUELING', 'VOLOTEA', 'KLM', 'LUFTHANSA', 'TAP AIR PORTUGAL', 'TAP PORTUGAL'],
 	courses: [
 		'CARREFOUR',
 		'E LECLERC',

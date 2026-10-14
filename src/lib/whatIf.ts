@@ -26,6 +26,8 @@ export interface Change {
 	 * loan: amount borrowed; oneoff: amount spent (< 0 = money received).
 	 */
 	amount: number;
+	/** One-off only: months from now before the money leaves (0 or missing = today). */
+	month?: number;
 	/** Loan only: nominal annual rate (%). */
 	rate?: number;
 	/** Loan only: duration (months). */
@@ -133,7 +135,8 @@ export function simulate(base: Baseline, changes: readonly Change[], horizon = 2
 	const deflator = (m: number) => Math.pow(1 + (opts.inflation ?? LONG_TERM_INFLATION) / 100, -m / 12);
 	const assets = loans.reduce((s, l) => s + (l.loan.price > 0 ? l.loan.price : l.loan.kind === 'mortgage' ? l.loan.principal : 0), 0);
 	const upfront = loans.reduce((s, l) => s + (l.loan.price > 0 ? l.loan.downPayment : l.loan.fees.total), 0);
-	let liquid = base.netWorth - oneOff - upfront;
+	const oneOffAt = (m: number) => changes.filter((c) => c.type === 'oneoff' && Number.isFinite(c.amount) && Math.max(0, Math.round(c.month ?? 0)) === m).reduce((s, c) => s + c.amount, 0);
+	let liquid = base.netWorth - oneOffAt(0) - upfront;
 	const debtAt = (m: number) => loans.reduce((s, l) => s + (m === 0 ? l.loan.principal : (l.remaining[m - 1] ?? 0)), 0) * deflator(m);
 	const path = [Math.round(liquid + assets - debtAt(0))];
 	const schedule: number[] = [];
@@ -141,7 +144,7 @@ export function simulate(base: Baseline, changes: readonly Change[], horizon = 2
 		const paid = loans.reduce((s, l) => s + (l.monthly[m - 1] ?? 0), 0) * deflator(m);
 		const cash = income - expenses + rentSaved - paid;
 		schedule.push(r2(cash));
-		liquid = liquid * (1 + r) + cash + base.loanPrincipal;
+		liquid = liquid * (1 + r) + cash + base.loanPrincipal - oneOffAt(m);
 		path.push(Math.round(liquid + assets - debtAt(m)));
 	}
 	return {
@@ -228,7 +231,7 @@ export function readScenarios(v: unknown): Scenario[] {
 			name: s.name,
 			changes: s.changes
 				.filter((c) => c && typeof c.id === 'string' && types.includes(c.type) && typeof c.amount === 'number' && Number.isFinite(c.amount))
-				.map((c) => ({ id: c.id, type: c.type, label: typeof c.label === 'string' ? c.label : '', amount: c.amount, ...(c.type === 'loan' ? readLoan(c as unknown as Record<string, unknown>) : {}) })),
+				.map((c) => ({ id: c.id, type: c.type, label: typeof c.label === 'string' ? c.label : '', amount: c.amount, ...(c.type === 'loan' ? readLoan(c as unknown as Record<string, unknown>) : {}), ...(c.type === 'oneoff' && typeof c.month === 'number' && Number.isFinite(c.month) && c.month > 0 ? { month: Math.round(c.month) } : {}) })),
 			...(s.study ? { study: readStudy(s.study) } : {})
 		}));
 }

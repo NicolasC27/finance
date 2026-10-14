@@ -4,8 +4,12 @@ import { join } from 'node:path';
 import { isAllowedKey, VersionConflict, DATA_STORE_FILE, isValidDocumentName, openDataStore, type DataStore } from './server/base.ts';
 import { accessRefusal } from './server/acces.ts';
 import { privateCall, areValidKeys, deleteKrakenKeys, saveKrakenKeys, readKrakenKeys } from './server/kraken.ts';
-import { cleanCoordinates, searchPlaces, weatherAt } from './server/weather.ts';
+import { cleanCoordinates, dailyAt, searchPlaces, weatherAt } from './server/weather.ts';
+import { cleanWidth, findPhoto, photoBytes } from './server/photo.ts';
+import { geocode, tileBytes } from './server/geo.ts';
 import { cleanQuery, QUERY_RULE } from './src/lib/weather.ts';
+import { isPhotoFile } from './src/lib/photo.ts';
+import { cleanCountryCode, cleanGeoQuery, cleanTile } from './src/lib/geo.ts';
 
 /**
  * Local app server: data in an ENCRYPTED SQLITE DATABASE (server/base.ts)
@@ -24,6 +28,11 @@ import { cleanQuery, QUERY_RULE } from './src/lib/weather.ts';
  *   POST   /__kraken/<Method>      → { params, cles? }: signed private call (Balance, Ledgers)
  *   GET    /__weather/places?q=    → places matching a town name (Open-Meteo geocoding)
  *   GET    /__weather?lat=&lon=     → current weather and the day's range (Open-Meteo, cached 20 min)
+ *   GET    /__weather/daily?lat=&lon= → 16-day forecast, { daily: [{ date, code, max, min, precipitation }] } (cached an hour)
+ *   GET    /__photo?q=              → Wikivoyage banner of a place, { photo: { file, kind } | null } (Wikidata, cached a day)
+ *   GET    /__photo/file?f=&w=      → that Wikimedia Commons file at width 480 or 1600 (image bytes, cached)
+ *   GET    /__geo?q=&near=&cc=      → coordinates of a place of a day plan, { hit: { lat, lon, label } | null } (Nominatim, cached a day)
+ *   GET    /__tile?s=&l=&z=&x=&y=   → a basemap tile, light or dark, base drawing or labels (Esri gray canvas, image bytes, cached)
  *
  * Access: local app only (server/acces.ts). The Kraken secret key never goes
  * back to the browser. Database unavailable (locked keyring, missing key…)
@@ -148,10 +157,64 @@ export function dataPlugin(dir: string, label = dir): Plugin {
 				if (!q) return send(res, 400, { error: [QUERY_RULE] });
 				return send(res, 200, { places: await searchPlaces(q) });
 			}
-			if (path === '/__weather') {
+			if (path === '/__weather' || path === '/__weather/daily') {
 				const c = cleanCoordinates(params.get('lat'), params.get('lon'));
 				if (!c) return send(res, 400, { error: ['Coordonnées attendues.'] });
+				if (path === '/__weather/daily') return send(res, 200, { daily: await dailyAt(c.lat, c.lon) });
 				return send(res, 200, { weather: await weatherAt(c.lat, c.lon) });
+			}
+			return send(res, 404, { error: ['route inconnue'] });
+		} catch (e) {
+			return send(res, 502, { error: [message(e)] });
+		}
+	}
+
+	/** Photo routes: the server alone asks Wikidata and Wikimedia Commons for the banner of a trip's destination. */
+	async function photo(req: IncomingMessage, res: ServerResponse, path: string, params: URLSearchParams): Promise<void> {
+		if (req.method !== 'GET') return send(res, 405, { error: ['méthode non gérée'] });
+		try {
+			if (path === '/__photo') {
+				const q = cleanQuery(params.get('q'));
+				if (!q) return send(res, 400, { error: [QUERY_RULE] });
+				return send(res, 200, { photo: await findPhoto(q) });
+			}
+			if (path === '/__photo/file') {
+				const file = params.get('f');
+				const width = cleanWidth(params.get('w'));
+				if (!isPhotoFile(file) || !width) return send(res, 400, { error: ['Fichier Commons et largeur (480 ou 1600) attendus.'] });
+				const { bytes, type } = await photoBytes(file, width);
+				res.statusCode = 200;
+				res.setHeader('content-type', type);
+				res.setHeader('content-length', bytes.length);
+				res.setHeader('cache-control', 'private, max-age=604800, immutable');
+				res.end(bytes);
+				return;
+			}
+			return send(res, 404, { error: ['route inconnue'] });
+		} catch (e) {
+			return send(res, 502, { error: [message(e)] });
+		}
+	}
+
+	/** Map routes: the server alone asks Nominatim where a place of a day plan is, and ArcGIS Online for the map tiles. */
+	async function map(req: IncomingMessage, res: ServerResponse, path: string, params: URLSearchParams): Promise<void> {
+		if (req.method !== 'GET') return send(res, 405, { error: ['méthode non gérée'] });
+		try {
+			if (path === '/__geo') {
+				const q = cleanGeoQuery(params.get('q'));
+				if (!q) return send(res, 400, { error: ['Nom de lieu attendu (1 à 120 caractères).'] });
+				return send(res, 200, { hit: await geocode(q, cleanGeoQuery(params.get('near')) ?? '', cleanCountryCode(params.get('cc'))) });
+			}
+			if (path === '/__tile') {
+				const t = cleanTile(params.get('s'), params.get('l'), params.get('z'), params.get('x'), params.get('y'));
+				if (!t) return send(res, 400, { error: ['Tuile attendue : s=light|dark, l=base|labels, z, x, y.'] });
+				const { bytes, type } = await tileBytes(t);
+				res.statusCode = 200;
+				res.setHeader('content-type', type);
+				res.setHeader('content-length', bytes.length);
+				res.setHeader('cache-control', 'private, max-age=604800, immutable');
+				res.end(bytes);
+				return;
 			}
 			return send(res, 404, { error: ['route inconnue'] });
 		} catch (e) {
@@ -227,7 +290,10 @@ export function dataPlugin(dir: string, label = dir): Plugin {
 		['/__data', data],
 		['/__secrets/', kraken],
 		['/__kraken/', kraken],
-		['/__weather', weather]
+		['/__weather', weather],
+		['/__photo', photo],
+		['/__geo', map],
+		['/__tile', map]
 	];
 
 	const handler: Connect.NextHandleFunction = (req, res, next) => {

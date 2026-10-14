@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanQuery, describeSky, formatDegrees, formatMillimetres, isPlace, observationHour, parseForecast, parsePlaces, placeLabel } from '../src/lib/weather';
+import { cleanQuery, describeSky, flagEmoji, formatDegrees, formatMillimetres, isPlace, observationHour, parseDaily, parseForecast, parsePlaces, pickPlace, placeLabel } from '../src/lib/weather';
 import { cleanCoordinates } from '../server/weather';
 import { describeFailure, serverError } from '../src/lib/localApi';
 
@@ -23,6 +23,23 @@ test('parsePlaces and parseForecast: read the API answers, drop what is incomple
 	const places = parsePlaces({ results: [{ name: 'Lyon', latitude: 45.75, longitude: 4.85, admin1: 'Auvergne-Rhône-Alpes', country: 'France' }, { name: '', latitude: 1, longitude: 2 }, { name: 'Nulle part', latitude: 'x' }] });
 	assert.deepEqual(places, [{ name: 'Lyon', region: 'Auvergne-Rhône-Alpes', country: 'France', lat: 45.75, lon: 4.85 }]);
 	assert.deepEqual(parsePlaces({}), []);
+	const lisbon = parsePlaces({ results: [{ name: 'Lisbonne', latitude: 38.72, longitude: -9.13, country: 'Portugal', timezone: 'Europe/Lisbon', country_code: 'pt' }] })[0]!;
+	assert.equal(lisbon.timezone, 'Europe/Lisbon');
+	assert.equal(lisbon.countryCode, 'PT');
+	assert.equal(flagEmoji(lisbon.countryCode), '🇵🇹');
+	assert.equal(flagEmoji('x'), '');
+	assert.equal(flagEmoji(undefined), '');
+	const namesakes = [{ ...lisbon, name: 'Paris', country: 'États-Unis' }, { ...lisbon, name: 'Paris', country: 'France' }];
+	assert.equal(pickPlace(namesakes, 'france')?.country, 'France');
+	assert.equal(pickPlace(namesakes, 'Espagne')?.country, 'États-Unis');
+	assert.equal(pickPlace(namesakes, '')?.country, 'États-Unis');
+	assert.equal(pickPlace([], 'France'), null);
+	const daily = parseDaily({ daily: { time: ['2026-10-08', '2026-10-09', 'bad', '2026-10-11'], weather_code: [0, 61, 3, null], temperature_2m_max: [21.4, 17, 15, 14], temperature_2m_min: [12.1, 10, 9, 8], precipitation_sum: [0, 4.2, 0, 0] } });
+	assert.deepEqual(daily, [
+		{ date: '2026-10-08', code: 0, max: 21.4, min: 12.1, precipitation: 0 },
+		{ date: '2026-10-09', code: 61, max: 17, min: 10, precipitation: 4.2 }
+	]);
+	assert.deepEqual(parseDaily({}), []);
 	assert.equal(placeLabel(places[0]!), 'Lyon, Auvergne-Rhône-Alpes (France)');
 	assert.equal(placeLabel({ name: 'Lyon', region: '', country: '', lat: 1, lon: 2 }), 'Lyon');
 	assert.equal(isPlace(places[0]), true);

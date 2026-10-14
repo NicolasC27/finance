@@ -26,6 +26,7 @@
 	import TransferReviewDialog from '$lib/components/TransferReviewDialog.svelte';
 	import { transferState, reviewTransfers } from '$lib/transfers.svelte';
 	import { syncLoans } from '$lib/loans.svelte';
+	import { attachTravelPayments } from '$lib/trips.svelte';
 	import type { Component } from 'svelte';
 	import { route, navigate, initRouter, setRoutePreloader, type RoutePath } from '$lib/router.svelte';
 	import { initTheme, applyTheme, type Theme } from '$lib/theme';
@@ -55,6 +56,7 @@
 		'/ia': () => import('./pages/AiAnalysis.svelte'),
 		'/portage': () => import('./pages/Portage.svelte'),
 		'/voiture': () => import('./pages/Car.svelte'),
+		'/vacances': () => import('./pages/Trips.svelte'),
 		'/historique': () => import('./pages/History.svelte'),
 		'/simulateur': () => import('./pages/Simulator.svelte'),
 		'/echeancier': () => import('./pages/Schedule.svelte'),
@@ -160,7 +162,7 @@
 			}
 			return;
 		}
-		const goTo: Record<string, RoutePath> = { d: '/', b: '/budget', a: '/analyse', i: '/trier', t: '/transactions', p: '/patrimoine', c: '/crypto', r: '/rapport', j: '/ia', o: '/portage', v: '/voiture', y: '/historique', w: '/simulateur', e: '/echeancier', f: '/impot' };
+		const goTo: Record<string, RoutePath> = { d: '/', b: '/budget', a: '/analyse', i: '/trier', t: '/transactions', p: '/patrimoine', c: '/crypto', r: '/rapport', j: '/ia', o: '/portage', v: '/voiture', l: '/vacances', y: '/historique', w: '/simulateur', e: '/echeancier', f: '/impot' };
 		const to = goTo[e.key];
 		if (to && isRouteEnabled(to)) {
 			pendingG = 0;
@@ -211,6 +213,8 @@
 		void initTransactions().then(() => {
 			syncLoans();
 			reviewTransfers();
+			const attached = attachTravelPayments();
+			if (attached.count) showToast(`${attached.count} opération${attached.count > 1 ? 's' : ''} rattachée${attached.count > 1 ? 's' : ''} au voyage ${attached.names.join(', ')}`, 'Voir', () => navigate('/vacances'));
 		});
 		initKraken();
 		initWeather();
@@ -243,6 +247,7 @@
 		'/ia': 'Budget — Analyse IA',
 		'/portage': 'Budget — Portage',
 		'/voiture': 'Budget — Voiture',
+		'/vacances': 'Budget — Vacances',
 		'/historique': 'Budget — Historique des données',
 		'/simulateur': 'Budget — Simulateur',
 		'/echeancier': 'Budget — Échéancier',

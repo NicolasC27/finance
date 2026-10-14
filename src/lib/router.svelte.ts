@@ -1,30 +1,19 @@
 import { onDestroy, tick } from 'svelte';
 import { navDirection } from './navOrder';
 import { beginPageChange, settleEntrances } from './motion.svelte';
+import { hrefOf, parsePath, type RoutePath } from './routes';
 
 /** Home-made router: History API + View Transitions (graceful fallback). */
 
-export type RoutePath = '/' | '/budget' | '/analyse' | '/trier' | '/transactions' | '/patrimoine' | '/crypto' | '/rapport' | '/ia' | '/portage' | '/voiture' | '/historique' | '/simulateur' | '/echeancier' | '/impot';
-
-const KNOWN: RoutePath[] = ['/', '/budget', '/analyse', '/trier', '/transactions', '/patrimoine', '/crypto', '/rapport', '/ia', '/portage', '/voiture', '/historique', '/simulateur', '/echeancier', '/impot'];
+export { hrefOf, normalizePath, parsePath, type RoutePath } from './routes';
 
 /**
- * Normalises a pathname for static hosting:
- * '/transactions.html' → '/transactions', '/index.html' → '/', trailing '/' removed.
+ * Current route (reactive): the page, the sub-path for a nested page ('' otherwise) and `visit`, which
+ * changes when Back or Forward lands on another history entry of the same page: the app shell
+ * re-creates the page so that entry's snapshot is restored.
  */
-export function normalizePath(pathname: string): RoutePath {
-	let p = pathname.replace(/\/+$/, '') || '/';
-	if (p.endsWith('.html')) p = p.slice(0, -'.html'.length) || '/';
-	if (p === '/index') p = '/';
-	return KNOWN.includes(p as RoutePath) ? (p as RoutePath) : '/';
-}
-
-/**
- * Current route (reactive). `visit` changes when Back or Forward lands on another history entry of
- * the same page: the app shell re-creates the page so that entry's snapshot is restored.
- */
-export const route = $state<{ path: RoutePath; visit: number }>({
-	path: normalizePath(typeof location === 'undefined' ? '/' : location.pathname),
+export const route = $state<{ path: RoutePath; rest: string; visit: number }>({
+	...parsePath(typeof location === 'undefined' ? '/' : location.pathname),
 	visit: 0
 });
 
@@ -128,10 +117,10 @@ export function pageSnapshot<T extends object>(id: string, capture: () => T, res
 	});
 }
 
-function pushEntry(to: RoutePath): void {
+function pushEntry(href: string): void {
 	leaveEntry();
 	entryKey = newEntryKey();
-	history.pushState({ key: entryKey }, '', to);
+	history.pushState({ key: entryKey }, '', href);
 }
 
 let stopRestore: (() => void) | null = null;
@@ -203,21 +192,30 @@ function transition(to: RoutePath, update: () => void, scrollTop: () => number):
 }
 
 /**
- * SPA navigation: pushState + directional view transition when supported (graceful fallback); the
- * new page opens at the top. A click on the page on screen while Back/Forward still waits for its
- * page gives that page its own address back.
+ * SPA navigation: pushState + directional view transition between pages when supported (graceful
+ * fallback); the new page, or the new sub-path of a nested page, opens at the top. A click on the page
+ * on screen while Back/Forward still waits for its page gives that page its own address back.
  */
-export function navigate(to: RoutePath): void {
-	if (to === route.path) {
+export function navigate(to: string): void {
+	const next = parsePath(to);
+	const href = hrefOf(next.path, next.rest);
+	if (next.path === route.path) {
 		navToken++;
-		if (normalizePath(location.pathname) !== to) pushEntry(to);
+		if (next.rest !== route.rest) {
+			pushEntry(href);
+			route.rest = next.rest;
+			void tick().then(() => restoreScroll(0, 1500));
+		} else if (location.pathname !== href) {
+			pushEntry(href);
+		}
 		return;
 	}
 	transition(
-		to,
+		next.path,
 		() => {
-			pushEntry(to);
-			route.path = to;
+			pushEntry(href);
+			route.path = next.path;
+			route.rest = next.rest;
 		},
 		() => 0
 	);
@@ -242,7 +240,7 @@ export function initRouter(): () => void {
 	if (reloaded) restoreScroll(reloaded, 5000);
 
 	const onPopState = (e: PopStateEvent) => {
-		const to = normalizePath(location.pathname);
+		const next = parsePath(location.pathname);
 		const key = typeof e.state?.key === 'string' ? e.state.key : newEntryKey();
 		if (e.state?.key !== key) history.replaceState({ ...e.state, key }, '');
 		const enter = () => {
@@ -250,12 +248,13 @@ export function initRouter(): () => void {
 			entryKey = key;
 		};
 		const target = () => scrolls.get(key) ?? 0;
-		if (to !== route.path) {
+		if (next.path !== route.path) {
 			transition(
-				to,
+				next.path,
 				() => {
 					enter();
-					route.path = to;
+					route.path = next.path;
+					route.rest = next.rest;
 				},
 				target
 			);
@@ -264,6 +263,7 @@ export function initRouter(): () => void {
 		navToken++;
 		const otherEntry = key !== entryKey;
 		enter();
+		route.rest = next.rest;
 		if (otherEntry) route.visit++;
 		void tick().then(() => restoreScroll(target(), 1500));
 	};
@@ -272,7 +272,7 @@ export function initRouter(): () => void {
 
 	const onIntent = (e: Event) => {
 		const anchor = (e.target as Element | null)?.closest?.('a[href]');
-		if (anchor instanceof HTMLAnchorElement && anchor.origin === location.origin) void preload?.(normalizePath(anchor.pathname));
+		if (anchor instanceof HTMLAnchorElement && anchor.origin === location.origin) void preload?.(parsePath(anchor.pathname).path);
 	};
 
 	const onClick = (e: MouseEvent) => {
@@ -283,7 +283,7 @@ export function initRouter(): () => void {
 		const url = new URL(anchor.href);
 		if (url.origin !== location.origin) return;
 		e.preventDefault();
-		navigate(normalizePath(url.pathname));
+		navigate(url.pathname);
 	};
 
 	window.addEventListener('popstate', onPopState);

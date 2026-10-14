@@ -1,6 +1,7 @@
 <script lang="ts">
 	import DateField from '$lib/components/DateField.svelte';
 	import { goalsState, addGoal, updateGoal, removeGoal, adjustGoal, monthlyNeeded, monthlySuggested, type Goal } from '$lib/goals.svelte';
+	import { tripsState } from '$lib/trips.svelte';
 	import { uiState } from '$lib/ui.svelte';
 	import { formatEUR, formatDate } from '$lib/format';
 	import BudgetRing from './BudgetRing.svelte';
@@ -141,6 +142,7 @@
 			{#each goals as goal, i (goal.id)}
 				{@const done = goal.currentAmount >= goal.targetAmount}
 				{@const needed = monthlyNeeded(goal)}
+				{@const trip = tripsState.trips.find((t) => t.goalId === goal.id)}
 				<article class="card card-hover fade-slide p-4" style="--stagger: {i * 60}ms;">
 					<div class="flex items-start justify-between gap-3">
 						<div class="min-w-0">
@@ -161,6 +163,9 @@
 									<span class="tabular">{formatEUR(monthlySuggested(goal))}/mois</span>
 								{/if}
 							</p>
+							{/if}
+							{#if trip}
+								<p class="meta-xs mt-1 truncate"><a href="/vacances/{trip.id}" class="hover:underline">Finance le voyage « {trip.name} »</a>{#if trip.start} · départ le {formatDate(trip.start)}{/if}</p>
 							{/if}
 						</div>
 						{#if showRing}
