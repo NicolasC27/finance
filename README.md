@@ -34,7 +34,7 @@ npm run demo        # ouvre http://localhost:5180 avec 18 mois d'opérations inv
 
 <p align="center"><img src="docs/captures/accueil-clair.png" width="64%" alt="Thème clair « Papier »"> <img src="docs/captures/accueil-mobile.png" width="22%" alt="Version mobile"></p>
 
-L'app propose 7 thèmes (Porcelaine par défaut et sa version de nuit, Encre, Papier, Ardoise, Forêt, Sable) et trois densités, réunis avec les sauvegardes dans les Réglages (`Ctrl+,`). Chaque page se pave en tuiles, comme un gestionnaire de fenêtres (Hyprland) : on maintient un bloc pour le déplacer, on le redimensionne au pixel au clic droit, on range les blocs qui ne servent pas et on choisit les éléments affichés à l'intérieur. Elle s'adapte au mobile et se pilote au clavier (`Ctrl+K`, `G` puis une lettre).
+L'app propose 8 thèmes (Porcelaine par défaut et sa version de nuit, Aube pour la lumière du jour, Encre, Papier, Ardoise, Forêt, Sable) et trois densités, réunis avec les sauvegardes dans les Réglages (`Ctrl+,`). Chaque page se pave en tuiles, comme un gestionnaire de fenêtres (Hyprland) : on maintient un bloc pour le déplacer, on le redimensionne au pixel au clic droit, on range les blocs qui ne servent pas et on choisit les éléments affichés à l'intérieur. Elle s'adapte au mobile et se pilote au clavier (`Ctrl+K`, `G` puis une lettre).
 
 ## Imports pris en charge
 

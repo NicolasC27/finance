@@ -216,6 +216,31 @@ html[data-theme='porcelaine-nuit'] {
 	--shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
+/* Aube: the daylight theme. Bright ambient light washes out dark interfaces, so everything stays
+   on warm morning paper (#f5efe3) with ink text, and the whole theme carries a single vivid
+   signal: a burnt orange, set apart from the deep crimson of alerts. Depth comes from the paper
+   grain and the ink rules, never from shadows. Contrast on the card, measured on 2026-10-14:
+   text 16.6:1, secondary text 6.1:1, accent 5.0:1, alert 7.9:1 */
+html[data-theme='aube'] {
+	color-scheme: light;
+	--bg: #f5efe3;
+	--surface: #fffdf7;
+	--surface-2: #ece4d2;
+	--hairline: rgba(34, 28, 20, 0.14);
+	--text: #221c14;
+	--text-2: #6b5f4e;
+	--text-3: #8d8170;
+	--accent: #c2430a; /* burnt orange — the single signal of the theme */
+	--accent-2: #9f1239; /* deep crimson (alerts): far from the orange */
+	--debit: #57503f;
+	--beige: #6b5f4b;
+	--olive: #7d7a5e;
+	--border-subtle: rgba(34, 28, 20, 0.08);
+	--accent-soft: rgba(194, 67, 10, 0.1);
+	--amber-soft: rgba(159, 18, 57, 0.08);
+	--shadow-soft: 0 1px 2px rgba(34, 28, 20, 0.07);
+}
+
 html {
 	background-color: var(--bg);
 }
@@ -317,14 +342,35 @@ body {
 	animation-delay: 350ms;
 }
 
-/* Card: 8 px radius, a single 1 px rule, subtle background; depth comes from space */
+/* Card: 14 px radius (soft, cocoon), a single 1 px rule, a whisper of warm shadow; the rest of
+   the depth comes from space */
 .card {
 	background-color: var(--surface);
 	border: 1px solid var(--hairline);
-	border-radius: 8px;
+	border-radius: 14px;
+	box-shadow: var(--shadow-soft);
 	transition:
 		background-color 200ms ease,
 		border-color 200ms ease;
+}
+
+/* Editorial section divider: small-caps label + hairline, the rhythm of a magazine page */
+.section-rule {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 26px 2px 14px;
+	font-size: 10.5px;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	color: var(--text-3);
+}
+
+.section-rule::after {
+	content: '';
+	flex: 1;
+	border-top: 1px solid var(--border-subtle);
 }
 
 /* Subtle hover on interactive cards: stronger rule, raised background */
@@ -571,8 +617,9 @@ html.light .chip-accent {
 	color: var(--text);
 }
 
-/* Porcelaine: the accent is dark enough (10:1) to stay the chip's text colour */
-html[data-theme='porcelaine'] .chip-accent {
+/* Porcelaine and Aube: the accent is dark enough (10:1 / 5:1) to stay the chip's text colour */
+html[data-theme='porcelaine'] .chip-accent,
+html[data-theme='aube'] .chip-accent {
 	color: var(--accent);
 }
 
@@ -744,6 +791,25 @@ select.input-surface {
 	box-shadow: inset 0 0 0 1px var(--hairline);
 }
 
+/* Envelope gauge (envelopes.svelte.ts): the tint of a category mark fills up from the bottom with
+   the spent share of its monthly envelope; a brand tile gets a thin bar of the category colour along
+   its bottom edge instead. An envelope past its budget adds the alert ring (the tooltip says it in
+   words). */
+.mark-gauge {
+	background-image: linear-gradient(to top, color-mix(in srgb, var(--mark-color) 34%, transparent) var(--gauge), transparent var(--gauge));
+}
+
+.mark-brand.mark-gauge {
+	background-image: linear-gradient(to right, var(--mark-color) var(--gauge), color-mix(in srgb, var(--mark-color) 18%, transparent) var(--gauge));
+	background-position: bottom;
+	background-size: 100% 2.5px;
+	background-repeat: no-repeat;
+}
+
+.mark-over {
+	box-shadow: inset 0 0 0 1.5px var(--accent-2);
+}
+
 .mark-brand svg [stroke] {
 	stroke-width: 2.6;
 }
@@ -779,6 +845,15 @@ select.input-surface {
 
 	html[data-compact-rows] .rows .mark > * {
 		display: none;
+	}
+
+	/* The gauge of a compact dot fills like a pie */
+	html[data-compact-rows] .rows .mark-gauge {
+		background: conic-gradient(var(--mark-color) var(--gauge), color-mix(in srgb, var(--mark-color) 28%, transparent) 0);
+	}
+
+	html[data-compact-rows] .rows .mark-over {
+		box-shadow: 0 0 0 1.5px var(--accent-2);
 	}
 
 	html[data-compact-rows] .rows .row-sub {
@@ -1010,6 +1085,35 @@ html.light .grain {
 	filter: blur(60px);
 }
 
+/* ---- Aube: signature materiality ---- */
+
+/* The grain becomes real paper: a scanned warm-cream sheet (public/paper-aube.jpg) multiplied
+   over every surface, cards included, so the whole interface reads as one sheet of paper.
+   The SVG noise stays for the other themes. Later in the cascade than html.light .grain. */
+html[data-theme='aube'] .grain {
+	opacity: 0.5;
+	mix-blend-mode: multiply;
+	background-image: url('/paper-aube.jpg');
+	background-size: 512px;
+}
+
+/* Low morning sun: a warm wash falling from the top of the page, fixed so it never scrolls.
+   Purely visual (paint-only). */
+html[data-theme='aube'] body {
+	background-image: radial-gradient(ellipse 120% 55% at 50% -10%, rgba(255, 236, 200, 0.65), transparent 70%);
+	background-repeat: no-repeat;
+	background-attachment: fixed;
+}
+
+/* The glow behind the net worth is warmer and a touch more present — morning light. */
+html[data-theme='aube'] .networth-glow::before {
+	background: radial-gradient(
+		ellipse 80% 85% at 38% 38%,
+		color-mix(in srgb, var(--accent) 10%, transparent),
+		transparent 70%
+	);
+}
+
 /* Display typography: a single oversized amount per page (net worth). Serif is the signature:
    digits are serif (NO tabular-nums). */
 .display-amount {
@@ -1232,17 +1336,6 @@ html.light .grain {
 	border: 0;
 	border-top: 1px solid var(--hairline);
 	margin: 8px 0;
-}
-
-.sommaire-phrase {
-	font-size: 12px;
-	line-height: 1.6;
-	color: var(--text-2);
-	max-width: 70ch;
-}
-
-.sommaire-var {
-	font-weight: 500;
 }
 
 /* ---- Monthly edition report (SPEC v12 §2) ---- */

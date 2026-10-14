@@ -2853,7 +2853,7 @@
 								{/if}
 							</td>
 							<td class="w-px py-1 pr-0 pl-4">
-								<MerchantMark label={displayLabel(tx)} id={catId} size={22} title />
+								<MerchantMark label={displayLabel(tx)} id={catId} size={22} title month={tx.booking_date.slice(0, 7)} />
 							</td>
 							<td class="w-full max-w-0 min-w-48 py-1 pr-4 pl-2.5">
 								<p class="truncate leading-[1.4] font-medium" title={rawLabel(tx)}>
@@ -3083,7 +3083,7 @@
 							}}
 						/>
 					{/if}
-					<MerchantMark label={displayLabel(tx)} id={catId} size={28} />
+					<MerchantMark label={displayLabel(tx)} id={catId} size={28} month={tx.booking_date.slice(0, 7)} />
 					<div class="min-w-0 flex-1">
 						<p class="truncate text-sm font-medium" title={rawLabel(tx)}>
 							{displayLabel(tx)}
@@ -3320,7 +3320,7 @@
 										{@const opened = calOpenKey === key}
 										<li class="cal-op-item" class:cal-op-open={opened}>
 											<button type="button" class="cal-op press" aria-expanded={opened} onclick={() => (calOpenKey = opened ? null : key)}>
-												<MerchantMark label={displayLabel(item.tx)} id={catId} size={22} />
+												<MerchantMark label={displayLabel(item.tx)} id={catId} size={22} month={item.tx.booking_date.slice(0, 7)} />
 												<span class="min-w-0 flex-1 text-left">
 													<span class="block truncate text-[12.5px]" style="color: var(--text);">{displayLabel(item.tx)}</span>
 													<span class="meta-xs block truncate">{getCategory(catId).label}{multiDay ? ` · ${rangeLabel(item.date, item.date)}` : ''}</span>

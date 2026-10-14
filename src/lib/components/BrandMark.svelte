@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { readsOnWhite } from '$lib/color';
+	import type { EnvelopeGauge } from '$lib/envelopes';
 	import { glyphOf, loadGlyphs, type MerchantLogo } from '$lib/merchantLogos';
 	import type { Glyph } from '$lib/merchantGlyphs';
 
@@ -8,9 +9,16 @@
 	 * shows merchants. A 'brand' glyph is drawn in the brand colour (ink when that colour is too
 	 * pale), a 'color' glyph in its own colours, a 'line' glyph in ink. The glyphs load once, on the
 	 * first mark shown; the tile paints at once and the logo as soon as they are in. `color` is the
-	 * colour of the row's category or group: the dot the mark becomes in compact rows.
+	 * colour of the row's category or group: the dot the mark becomes in compact rows. With a `gauge`
+	 * a thin bar of that colour along the bottom of the tile shows the spent share of the envelope.
 	 */
-	let { logo, color, size = 24, title = false }: { logo: MerchantLogo; color: string; size?: number; /** Brand name as a tooltip, when the row does not write it. */ title?: boolean } = $props();
+	let {
+		logo,
+		color,
+		size = 24,
+		title,
+		gauge = null
+	}: { logo: MerchantLogo; color: string; size?: number; /** Tooltip, when the row does not write the brand. */ title?: string; gauge?: EnvelopeGauge | null } = $props();
 
 	let glyph = $state<Glyph | null>(null);
 	$effect(() => {
@@ -26,7 +34,14 @@
 	const ink = $derived(glyph?.k === 'brand' && readsOnWhite(logo.color) ? logo.color : '#12161e');
 </script>
 
-<span class="mark mark-brand" style="--mark-color: {color}; --mark-size: {size}px; --brand-ink: {ink};" title={title ? logo.name : undefined} aria-hidden={title ? undefined : 'true'}>
+<span
+	class="mark mark-brand"
+	class:mark-gauge={gauge}
+	class:mark-over={gauge?.over}
+	style="--mark-color: {color}; --mark-size: {size}px; --brand-ink: {ink};{gauge ? ` --gauge: ${Math.round(gauge.fill * 100)}%;` : ''}"
+	{title}
+	aria-hidden={title ? undefined : 'true'}
+>
 	{#if glyph}
 		<!-- Trusted markup: bundled glyphs generated from open icon collections (see merchantGlyphs.ts) -->
 		<svg width={px} height={px} viewBox={glyph.v} fill="currentColor" aria-hidden="true">{@html glyph.b}</svg>

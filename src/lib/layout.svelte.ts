@@ -2,6 +2,8 @@ import { untrack } from 'svelte';
 import {
 	blockKey,
 	effectiveOrder,
+	canvasesOf,
+	migrateDashboardSplit,
 	migrateKpis,
 	pageHasChoices,
 	resetPageLayout,
@@ -61,7 +63,7 @@ function load() {
 	if (typeof localStorage === 'undefined') return { layout: sanitizeLayout(null), migrated: false };
 	try {
 		const clean = sanitizeLayout(JSON.parse(localStorage.getItem(KEY) ?? '{}'));
-		const layout = migrateKpis(clean);
+		const layout = migrateDashboardSplit(migrateKpis(clean));
 		return { layout, migrated: layout !== clean };
 	} catch {
 		return { layout: sanitizeLayout(null), migrated: false };
@@ -185,12 +187,14 @@ function restore(page: string, snap: PageSnapshot): void {
 	persist();
 }
 
-/** Runs a layout change on a page, saves it and offers « Annuler » in a toast. */
-function withUndo(page: string, label: string, change: () => void): void {
-	const before = snapshot(page);
+/** Runs a layout change on one page or several canvases, saves it and offers « Annuler » in a toast. */
+function withUndo(pages: string | readonly string[], label: string, change: () => void): void {
+	const before = (typeof pages === 'string' ? [pages] : pages).map((page) => [page, snapshot(page)] as const);
 	change();
 	persist();
-	showToast(label, 'Annuler', () => restore(page, before));
+	showToast(label, 'Annuler', () => {
+		for (const [page, snap] of before) restore(page, snap);
+	});
 }
 
 /** The former hidden / collapsed choices of a block dropped (the stored list replaces them). */
@@ -299,8 +303,9 @@ export function pageCustomized(page: string): boolean {
 
 /** Back to the default layout of one page (tiles, stored blocks, elements), with undo. */
 export function resetPage(page: string): void {
-	withUndo(page, 'Disposition de la page remise par défaut', () => {
-		const next = resetPageLayout(layoutState, page);
+	const pages = canvasesOf(page);
+	withUndo(pages, 'Disposition de la page remise par défaut', () => {
+		const next = pages.reduce((layout, p) => resetPageLayout(layout, p), { order: layoutState.order, blocks: layoutState.blocks, tiles: layoutState.tiles });
 		layoutState.order = next.order;
 		layoutState.blocks = next.blocks;
 		layoutState.tiles = next.tiles;
